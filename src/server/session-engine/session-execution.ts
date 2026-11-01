@@ -7,6 +7,7 @@ import {
   canContinueSessionExecution,
   executionIntentSchema,
   executionAssessmentSchema,
+  executionAcceptanceIssues,
   settleSessionExecution,
   type ExecutionIntent,
   type ExecutionIntentFailure,
@@ -298,7 +299,9 @@ ${recoveryGuidance}
 启动子 Agent 前，将其范围、依赖与验收要求登记到当前主任务。后台子任务未结算时主任务仍由你负责；可以让出当前模型回合等待原运行时事件，但不能宣布主任务完成。收到结果后核验并继续原清单；失败、结果未知或缺权限必须记录原因，不盲目重派。
 读取 ${APP_CLI_NAME} session tasks --json 查看当前执行、验收条件和真实工具证据。每轮交付后，用同一命令 --data 提交：
 {"kind":"execution_review","executionId":"${execution.id}","queueId":"${execution.currentQueueId}","assessment":{"decision":"accept|rework|blocked|needs_user","summary":"具体结果或阻断","checks":[{"criterion":0,"toolUseIds":["实际成功且修改后的根工具调用ID"]}]}}。
-accept 需要覆盖全部验收条件，并指向本次执行真实且最新的验证结果；Todo完成、分析文本和子Agent自报不算证据。
+accept 需要逐项覆盖以下全部验收条件（criterion 从 0 开始），不能用本轮只读核查代替原任务的完整交付：
+${execution.intent.acceptanceCriteria.map((criterion, index) => `criterion ${index}: ${escapeSystemReminderText(criterion)}`).join('\n')}
+验证仅使用成功的根 Read、Grep、Glob、WebFetch、WebSearch，且必须在所有可能修改结束后开始。普通 Bash、Write、Edit、MCP 调用本身不算最终验证；测试命令可生成报告，再用 Read 核对实际结果。Read 后若再执行普通 Bash 等可能修改操作，需要重新只读验证。Todo完成、分析文本和子Agent自报不算证据。直接任务账本/评审 CLI 只记账，不使验证失效。
 任务 review 和 execution_review 必须由主 Agent 用单独的直接 CLI 命令提交并保留完整 JSON 输出；不套 Python/子进程、cd/echo、管道、重定向，也不只提取 success。success 且 pendingMainAgentReview=true 只表示收到提案，须由匹配的主 Agent 原生工具回执确认，不能当作验收已生效。
 评审提交成功后，给出简明交付说明（实际产物位置、检查结果或具体阻断）并结束当前回复。accept/rework 都由本轮持久化终态结算；不要在同一轮等待完成状态或反复提交相同评审。rework 的修复由下一轮自动接续。
 需要业务判断或缺权限则 needs_user/blocked。不得扩大原始授权、重复未知写入或自动创建 Goal。遇到停止立即停下。</SESSION_EXECUTION></system-reminder>`;
@@ -713,6 +716,34 @@ const VERIFICATION_TOOLS = new Set([
   "WebFetch",
   "WebSearch",
 ]);
+
+function executionVerificationEvidence(ledger: SessionTaskLedger, verificationEpoch: string | undefined) {
+  const facts = ledger.executionEvidence ?? [];
+  const lastMutationOrder = facts.filter(fact => fact.mutating).at(-1)?.observationOrder ?? 0;
+  return {
+    lastMutationOrder,
+    evidence: facts.map(fact => ({
+      ...fact,
+      successful: fact.successful && VERIFICATION_TOOLS.has(fact.name) &&
+        verificationEpoch !== undefined && fact.verificationEpoch === verificationEpoch &&
+        (fact.startOrder ?? fact.observationOrder) > lastMutationOrder,
+    })),
+  };
+}
+
+function acceptanceCorrectionGuidance(ledger: SessionTaskLedger, verificationEpoch: string | undefined): string {
+  const execution = ledger.execution;
+  if (!execution || execution.reason !== 'acceptance_evidence_incomplete') return '';
+  const issues = executionAcceptanceIssues(execution, {
+    assessment: execution.assessment, ...executionVerificationEvidence(ledger, verificationEpoch),
+  });
+  const details = issues.slice(0, 20).map(issue => issue.kind === 'missing_criterion'
+    ? `缺少 criterion ${issue.criterion}`
+    : issue.kind === 'invalid_check'
+      ? `criterion ${issue.criterion} 的索引或工具列表无效/重复`
+      : `criterion ${issue.criterion} 引用的工具无有效验证资格：${issue.toolUseId}（须成功、属于当前原生代次，且在最后可能修改之后验证）`);
+  return `\n上轮评审已收到，但验收证据未通过；已计入既有返工次数。${details.join('；')}。保留已有产物和真实进度，按下列完整条件核对并补充有效证据，不重做已完成或结果未知的操作。如果原范围缺权限或仍有无法核实的业务结果，请提交 blocked/needs_user 和具体原因，不能仅为结束循环而声称 accept。`;
+}
 export function sessionExecutionToolDenial(
   sessionId: string,
   queueId: string | undefined,
@@ -887,7 +918,6 @@ export async function settleSessionExecutionTurn(
         : undefined;
     // A model cannot turn a write into verification by citing its tool ID. Shell/browser
     // checks can produce reports which the root then reads after all possible mutations.
-    const mutations = facts.filter((fact) => fact.mutating);
     const unknown =
       facts.some((fact) => fact.pending && fact.mutating) ||
       ledger.delegationClaims?.some(
@@ -941,17 +971,7 @@ export async function settleSessionExecutionTurn(
       status: outcome.status,
       now: Date.now(),
       ...(assessment ? { assessment } : {}),
-      evidence: facts.map((fact) => ({
-        ...fact,
-        successful:
-          fact.successful &&
-          VERIFICATION_TOOLS.has(fact.name) &&
-          verificationEpoch !== undefined &&
-          fact.verificationEpoch === verificationEpoch &&
-          (fact.startOrder ?? fact.observationOrder) >
-            (mutations.at(-1)?.observationOrder ?? 0),
-      })),
-      lastMutationOrder: mutations.at(-1)?.observationOrder ?? 0,
+      ...executionVerificationEvidence(ledger, verificationEpoch),
       reviewReceiptUnconfirmed: ledger.executionReview?.queueId === queueId && !review,
       progressDigest: hash(
         [
@@ -1094,11 +1114,12 @@ export async function continueSessionExecution(
     // its native completion observation wakes this same admission, without polling.
     if (!liveCheck(true)) return;
     // Reminder must describe the target queue before it is claimed.
-    const priorReview = currentLedger(sessionId)?.executionReview;
+    const priorLedger = currentLedger(sessionId)!;
+    const priorReview = priorLedger.executionReview;
     const unconfirmedReview = priorReview?.queueId === initial.currentQueueId && !priorReview.committedBy;
     const reviewGuidance = unconfirmedReview
       ? "\n上轮评审的原生工具回执未确认，提案尚未生效。不要重做已经完成的业务操作；请针对本轮 queueId，用单独的直接 CLI 命令重新提交评审并保留完整 JSON 输出，再结束本轮回复。不得沿用旧回执或把提案当作验收完成。"
-      : "";
+      : acceptanceCorrectionGuidance(priorLedger, engine.getExecutionVerificationEpoch?.());
     const text = `继续原行动 ${initial.id}：上轮${initial.phase === "rework" ? "验收未通过，请修复后重验" : "尚未提供完整可验证交付，请完成执行和检查"}。保持原范围及授权。${reviewGuidance}\n原请求：${initial.originalInput}`;
     const result = await engine.sendDesktopMessage({
       sessionId,

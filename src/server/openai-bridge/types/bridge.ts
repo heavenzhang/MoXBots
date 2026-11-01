@@ -37,6 +37,8 @@ export interface BridgeConfig {
 }
 
 export interface UpstreamConfig {
+  /** Original live inference owner, for native pre-connect failure only; never an HTTP replay grant. */
+  canRetryConnection?: () => boolean;
   /** Internal admitted-request evidence; never serialized or accepted from provider/model text. */
   onStreamInterruption?: StreamInterruptionObserver;
   /** Internal per-attempt signal for accepted model content; never serialized to a provider. */

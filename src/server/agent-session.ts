@@ -2120,6 +2120,10 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           broadcast('chat:message-replay', createLiveUserMessageReplay(sessionId, message));
         }
       };
+      const inferenceOwnerAllowsRetry = () => !builtinInterrupt.isInterrupting()
+        && sessionExecutionInferenceAllowed(productSessionId, getBuiltinCurrentTurnQueueId(),
+          readQueryBackgroundTasks(lifecycleState.query))
+        && activeSessionModelRecovery?.readState()?.status !== 'paused';
       activeSessionModelFailover = createSessionModelFailover({
         deadlineAt: () =>
           sessionExecutionDeadlineAt(
@@ -2135,14 +2139,8 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
             getBuiltinCurrentTurnQueueId(),
             readQueryBackgroundTasks(lifecycleState.query),
           ),
-        canRetry: () => !builtinInterrupt.isInterrupting()
-          &&
-          sessionExecutionInferenceAllowed(
-            productSessionId,
-            getBuiltinCurrentTurnQueueId(),
-            readQueryBackgroundTasks(lifecycleState.query),
-          ) &&
-          activeSessionModelRecovery?.readState()?.status !== 'paused'
+        canRetryConnection: inferenceOwnerAllowsRetry,
+        canRetry: () => inferenceOwnerAllowsRetry()
           && activeSessionContextRecovery?.canRetryInference() !== false,
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => {

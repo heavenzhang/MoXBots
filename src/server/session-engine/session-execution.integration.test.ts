@@ -219,7 +219,7 @@ async function submitReview(
     queueId,
     assessment,
   };
-  const directCommand = `myagents session tasks --json --data '${JSON.stringify(body)}'`;
+  const directCommand = `myagents session tasks --json --data '${JSON.stringify(body).replace(/'/g, "'\\''")}'`;
   const command = options.commandTransform?.(directCommand) ?? directCommand;
   const toolUseId = `review-${randomUUID()}`;
   await tool(queueId, {
@@ -366,6 +366,7 @@ describe("durable Session execution owner", () => {
         ],
       };
       await submitReview(queueId, acceptOld);
+      expect(store.getSessionMetadata(id)!.taskOrchestration!.executionReview?.committedBy).toBeTruthy();
       await prepared.request.onTerminal?.({
         status: "complete",
         text: "Native background is now quiet.",
@@ -373,6 +374,7 @@ describe("durable Session execution owner", () => {
       });
       const next = await waitForContinuation();
       expect(currentExecution()?.phase).not.toBe("completed");
+      expect(next.text).toContain('无有效验证资格：intermediate-read');
       const fact = store
         .getSessionMetadata(id)!
         .taskOrchestration!.executionEvidence!.find(
@@ -1001,6 +1003,77 @@ describe("durable Session execution owner", () => {
       reason: "acceptance_evidence_incomplete",
     });
     expect(continuationRequests).toHaveLength(1);
+  });
+
+  it.each(['missing-criterion', 'shell-evidence', 'read-before-shell'] as const)(
+    'bounds committed but unproven %s reviews and resumes the same execution with fresh proof', async mode => {
+      const prepared = await prepare();
+      const executionId = currentExecution()!.id;
+      let request = prepared.request;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
+        const queueId = request.queueId!;
+        await tool(queueId, { id: `read-${attempt}`, name: 'Read', stage: 'success',
+          input: { file_path: '/artifact' }, output: `actual progress ${attempt}` });
+        if (mode !== 'missing-criterion') await tool(queueId, { id: `shell-${attempt}`, name: 'Bash',
+          stage: 'success', input: { command: `test artifact-${attempt}` }, output: 'passed' });
+        const proofId = mode === 'shell-evidence' ? `shell-${attempt}` : `read-${attempt}`;
+        await submitReview(queueId, { decision: 'accept', summary: 'Claimed complete', checks:
+          (mode === 'missing-criterion' ? [0] : [0, 1]).map(criterion => ({ criterion, toolUseIds: [proofId] })) });
+        expect(store.getSessionMetadata(id)!.taskOrchestration!.executionReview?.committedBy).toBeTruthy();
+        await request.onTerminal?.({ status: 'complete', text: 'Claimed complete', assistantMessagePresent: true });
+        expect(currentExecution()).toMatchObject({ id: executionId, reworks: attempt + 1,
+          noProgress: 0, reviewReceiptFailures: 0 });
+        if (attempt < 2) {
+          request = continuationRequests[attempt];
+          expect(request.text).toContain('评审已收到，但验收证据未通过');
+          expect(request.text).toContain('criterion 0: Artifact was written');
+          expect(request.text).toContain('criterion 1: Artifact was verified after the write');
+          expect(request.text).toContain('Read、Grep、Glob、WebFetch、WebSearch');
+          expect(request.text).toContain('Bash');
+          if (mode === 'missing-criterion') expect(request.text).toContain('缺少 criterion 1');
+          else expect(request.text).toContain(`无有效验证资格：${proofId}`);
+        }
+      }
+      expect(currentExecution()).toMatchObject({ phase: 'incomplete', reason: 'rework_limit_reached' });
+      expect(continuationRequests).toHaveLength(2);
+      expect(store.getAllSessionMetadata().find(session => session.id === id)?.taskOrchestration?.execution)
+        .toMatchObject({ id: executionId, reworks: 3, phase: 'incomplete' });
+      const resumed = await prepare('Continue verifying the same artifact', 'human-proof-recovery',
+        { ...executeIntent, continuationOf: executionId });
+      await tool(resumed.request.queueId!, { id: 'final-read', name: 'Read', stage: 'success',
+        input: { file_path: '/artifact' }, output: 'Actual verified artifact' });
+      await submitReview(resumed.request.queueId!, { decision: 'accept', summary: 'Both criteria verified',
+        checks: [0, 1].map(criterion => ({ criterion, toolUseIds: ['final-read'] })) });
+      await resumed.request.onTerminal?.({ status: 'complete', text: 'Verified', assistantMessagePresent: true });
+      expect(currentExecution()).toMatchObject({ id: executionId, phase: 'completed', reworks: 3 });
+      expect(continuationRequests).toHaveLength(2);
+    });
+
+  it('restores the correction budget and refreshes evidence feedback after a native epoch change', async () => {
+    const prepared = await prepare();
+    const executionId = currentExecution()!.id;
+    const queueId = prepared.request.queueId!;
+    await tool(queueId, { id: 'previous-epoch-read', name: 'Read', stage: 'success', output: 'actual artifact' });
+    await submitReview(queueId, { decision: 'accept', summary: 'Incomplete coverage',
+      checks: [{ criterion: 0, toolUseIds: ['previous-epoch-read'] }] });
+    engine.isBusy = () => true;
+    await prepared.request.onTerminal?.({ status: 'complete', text: 'Claimed complete', assistantMessagePresent: true });
+    expect(continuationRequests).toHaveLength(0);
+    expect(currentExecution()).toMatchObject({ reworks: 1, continuation: { state: 'pending' } });
+    await store.getActiveSessionTranscript(id)?.revoke();
+    vi.resetModules();
+    store = await import('../SessionStore');
+    taskOwner = await import('./task-orchestration');
+    executionOwner = await import('./session-execution');
+    engine.isBusy = () => false;
+    engine.getExecutionVerificationEpoch = () => 'native-query-after-restart:0';
+    await executionOwner.continueSessionExecution(engine, id);
+    expect(currentExecution()).toMatchObject({ id: executionId, reworks: 1 });
+    expect(continuationRequests).toHaveLength(1);
+    expect(continuationRequests[0].text).toContain('缺少 criterion 1');
+    expect(continuationRequests[0].text).toContain('无有效验证资格：previous-epoch-read');
+    expect(store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence?.[0])
+      .toMatchObject({ id: 'previous-epoch-read', successful: true });
   });
 
   it("does not accept a fabricated execution review receipt", async () => {

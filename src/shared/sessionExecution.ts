@@ -155,14 +155,20 @@ export type ExecutionTerminal = {
   reviewReceiptUnconfirmed?: boolean;
 };
 
-function acceptedAssessmentIsProven(
+type ExecutionAcceptanceIssue =
+  | { kind: 'missing_criterion'; criterion: number }
+  | { kind: 'invalid_check'; criterion: number }
+  | { kind: 'invalid_evidence'; criterion: number; toolUseId: string };
+
+/** The same proof check drives settlement and actionable correction feedback. */
+export function executionAcceptanceIssues(
   state: SessionExecution,
-  terminal: ExecutionTerminal,
-): boolean {
+  terminal: Pick<ExecutionTerminal, 'assessment' | 'evidence' | 'lastMutationOrder'>,
+): ExecutionAcceptanceIssue[] {
   const assessment = terminal.assessment;
-  if (!assessment || assessment.decision !== "accept") return false;
+  if (!assessment || assessment.decision !== "accept") return [];
+  const issues: ExecutionAcceptanceIssue[] = [];
   const criteriaCount = state.intent.acceptanceCriteria.length;
-  if (assessment.checks.length !== criteriaCount) return false;
   const byCriterion = new Map<number, (typeof assessment.checks)[number]>();
   for (const check of assessment.checks) {
     if (
@@ -172,11 +178,14 @@ function acceptedAssessmentIsProven(
       check.criterion >= criteriaCount ||
       check.toolUseIds.length === 0 ||
       new Set(check.toolUseIds).size !== check.toolUseIds.length
-    )
-      return false;
+    ) {
+      issues.push({ kind: 'invalid_check', criterion: check.criterion });
+      continue;
+    }
     byCriterion.set(check.criterion, check);
   }
-  if (byCriterion.size !== criteriaCount) return false;
+  for (let criterion = 0; criterion < criteriaCount; criterion += 1)
+    if (!byCriterion.has(criterion)) issues.push({ kind: 'missing_criterion', criterion });
   const evidenceById = new Map(
     terminal.evidence.map((item) => [item.id, item]),
   );
@@ -188,10 +197,9 @@ function acceptedAssessmentIsProven(
         !fact?.successful ||
         !Number.isFinite(fact.observationOrder) ||
         fact.observationOrder <= lastMutationOrder
-      )
-        return false;
+      ) issues.push({ kind: 'invalid_evidence', criterion: check.criterion, toolUseId: id });
     }
-  return byCriterion.size > 0;
+  return issues;
 }
 
 export function settleSessionExecution(
@@ -242,7 +250,9 @@ export function settleSessionExecution(
   // A verified acceptance from the already-admitted final turn settles the
   // objective; rework limits only prevent starting another turn.
   if (
-    acceptedAssessmentIsProven(state, terminal)
+    terminal.assessment?.decision === 'accept' &&
+    state.intent.acceptanceCriteria.length > 0 &&
+    executionAcceptanceIssues(state, terminal).length === 0
   ) {
     return {
       ...next,
@@ -281,10 +291,14 @@ export function settleSessionExecution(
   }
   if (!terminal.assessment)
     return { ...next, phase: "awaiting_review", reason: "assessment_required" };
+  // A committed review is delivery proof, not acceptance proof. Repeated invalid
+  // accept proposals are corrections too, even if new tool facts show real work.
+  const reworks = state.reworks + 1;
   return {
     ...next,
-    phase: "awaiting_review",
-    reason: "acceptance_evidence_incomplete",
+    reworks,
+    phase: reworks >= EXECUTION_LIMITS.maxReworks ? 'incomplete' : 'awaiting_review',
+    reason: reworks >= EXECUTION_LIMITS.maxReworks ? 'rework_limit_reached' : 'acceptance_evidence_incomplete',
     assessment: terminal.assessment,
   };
 }

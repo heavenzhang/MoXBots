@@ -65,6 +65,8 @@ export class ModelFailoverController implements BridgeModelFailover {
     requestIdentity?: () => string;
     /** A known uncertain tool outcome or recovery fence prohibits inference replay. */
     canRetry?: () => boolean;
+    /** Separate owner gate for native connection establishment before HTTP dispatch. */
+    canRetryConnection?: () => boolean;
     retryDelaysMs?: readonly [number, number, number];
     /** Active read-idle bound; does not replenish the existing retry/replay authority. */
     bodyIdleTimeoutMs?: number;
@@ -163,7 +165,9 @@ export class ModelFailoverController implements BridgeModelFailover {
         if (attemptInterruption !== 'unproven') attemptInterruption = cause;
         attemptDiagnostic ??= safeStreamFailure(diagnostic);
       };
-      return execute(target, onModelProgress, onStreamInterruption);
+      return execute(this.options.canRetryConnection ? { ...target, canRetryConnection: () => attempt === activeAttempt &&
+        live() && rootLive() && withinDeadline() && this.options.canRetryConnection?.() === true }
+      : target, onModelProgress, onStreamInterruption);
     };
     const cancelResponse = (response: Response) => { void response.body?.cancel().catch(() => undefined); };
     const recovery = !ambiguous ? this.options.recovery : undefined;

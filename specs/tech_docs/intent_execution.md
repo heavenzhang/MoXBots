@@ -58,7 +58,9 @@ accept 要覆盖全部条件，并引用成功的根只读验证：Read、Grep�
 
 成功评审 receipt 明确返回 `settlement=native_turn_terminal` 和 `nextAction=finish_current_reply`。根 Agent 给出产物位置、检查结果或具体阻断后结束该轮；宿主在持久终态中结算 accept/rework。不能在同一轮等待 completed 或反复提交评审，返工修复由后续 fresh queue 处理。
 
-缺评审或证据不全进入 awaiting_review；评审要求 rework 则修复后重新核验。真正缺权限或用户判断时 paused，并保留具体原因。可能修改的工具失败/丢失回执、未知子任务、持久化失败不能自动重放。界面只有账本已通过验收才显示完成。
+缺评审进入 awaiting_review；已收到原生回执的 accept 若证据不全，也计入既有返工预算（最多三次），不能因新增工具事实令 noProgress 归零而无限纠错。未封顶时进入 awaiting_review 并说明缺少的 criterion 或失效的工具 ID；封顶后 incomplete/rework_limit_reached。明确 rework 与无效 accept 共用计数，不新增持久化字段，不改真实业务进展。Stop、错误、未知结果、重复/旧 queue 和缺评审不会被误计为一次无效 accept；已获完整证明的本轮仍可先于预算完成，新的可信人工输入可沿原 execution 补证。
+
+执行提醒列出原任务的全部验收条件和索引，说明根只读验证、原生代次及最后可能修改之后的顺序要求。自动纠错反馈复用同一纯验证器及原生证据资格投影，重启后重新按当前代次判断，不能把失效证据的真实成功结果改写为失败。只读状态核查不等于原业务任务全部交付。真正缺权限或用户判断时 paused，并保留具体原因。可能修改的工具失败/丢失回执、未知子任务、持久化失败不能自动重放。界面只有账本已通过验收才显示完成。
 
 ## 有约束的多 Agent
 
