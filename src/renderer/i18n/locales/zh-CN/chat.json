@@ -50,7 +50,7 @@
     "uploadFile": "上传文件",
     "permissionModeTitle": "切换执行模式",
     "permissionModeHeader": "会话模式",
-    "agentSettings": "Agent 设置",
+    "agentSettings": "Bot 设置",
     "autonomyWarning": "自主行动已启用：Agent 可能做出不可挽回的操作，请谨慎使用",
     "dshAutonomyWarning": "完全自主将跳过工具审批，允许在当前用户权限范围内使用电脑与互联网。",
     "toolsTitle": "使用工具",
@@ -393,8 +393,8 @@
       "showTerminal": "显示终端",
       "openTerminal": "打开终端",
       "browser": "浏览器",
-      "openAgentSettings": "打开 Agent 设置",
-      "agentSettings": "Agent 设置",
+      "openAgentSettings": "打开 Bot 设置",
+      "agentSettings": "Bot 设置",
       "searchPlaceholder": "搜索文件及内容...",
       "exitSearch": "退出搜索",
       "loading": "加载中...",
@@ -1305,7 +1305,8 @@
       "continue": "继续未完成任务",
       "pending": "正在继续…",
       "unavailable": "此任务的状态已变化，请检查当前会话后再继续。"
-    }
+    },
+    "openBotIdentity": "打开 {{name}} 的 Bot 设置"
   },
   "agentTree": {
     "personalTasks": "个人任务",

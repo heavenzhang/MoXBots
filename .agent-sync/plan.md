@@ -1171,3 +1171,11 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 第十项最终采用独立连续评审失败计数，3次未committed提案后停止自动续接；业务进展/证据完全保持，不推断工具归属。a8a整轮摘要与0a31单pending关联均被独审在打包前拦下并纠正；最终原因为兼容的turn_error+持久化可选计数，新UI明确评审故障。原owner已一次原生Stop暂停28轮薪资空转，原execution/证据保留。下一候选须包含最终修正，继续唯一owner协调和原会话验证。
 
 第十一项：531.1/main0d0ad99f已安装，但真实验收发现大账本吞掉32KiB之后的评审回执，以及model-failover隐式root30分钟到期导致长任务409。既有review命令改小型回执，完整快照仍list；隐式预算只约束同一推理的恢复链，持续推进的新推理不受总时限，显式父deadline/原指纹防重放保留。已有执行的只读跟进获得当前恢复边界说明，不授予写权限。235项相关回归、tsc/lint/分类通过，待原owner01a12bc2-907a-7702-b6dd-788225c5dfe4独审/下一包与四原会话复验；531.1不晋级正式stable，不自行打包或另开部署流程。
+
+## MB-BOT-R1-20261101 — Bot 身份与头像 / 第二轮协作原型
+
+用户已确认第一轮代码范围：Bot 身份命名、内置头像选择及入口一致展示；群组/任务关系仅原型。独立任务分支 codex/bot-identity-r1-20261101，基于 main58941e30；任务 .agent-sync/tasks/codex-bot-identity-r1-20261101-7a0fa807.md，证据 dev-docs/bot-identity-r1/acceptance.md，原型 dev-docs/prototypes/bot-collaboration-r2/。复用原 icon 字段、Agent/Project 配置事务，保留用户原图标，未修改 group-phase1 共享工作树、执行账本或 Runtime。164 定向用例、tsc/lint/本地 renderer build 通过；原生/生产验收另追踪。
+
+仅涉及 desktop builtin client，唯一 desktop/macOS-arm64/updater/shared CI/main owner 继续是 01a12bc2-907a-7702-b6dd-788225c5dfe4。开发分支推送不自动触发共享 CI；请求下一未冻结批。当前 0.5.29/529.1 冻结候选不纳入本任务，不自行分配版本或操作日常 App。无 cloud/Host/mobile/website 发布。
+
+用户同轮明确保留项目：R2 增加项目独立入口、项目内 Bots/会话/群组/任务/目录；R1 不拆现有 Project/Agent 配对。目标关系和竞品证据见 dev-docs/bot-identity-r1/project-relationship.md，后续实施先定义显式项目上下文，不把 UI 原型当作跨项目执行。

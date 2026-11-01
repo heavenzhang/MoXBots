@@ -58,7 +58,7 @@ import { track } from '@/analytics';
 import type { HistoryEntrySource } from '@/analytics';
 import { useCloseLayer } from '@/hooks/useCloseLayer';
 import ConfirmDialog from '@/components/ConfirmDialog';
-import WorkspaceIcon from '@/components/launcher/WorkspaceIcon';
+import BotIdentityButton from '@/components/launcher/BotIdentityButton';
 import { useToast } from '@/components/Toast';
 import {
   classifyRewindTransportOutcome,
@@ -6450,10 +6450,11 @@ function ChatContent({
             <div className="flex min-w-0 items-center gap-2">
               {/* Project name */}
               {agentDir && (
-                <span className="flex flex-shrink-0 items-center gap-1.5 text-sm font-medium text-[var(--ink)]">
-                  <WorkspaceIcon icon={currentProject?.icon} size={16} />
-                  {agentDir.split(/[/\\]/).filter(Boolean).pop()}
-                </span>
+                <BotIdentityButton
+                  name={currentProject?.displayName || currentProject?.name || agentDir.split(/[/\\]/).filter(Boolean).pop() || ''}
+                  icon={currentProject?.icon}
+                  onOpen={handleOpenAgentSettings}
+                />
               )}
               {/* Session title — click to rename */}
               {sessionTitle &&
