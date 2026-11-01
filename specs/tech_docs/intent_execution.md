@@ -93,3 +93,5 @@ accept 要覆盖全部条件，并引用成功的根只读验证：Read、Grep�
 ## 原生评审回执未确认的接续
 
 任务 review 与 execution_review 的 success/pendingMainAgentReview 仅代表提案；原根工具完整回执才可提交验收。系统指引要求单独直接CLI命令及完整JSON，禁止Python/子进程包装、Shell组合和截取success后声称验收。上一queue有未确认提案时，自动接续明确要求仅重新提交本轮评审并结束回复，不重做已有业务步骤、不沿用旧回执，所有真实证据检查保持。历史错误文本和旧deadlineAt不构成当前整段会话封锁依据，独立只读核对仍须实际尝试，未知原操作不可重放。
+
+当前queue有未提交的executionReview提案时，progressDigest使用原execution内稳定的未确认回执标识。变化的包装命令、queue和回执正文不能重置noProgress；沿用既有两轮无进展上限停止自动空转。正确原生回执仍优先结算，人工继续和原证据保留，不恢复任务总时限。

@@ -948,7 +948,11 @@ export async function settleSessionExecutionTurn(
             (mutations.at(-1)?.observationOrder ?? 0),
       })),
       lastMutationOrder: mutations.at(-1)?.observationOrder ?? 0,
-      progressDigest: hash(
+      // A changing wrapper/receipt/queue is not progress while the root keeps
+      // proposing a review without confirming its native receipt. Apply the
+      // existing no-progress limit to this handoff, without a task time limit.
+      progressDigest: ledger.executionReview?.queueId === queueId && !review
+        ? hash(['unconfirmed-execution-review', execution.id]) : hash(
         [
           ...new Set(
             facts.filter((fact) => fact.successful).map((fact) => fact.digest),

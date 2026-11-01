@@ -1167,3 +1167,5 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 ### MB-RECOVERY-INCIDENT-20261101 原生查询、评审回执与输出预算
 
 530.1四例实测尚未通过。第九项修原生TaskList/Get成功查询刷新、未确认评审回执的精确接续指引及历史封锁文本误判；真实工具外分类复现1024输出全部为thinking，4096对照返回完整JSON，补output_limit诊断且不自动重试。部署仍由01a12bc2-907a-7702-b6dd-788225c5dfe4唯一负责，源分支codex/recovery-incident-20261101交独审/CI/下一不可变包，正式stable继续HOLD。系统恢复验证优先，原业务未知操作保护保留，不以业务外部依赖阻挡系统验收。
+
+第十项补齐系统空转边界：当前queue未确认评审使用稳定进展标识，防包装CLI输出变化绕过既有noProgress上限；92项相关回归通过。原owner已一次原生Stop暂停28轮薪资空转，原execution/证据保留。下一候选需同时包含3fb73dfa、1757d67及本增量，未冻结前继续唯一owner协调。

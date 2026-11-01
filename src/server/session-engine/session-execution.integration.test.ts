@@ -1012,6 +1012,27 @@ describe("durable Session execution owner", () => {
     expect(continuationRequests).toHaveLength(1);
   });
 
+  it('bounds repeated unconfirmed reviews even when wrapped tool receipts keep changing', async () => {
+    const prepared = await prepare();
+    const executionId = currentExecution()!.id;
+    let request = prepared.request;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      await submitReview(request.queueId!, { decision: 'needs_user', summary: `External dependency ${attempt}`, checks: [] }, {
+        commandTransform: command => `${command} | head -1`,
+      });
+      // A fresh wrapped receipt is recorded as a successful Bash fact. It must
+      // not conceal that the same required native-review handoff is still stuck.
+      await request.onTerminal?.({ status: 'complete', text: `Claimed submitted ${attempt}`, assistantMessagePresent: true });
+      expect(currentExecution()?.id).toBe(executionId);
+      if (attempt < 2) {
+        request = continuationRequests[attempt];
+        expect(request.text).toContain('原生工具回执未确认');
+      }
+    }
+    expect(currentExecution()).toMatchObject({ id: executionId, phase: 'incomplete', reason: 'no_progress_limit_reached', noProgress: 2 });
+    expect(continuationRequests).toHaveLength(2);
+  });
+
   it("sends a failed validation to rework and accepts after fresh verification on the new queue", async () => {
     const prepared = await prepare();
     const firstQueue = prepared.request.queueId!;
