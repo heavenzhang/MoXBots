@@ -1,0 +1,48 @@
+{
+  "task": "MB-BOT-R1-20261101",
+  "base": "58941e30d9a7e8c12a03ecb833900ff6869ab9b8",
+  "tests": {
+    "files": 10,
+    "passed": 164,
+    "failed": 0
+  },
+  "typecheck": "PASS",
+  "scopedEslint": "PASS",
+  "dependencyCruiser": {
+    "errors": 0,
+    "warnings": 18
+  },
+  "classification": "PASS",
+  "rendererBuild": "PASS",
+  "nativePersistence": "NOT_RUN",
+  "independentReview": "PENDING_OWNER",
+  "main": "PENDING_OWNER",
+  "release": "PENDING_OWNER",
+  "prototype": {
+    "widths": [
+      1440,
+      768,
+      390
+    ],
+    "horizontalOverflow": false,
+    "imagesLoaded": true,
+    "consoleErrors": 0,
+    "verifiedPaths": [
+      "rework-report-accept-dependency",
+      "handoff-reload",
+      "new-session-memory",
+      "avatar-name-path",
+      "group-members-validation",
+      "create-task-owner",
+      "private-confirmation",
+      "project-entry-and-members",
+      "project-workspace-switch",
+      "same-bot-project-session-scope"
+    ]
+  },
+  "assetsSha256": {
+    "src/renderer/assets/bot-avatars/spark.png": "8c83974dc5ad1b787a7013b86ef311a1383c970e3c07090a0b95d9a2bad16a4d",
+    "src/renderer/assets/bot-avatars/mox.png": "8788d35003025d7d8df654788ebcd797409bf3b7a5beafde5aa2eda0ebc75feb",
+    "src/renderer/assets/bot-avatars/moss.png": "6c72bac31c1dad0779b89fd13649427e19d19d04ab2ac7831f9ae3e9c899e211"
+  }
+}

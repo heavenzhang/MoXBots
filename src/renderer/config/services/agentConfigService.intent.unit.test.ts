@@ -203,6 +203,19 @@ describe('Agent/Project configuration intent ownership', () => {
     });
   });
 
+  it('round-trips character, rename and default reset without changing execution identity or workspace', async () => {
+    const originalAgent = structuredClone(state.config.agents![0]);
+    const originalProject = structuredClone(state.project);
+    await patchAgentProjectConfig('agent-1', { icon: 'bot:moss' }, state.project.id, { icon: 'bot:moss' });
+    await patchAgentProjectConfig('agent-1', { name: '青芽助手' }, state.project.id, { displayName: '青芽助手' });
+    expect(state.config.agents![0]).toEqual({ ...originalAgent, icon: 'bot:moss', name: '青芽助手' });
+    expect(state.project).toEqual({ ...originalProject, icon: 'bot:moss', displayName: '青芽助手' });
+    await patchAgentProjectConfig('agent-1', { icon: '' }, state.project.id, { icon: '' });
+    expect(state.config.agents![0].icon).toBe('');
+    expect(state.project.icon).toBe('');
+    expect(state.project.path).toBe(originalProject.path);
+  });
+
   it('does not report archive Channel shutdown success when any stop fails', async () => {
     const current = state.config.agents![0];
     const agent = {

@@ -1154,3 +1154,12 @@ Existing deployment owners unchanged: combined CI/main and desktop/macOS/updater
 ## MOBILE-BOT-IMPLEMENT-20261101 — next mobile/QAHost candidate after PR219
 
 Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source into nextunfrozen candidate mobile0.2.0-rc.1/platformbuild8. Compatiblefeatures advance mobileMINOR; iOSnumericversion0.2.0/build8 andAndroidversionCode8, resolveddependencies/desktopversionunchanged. OriginalsharedCI/main/desktopowner01a12bc2 handles this metadata/source lane once; developer/mobileowner doesnot triggerduplicateCI orPR. Frozenbuild7/desktop529.1 stayunchanged. Matching Hostconnector+AssetStore+sharedJS bytes must be accepted together before historyclaim; existingisolatedQAHost/controller inventory/backup/lease/realendpointacceptance first, nooriginal101identity/config/dailyMac/newpublicport/modeltraffic. Currenthumanonlypreparephonepackage, noKevinconnection/install. Source/CI/artifact/Host/physical/TestFlight boundaries recorded in dev-docs/mobile-bot-experience/release8.md and currenttaskrecord.
+
+
+## MB-BOT-R1-20261101 — Bot 身份与头像 / 第二轮协作原型
+
+用户已确认第一轮代码范围：Bot 身份命名、内置头像选择及入口一致展示；群组/任务关系仅原型。独立任务分支 codex/bot-identity-r1-20261101，基于 main58941e30；任务 .agent-sync/tasks/codex-bot-identity-r1-20261101-7a0fa807.md，证据 dev-docs/bot-identity-r1/acceptance.md，原型 dev-docs/prototypes/bot-collaboration-r2/。复用原 icon 字段、Agent/Project 配置事务，保留用户原图标，未修改 group-phase1 共享工作树、执行账本或 Runtime。164 定向用例、tsc/lint/本地 renderer build 通过；原生/生产验收另追踪。
+
+仅涉及 desktop builtin client，唯一 desktop/macOS-arm64/updater/shared CI/main owner 继续是 01a12bc2-907a-7702-b6dd-788225c5dfe4。开发分支推送不自动触发共享 CI；请求下一未冻结批。当前 0.5.29/529.1 冻结候选不纳入本任务，不自行分配版本或操作日常 App。无 cloud/Host/mobile/website 发布。
+
+用户同轮明确保留项目：R2 增加项目独立入口、项目内 Bots/会话/群组/任务/目录；R1 不拆现有 Project/Agent 配对。目标关系和竞品证据见 dev-docs/bot-identity-r1/project-relationship.md，后续实施先定义显式项目上下文，不把 UI 原型当作跨项目执行。

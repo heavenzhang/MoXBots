@@ -6,6 +6,7 @@
  */
 
 import { memo } from 'react';
+import { resolveBotAvatar } from '@/assets/bot-avatars';
 import { WORKSPACE_ICON_GLYPHS, resolveWorkspaceIconId, type WorkspaceIconGlyph } from '@/assets/workspace-icons';
 
 interface WorkspaceIconProps {
@@ -20,6 +21,13 @@ const VIEW_BOX = '1.75 1.75 16.5 16.5';
 const STROKE = 1.3;
 
 export default memo(function WorkspaceIcon({ icon, size = 24, className = '' }: WorkspaceIconProps) {
+    const avatar = resolveBotAvatar(icon);
+    if (avatar) {
+        return <img src={avatar.src} alt="" aria-hidden="true" draggable={false}
+            width={size} height={size} style={{ width: size, height: size }}
+            className={`shrink-0 object-contain${className ? ` ${className}` : ''}`}
+            data-workspace-icon={avatar.id} />;
+    }
     const iconId = resolveWorkspaceIconId(icon);
 
     if (!iconId) {

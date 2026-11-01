@@ -699,7 +699,7 @@
       "failed": "Repair is incomplete. Refresh to check workspace ownership."
     },
     "panel": {
-      "title": "Agent Settings",
+      "title": "Bot Settings",
       "tabs": {
         "general": "General",
         "systemPrompts": "System Prompt",
@@ -710,7 +710,7 @@
       "backToList": "Back to list",
       "closeEsc": "Close (Esc)",
       "footer": "Press Esc to close · Changes take effect immediately",
-      "agentNotFound": "Agent not found (ID: {{id}})"
+      "agentNotFound": "Bot not found (ID: {{id}})"
     },
     "common": {
       "name": "Name",
@@ -737,13 +737,13 @@
     "capabilities": {
       "scopeUser": "Global",
       "scopeProject": "Project",
-      "enabledHint": "This Agent is enabled. AI will decide when to use it.",
+      "enabledHint": "This Bot is enabled. AI will decide when to use it.",
       "settings": "Settings",
       "refresh": "Refresh",
       "syncToGlobal": "Sync to global skills",
-      "title": "Agent Capabilities",
-      "titleWithCount": "Agent Capabilities ({{count}})",
-      "emptyDescription": "Configure Agent capabilities in project settings"
+      "title": "Bot Capabilities",
+      "titleWithCount": "Bot Capabilities ({{count}})",
+      "emptyDescription": "Configure Bot capabilities in project settings"
     },
     "workspaceAgents": {
       "title": "Sub-Agents",
@@ -976,15 +976,15 @@
     "general": {
       "missingWorkspace": "Workspace configuration not found",
       "basicsTitle": "Basic Settings",
-      "proactiveTitle": "Proactive Agent Mode",
+      "proactiveTitle": "Proactive Bot Mode",
       "proactiveDescription": "Enable heartbeat, nightly memory updates, and long-term memory evolution together so AI can continuously maintain this workspace.",
-      "enabled": "Proactive Agent Mode enabled",
-      "disabled": "Proactive Agent Mode disabled",
+      "enabled": "Proactive Bot Mode enabled",
+      "disabled": "Proactive Bot Mode disabled",
       "operationFailed": "Operation failed"
     },
     "basics": {
       "basicInfo": "Basic info",
-      "name": "Name",
+      "name": "Bot name",
       "workspace": "Workspace",
       "runtime": "Runtime",
       "networkProxy": "Network proxy",
@@ -994,8 +994,8 @@
       "tools": "Tools",
       "plugins": "Plugins",
       "status": "Status",
-      "workspaceNamePlaceholder": "Workspace name",
-      "chooseIcon": "Choose icon",
+      "workspaceNamePlaceholder": "Name your Bot",
+      "chooseIcon": "Choose Bot appearance",
       "defaultIcon": "Default",
       "defaultProvider": "Default",
       "defaultModel": "Default model",
@@ -1018,7 +1018,15 @@
       "noGlobalTools": "No global MCP tools are enabled yet. Enable them in system settings first.",
       "enabled": "Enabled",
       "disabled": "Disabled",
-      "runningChannelsHint": "Stop running Channels first"
+      "runningChannelsHint": "Stop running Channels first",
+      "avatarSaveFailed": "Could not save appearance. Try again.",
+      "avatars": {
+        "title": "Bot characters",
+        "classic": "Classic icons",
+        "mox": "Mox",
+        "moss": "Moss",
+        "spark": "Spark"
+      }
     },
     "permission": {
       "auto": "Ask for approval",

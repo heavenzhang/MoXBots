@@ -75,6 +75,7 @@ export default function WorkspaceBasicsSection({ project, agent, agentDir }: Wor
   const [globalEnabledMcp, setGlobalEnabledMcp] = useState<string[]>([]);
   const isMountedRef = useRef(true);
   const modelButtonRef = useRef<HTMLButtonElement>(null);
+  const iconButtonRef = useRef<HTMLButtonElement>(null);
   const permissionButtonRef = useRef<HTMLButtonElement>(null);
   const effortButtonRef = useRef<HTMLButtonElement>(null);
   const toolsButtonRef = useRef<HTMLButtonElement>(null);
@@ -208,9 +209,13 @@ export default function WorkspaceBasicsSection({ project, agent, agentDir }: Wor
   }, [name, project, saveProjectMeta]);
 
   const handleIconSelect = useCallback((iconId: string) => {
-    void saveProjectMeta({ icon: iconId || undefined });
-    setOpenPopup(null);
-  }, [saveProjectMeta]);
+    // Empty string explicitly resets both persisted identity projections.
+    // Undefined would omit the Agent patch and leave its old icon behind.
+    void saveProjectMeta({ icon: iconId }).then(() => {
+      setOpenPopup(null);
+      iconButtonRef.current?.focus();
+    }).catch(() => toast.error(t('agentSettings.basics.avatarSaveFailed')));
+  }, [saveProjectMeta, toast, t]);
 
   const handleModelSelect = useCallback((providerId: string, model: string) => {
     const provider = availableProviders.find(p => p.id === providerId) ?? providers.find(p => p.id === providerId);
@@ -365,6 +370,10 @@ export default function WorkspaceBasicsSection({ project, agent, agentDir }: Wor
       <div className="relative flex items-center gap-3">
         <label className="w-16 shrink-0 text-sm text-[var(--ink-muted)]">{t('agentSettings.basics.name')}</label>
         <button
+          ref={iconButtonRef}
+          type="button"
+          aria-label={t('agentSettings.basics.chooseIcon')}
+          aria-expanded={openPopup === 'icon'}
           className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-colors ${
             openPopup === 'icon'
               ? 'border-[var(--accent)] bg-[var(--accent-warm-muted)]'
@@ -376,6 +385,7 @@ export default function WorkspaceBasicsSection({ project, agent, agentDir }: Wor
           <WorkspaceIcon icon={project.icon || DEFAULT_WORKSPACE_ICON} size={22} />
         </button>
         <input
+          aria-label={t('agentSettings.basics.name')}
           className="flex-1 rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-1.5 text-sm text-[var(--ink)] placeholder:text-[var(--ink-subtle)] focus:border-[var(--accent)] focus:outline-none"
           value={name}
           onChange={e => setName(e.target.value)}
@@ -384,14 +394,10 @@ export default function WorkspaceBasicsSection({ project, agent, agentDir }: Wor
           placeholder={t('agentSettings.basics.workspaceNamePlaceholder')}
         />
 
-        {openPopup === 'icon' && (
-          <>
-            <div className="fixed inset-0 z-40" onMouseDown={(e) => { if (e.target === e.currentTarget) setOpenPopup(null); }} />
-            <div className={`absolute left-20 top-10 z-50 rounded-xl border border-[var(--line)] bg-[var(--paper-elevated)] shadow-lg ${WORKSPACE_ICON_GRID_PANEL_CLASS}`}>
-              <WorkspaceIconGrid value={project.icon} onSelect={handleIconSelect} />
-            </div>
-          </>
-        )}
+        <Popover open={openPopup === 'icon'} onClose={() => setOpenPopup(null)}
+          anchorRef={iconButtonRef} placement="bottom-start" className={WORKSPACE_ICON_GRID_PANEL_CLASS}>
+          <WorkspaceIconGrid value={project.icon} onSelect={handleIconSelect} />
+        </Popover>
       </div>
 
       {/* Workspace path — read-only */}

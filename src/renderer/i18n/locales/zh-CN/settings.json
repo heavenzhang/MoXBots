@@ -699,7 +699,7 @@
       "failed": "修复未完成，请刷新后检查工作区归属。"
     },
     "panel": {
-      "title": "Agent 设置",
+      "title": "Bot 设置",
       "tabs": {
         "general": "通用",
         "systemPrompts": "系统提示词",
@@ -710,7 +710,7 @@
       "backToList": "返回列表",
       "closeEsc": "关闭 (Esc)",
       "footer": "按 Esc 关闭 · 配置修改会立即生效",
-      "agentNotFound": "Agent 未找到 (ID: {{id}})"
+      "agentNotFound": "Bot 未找到 (ID: {{id}})"
     },
     "common": {
       "name": "名称",
@@ -737,13 +737,13 @@
     "capabilities": {
       "scopeUser": "全局",
       "scopeProject": "项目",
-      "enabledHint": "该 Agent 已启用，AI 自主判断使用时机",
+      "enabledHint": "该 Bot 已启用，AI 自主判断使用时机",
       "settings": "设置",
       "refresh": "刷新",
       "syncToGlobal": "同步至全局技能",
-      "title": "Agent 能力",
-      "titleWithCount": "Agent 能力 ({{count}})",
-      "emptyDescription": "在项目设置中配置 Agent 能力"
+      "title": "Bot 能力",
+      "titleWithCount": "Bot 能力 ({{count}})",
+      "emptyDescription": "在项目设置中配置 Bot 能力"
     },
     "workspaceAgents": {
       "title": "Sub-Agents",
@@ -976,15 +976,15 @@
     "general": {
       "missingWorkspace": "未找到工作区配置",
       "basicsTitle": "基础设置",
-      "proactiveTitle": "主动 Agent 模式",
+      "proactiveTitle": "主动 Bot 模式",
       "proactiveDescription": "统一开启心跳感知、夜间记忆更新和长期记忆进化，让 AI 持续感知并维护工作区。",
-      "enabled": "主动 Agent 模式已开启",
-      "disabled": "主动 Agent 模式已关闭",
+      "enabled": "主动 Bot 模式已开启",
+      "disabled": "主动 Bot 模式已关闭",
       "operationFailed": "操作失败"
     },
     "basics": {
       "basicInfo": "基础信息",
-      "name": "名称",
+      "name": "Bot 名称",
       "workspace": "工作区",
       "runtime": "运行环境",
       "networkProxy": "网络代理",
@@ -994,8 +994,8 @@
       "tools": "工具",
       "plugins": "插件",
       "status": "状态",
-      "workspaceNamePlaceholder": "工作区名称",
-      "chooseIcon": "选择图标",
+      "workspaceNamePlaceholder": "给 Bot 起个名字",
+      "chooseIcon": "选择 Bot 形象",
       "defaultIcon": "默认",
       "defaultProvider": "默认",
       "defaultModel": "默认模型",
@@ -1018,7 +1018,15 @@
       "noGlobalTools": "尚未启用全局 MCP 工具。请先在系统设置中启用。",
       "enabled": "已启用",
       "disabled": "已禁用",
-      "runningChannelsHint": "有运行中的 Channel，请先停止"
+      "runningChannelsHint": "有运行中的 Channel，请先停止",
+      "avatarSaveFailed": "形象保存失败，请重试",
+      "avatars": {
+        "title": "Bot 形象",
+        "classic": "经典图标",
+        "mox": "小墨",
+        "moss": "青芽",
+        "spark": "火花"
+      }
     },
     "permission": {
       "auto": "请求批准",

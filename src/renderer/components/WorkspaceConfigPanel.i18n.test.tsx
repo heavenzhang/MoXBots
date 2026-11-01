@@ -186,7 +186,7 @@ describe('WorkspaceConfigPanel i18n', () => {
   it('renders the Agent settings shell and General tab chrome in English', async () => {
     render(<WorkspaceConfigPanel agentDir="/Users/me/mino" onClose={vi.fn()} />);
 
-    expect(screen.getByRole('heading', { name: 'Agent Settings' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Bot Settings' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'General' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'System Prompt' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guide' })).toBeInTheDocument();
@@ -197,10 +197,10 @@ describe('WorkspaceConfigPanel i18n', () => {
     expect(screen.getByText('Network proxy')).toBeInTheDocument();
     expect(screen.getByText('MyAgents proxy')).toBeInTheDocument();
     expect(screen.getByText('Follow terminal')).toBeInTheDocument();
-    expect(screen.getByText('Proactive Agent Mode')).toBeInTheDocument();
+    expect(screen.getByText('Proactive Bot Mode')).toBeInTheDocument();
 
     await waitFor(() => expect(mocks.getWorkspaceCronTasks).toHaveBeenCalledWith('/Users/me/mino'));
-    expect(screen.queryByText('Agent 设置')).not.toBeInTheDocument();
+    expect(screen.queryByText('Bot 设置')).not.toBeInTheDocument();
     expect(screen.queryByText('基础设置')).not.toBeInTheDocument();
   });
 
