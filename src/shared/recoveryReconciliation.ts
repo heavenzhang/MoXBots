@@ -7,6 +7,11 @@ export interface RecoveryReviewAction {
   tool: 'TaskGet' | 'TaskList' | 'Bash' | 'Other';
   eligible: boolean;
   reason: 'builtin_task_query' | 'native_hook_denied' | 'external_receipt_required' | 'native_evidence_missing';
+  /** Display only; never used to authorize settlement or execution. No command bodies. */
+  presentation?: {
+    kind: 'command' | 'read_file' | 'write_file' | 'edit_file' | 'task_query' | 'tool';
+    target?: string;
+  };
 }
 export interface RecoveryActionSnapshot {
   reviewAuthority: string;

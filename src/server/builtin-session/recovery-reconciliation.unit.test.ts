@@ -98,3 +98,27 @@ describe('native query outcome review', () => {
     expect(context.canRetryInference()).toBe(false);
   });
 });
+
+
+it.each([['Read', 'read_file'], ['Write', 'write_file'], ['Edit', 'edit_file']] as const)('describes %s from exact native input without granting eligibility', async (name, kind) => {
+  const f = fixture(name, { file_path: '/private/work/方案.docx', content: 'private body', token: 'private token' });
+  const result = await inspectRecoveryActions(f.deps);
+  expect(result.actions.find(a => a.actionHash === f.hash)).toMatchObject({ eligible: false, presentation: { kind, target: '方案.docx' } });
+  expect(JSON.stringify(result)).not.toMatch(/private body|private token|private\/work/);
+  expect(f.deps.save).not.toHaveBeenCalled();
+});
+it('identifies uncertain Bash without exposing commands or guessing business effects', async () => {
+  const f = fixture('Bash', { command: 'SECRET_TOKEN=private-value do-something', description: 'private description' });
+  const result = await inspectRecoveryActions(f.deps);
+  expect(result.actions.find(a => a.actionHash === f.hash)).toMatchObject({ tool: 'Bash', eligible: false, presentation: { kind: 'command' } });
+  expect(JSON.stringify(result)).not.toMatch(/SECRET_TOKEN|private-value|private description/);
+});
+it('does not invent a description from missing or duplicate native evidence', async () => {
+  const f = fixture('Write', { file_path: '/private/file.txt' });
+  f.rows.push(structuredClone(f.rows[0]));
+  let result = await inspectRecoveryActions(f.deps);
+  expect(result.actions.find(a => a.actionHash === f.hash)?.presentation).toBeUndefined();
+  f.rows.length = 0;
+  result = await inspectRecoveryActions(f.deps);
+  expect(result.actions.every(a => a.presentation === undefined)).toBe(true);
+});

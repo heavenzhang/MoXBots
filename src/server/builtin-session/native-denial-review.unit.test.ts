@@ -31,7 +31,7 @@ it('reviews the exact selected structured hook denial without inferring command 
   const f = fixture(); let adopted: RecoveryActionResolution | undefined;
   f.deps.adopt = receipt => { adopted = receipt; };
   const first = await inspectRecoveryActions(f.deps);
-  expect(first.actions).toEqual([{ actionHash: hash, tool: 'Bash', eligible: true, reason: 'native_hook_denied' }]);
+  expect(first.actions).toEqual([{ actionHash: hash, tool: 'Bash', eligible: true, reason: 'native_hook_denied', presentation: { kind: 'command' } }]);
   expect(JSON.stringify(first)).not.toContain(input.command);
   const repaired: string[] = []; f.deps.repairToolErrors = async ids => { repaired.push(...ids.map(item => item.toolUseId)); };
   const next = await reconcileRecoveryAction({ ...owner, ledgerDigest: first.ledgerDigest, actionHash: hash }, f.deps);

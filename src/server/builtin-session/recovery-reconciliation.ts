@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { RecoveryActionRequest, RecoveryActionSnapshot } from '../../shared/recoveryReconciliation';
+import type { RecoveryActionRequest, RecoveryActionSnapshot, RecoveryReviewAction } from '../../shared/recoveryReconciliation';
 import { ContextRecoveryController, isBuiltinTaskQuery, recoveryActionHash, type RecoveryActionResolution } from '../openai-bridge/context-recovery';
 import { inspectNativePreToolDenials } from './native-denial-review';
 import type { ReviewedToolError } from './recovery-tool-errors';
@@ -16,6 +16,19 @@ export interface RecoveryReviewDependencies {
   save: (ledger: unknown, expectedDigest: string, current: () => boolean) => Promise<void>;
   adopt: (receipt: RecoveryActionResolution) => void;
   repairToolErrors?: (evidence: readonly ReviewedToolError[]) => Promise<void>;
+}
+
+/** Conservative description from the selected native chain, independent of eligibility. */
+function describeAction(name: string, input: Record<string, unknown>): RecoveryReviewAction['presentation'] {
+  const kinds = { Bash: 'command', Read: 'read_file', Write: 'write_file', Edit: 'edit_file',
+    TaskGet: 'task_query', TaskList: 'task_query' } as const;
+  const kind = Object.hasOwn(kinds, name) ? kinds[name as keyof typeof kinds] : 'tool';
+  // Only a basename is projected; never publish shell bodies, arbitrary descriptions,
+  // message content, URLs, environment variables or full user paths in this API.
+  const basename = ['read_file', 'write_file', 'edit_file'].includes(kind) && typeof input.file_path === 'string'
+    ? [...(input.file_path.split(/[\\/]/).pop() ?? '')].filter(char => char.charCodeAt(0) >= 32 && char.charCodeAt(0) !== 127)
+      .join('').replace(/[\u202a-\u202e\u2066-\u2069]/g, '').slice(0, 160) : undefined;
+  return { kind, ...(basename ? { target: basename } : {}) };
 }
 
 /** The SDK source supplies identity, never model text or a client-provided input. */
@@ -76,12 +89,17 @@ async function inspect(deps: RecoveryReviewDependencies) {
     const receipt = inspectNativePreToolDenials(records, rows, hash, deps.owner, ledgerDigest);
     return receipt?.denials.map(item => ({ toolUseId: item.toolUseId, toolName: receipt.toolName, actionHash: receipt.actionHash })) ?? [];
   });
+  const descriptions = new Map(uses.filter(use => !duplicates.has(use.id)).map(use => [use.hash, use]));
   const snapshot: RecoveryActionSnapshot = { ...empty, ledgerDigest, resolvedCount: state.readonlyTaskReceiptCount + state.preToolDenialReceiptCount,
-    actions: state.uncertainActions.map(action => ({ actionHash: action.actionId,
-      tool: (['TaskGet', 'TaskList', 'Bash'].includes(candidates.get(action.actionId)?.toolName ?? '')
-        ? candidates.get(action.actionId)!.toolName : 'Other') as 'TaskGet' | 'TaskList' | 'Bash' | 'Other', eligible: candidates.has(action.actionId),
+    actions: state.uncertainActions.map(action => {
+      const use = descriptions.get(action.actionId);
+      const name = use?.name ?? candidates.get(action.actionId)?.toolName;
+      return { actionHash: action.actionId,
+      tool: (name && ['TaskGet', 'TaskList', 'Bash'].includes(name) ? name : 'Other') as RecoveryReviewAction['tool'],
+      ...(use ? { presentation: describeAction(use.name, use.input) } : {}), eligible: candidates.has(action.actionId),
       reason: candidates.has(action.actionId) ? candidates.get(action.actionId)!.kind === 'native-pre-tool-denied-reviewed'
-        ? 'native_hook_denied' : 'builtin_task_query' : seen.has(action.actionId) ? 'external_receipt_required' : 'native_evidence_missing' })) };
+        ? 'native_hook_denied' : 'builtin_task_query' : seen.has(action.actionId) ? 'external_receipt_required' : 'native_evidence_missing' };
+    }) };
   return { snapshot, ledger, candidates, verifiedDeniedTools };
 }
 

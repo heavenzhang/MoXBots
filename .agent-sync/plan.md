@@ -1213,3 +1213,10 @@ M1合并前回执修正（2026-11-02）：实际App启动失败传播、not-star
 Human requests latestdesktop package on https://101.42.11.29/moxbots/download/. Originalwebsite/cloudowner01a12b99 publishes onlystaticrelease metadata/history using immutable0.5.36/build536.1 archive302230704B/SHA06bbca4f20b7e61468d5ae5f9d3114d722e5c317288b28cae2228f2819f120f1, producer137fd178, tagv0.5.36/main1626ca58. sharedCI/main/desktop/updaterowner01a12bc2 unchanged. Preserveold0.5.27/Windowspreparing/design/allotherfiles; originalnonblocking3locks,backup,ownershipCAS/rollback. Original535session502/recovery remainsunresolved, no paidmodel/productionruntimeclaim. No secondpackagebuild/sharedCI/updater/Nginx/TLS/Hostidentity/clientinstall. Taskcurrentbranchrecordanddev-docs/website-download-0536-20261102.md; actualprivatepublication/UIevidence output/website-download-0536-20261102.
 
 WEB-DOWNLOAD-0536-20261102 production/UIclosure:0.5.36(536.1) live at20261102-web0536-e6fbdf880317; only3aggregate staticfiles,1narrow-noteSHAwraprepair.23websitechecks/13normalTLSreads/primaryIAB1440+390andoriginalRootindependentIABPASS; prior527backupretained. Existingwholepublicarchive/SHA/minisign reused andindependentlyrehash/gzipchecked; no thirdfullGET/packagechange. SourceCI/mainhandoffstilloriginalRoot01a12bc2, remoteclosurependingatthisreceiptcommit.
+
+
+## MB-RECOVERY-UX-20261102 — 中断恢复交互
+
+用户批准以自动检查和任务语言替换“核对操作结果”展开列表。隔离 codex/recovery-ux-20261102 基于 main589351245；复用原签名入口、Session mutation owner及操作账本，仅增加可选展示投影和系统自动保存已有证明。未知/Stop/身份/摘要/CAS/原继续动作保护保留；用户补充进入原会话草稿，不直接认定业务成功。任务 `.agent-sync/tasks/codex-recovery-ux-20261102-bdc90dbf.md`，验收 `dev-docs/recovery-ux-20261102/acceptance.md`。159定向+28integration、tsc/lint/分类/renderer build及IAB实际组件合成场景通过；原生/业务未验收。
+
+仅 desktop builtin client/macOS-arm64/updater，共享CI/main/版本/构建/安装/回滚仍由原唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4负责下一未冻结批。本开发会话提交/推送和请求集成，不创建PR或触发共享CI，不改变已有冻结制品或日常客户端。无cloud/mobile/Host/website部署。

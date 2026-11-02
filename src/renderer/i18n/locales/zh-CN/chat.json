@@ -1530,32 +1530,55 @@
     }
   },
   "recoveryReview": {
-    "open": "核对操作结果",
-    "loading": "正在核对…",
-    "title": "待核对操作",
-    "close": "收起",
-    "changed": "会话正在运行、证据已变化或当前版本不支持核对。请在会话空闲后重新查询。",
-    "boundary": "只有原生证据能证明工具调用被拒绝且未执行，或操作仅查询任务，才可核销对应记录。其余操作继续保留保护；恢复不会重发旧命令或自动继续任务。",
-    "empty": "当前没有待核对操作。这不代表业务任务已完成。",
-    "taskQuery": "任务查询 · {{tool}}",
-    "hookDenied": "原生工具已拒绝 · {{tool}}",
-    "unverified": "结果仍待确认",
-    "technical": "查看操作指纹",
-    "recoverSession": "恢复此会话",
-    "resolved": "已保存 {{count}} 条核对记录。",
-    "pendingCount": "{{count}} 项记录待处理；未确认的操作仍受保护。",
-    "sessionReady": "待核对记录已处理；发送下一条消息即可在同一会话继续，旧命令不会重发。",
+    "title": "中断恢复详情",
+    "close": "关闭",
+    "details": "查看详情",
+    "checkAgain": "再次检查",
+    "technical": "技术详情",
+    "changed": "暂时无法完成检查，可能是会话正在运行或记录已更新。已有结果会保留；会话空闲后可以再次检查。",
+    "boundary": "系统检查中断前的操作记录，并保留已经确认的结果。无法确认的操作会继续受到重复执行保护；其他工作可在原会话中继续。",
+    "empty": "当前没有结果待确认的操作记录。任务成果是否完成，请查看任务进度与验收结果。",
+    "unverified": "尚无法确认是否完成",
+    "notExecuted": "已确认未执行",
+    "queryOnly": "已确认只涉及查询",
+    "target": "涉及对象：",
+    "targetUnavailable": "现有记录未提供可展示的具体对象，请结合原对话中的工具记录查看。",
+    "tool": "工具类别：",
+    "prepareCheck": "补充结果或请 Bot 查询",
+    "laterHint": "关闭详情即可稍后处理。待确认记录会保留，关闭不会跳过任务步骤。",
+    "states": {
+      "checking": "正在检查中断前的操作",
+      "pending": "有 {{count}} 条操作记录尚未确认",
+      "ready": "操作记录检查完成",
+      "unavailable": "中断恢复检查暂未完成"
+    },
+    "descriptions": {
+      "checking": "系统正在检查已有结果，避免重复修改。你可以继续查看对话。",
+      "pending": "这些操作继续受到重复执行保护。你可以继续原会话，让 Bot 先查询结果并推进不受影响的工作。",
+      "ready": "已有结果会保留。可以在原会话继续，后续执行仍会检查操作是否允许。",
+      "unavailable": "已有成果和任务记录会保留，你可以继续交流或稍后重查。"
+    },
+    "kinds": {
+      "command": "运行命令",
+      "read_file": "读取文件",
+      "write_file": "保存文件",
+      "edit_file": "修改文件",
+      "task_query": "查询任务",
+      "tool": "调用工具",
+      "unknown": "具体操作信息缺失"
+    },
     "reasons": {
-      "builtin_task_query": "原生工具及参数指纹匹配，可确认该操作仅查询任务；不表示查询成功。",
-      "native_hook_denied": "原生执行前 hook 明确拒绝了此调用，可确认该调用未执行；不表示业务任务已完成。",
-      "external_receipt_required": "需要原执行或业务回执证明结果，当前入口无法结清。",
-      "native_evidence_missing": "未找到足够的原生证据，继续保留保护。"
+      "builtin_task_query": "已从执行记录确认这是任务查询；这不代表查询已成功。",
+      "native_hook_denied": "执行记录明确表明这次调用在开始前被拒绝。",
+      "external_receipt_required": "找到了操作请求，但现有检查无法证明它是否完成。",
+      "native_evidence_missing": "没有找到能够对应这次操作的完整执行记录。"
     },
     "nextSteps": {
-      "builtin_task_query": "恢复时只登记查询属性，不会重跑原查询或自动继续任务。",
-      "native_hook_denied": "恢复会话会保存原生拒绝证据，再显示可在同一会话继续；不会重发旧命令。",
-      "external_receipt_required": "查阅原执行端或业务回执后再人工对账；不要重复提交原操作。",
-      "native_evidence_missing": "保持保护，等待原生证据补齐后重新核对；不要新建会话或清除标记。"
-    }
+      "builtin_task_query": "系统将自动保存检查结果，再由原任务流程决定后续查询。",
+      "native_hook_denied": "系统将自动保存未执行的依据，后续执行仍按原授权判断。",
+      "external_receipt_required": "需要查询实际文件、执行端或业务记录。可以补充你已看到的结果，或让 Bot 先做只读查询。",
+      "native_evidence_missing": "需要结合原对话和实际结果进一步查明。系统不会将缺少记录当作未执行。"
+    },
+    "checkDraft": "请先核查这条结果未确认的操作：{{operation}}\n涉及对象：{{target}}\n操作标识：{{hash}}\n请结合原会话记录，先用只读方式查询实际结果，说明已查到的依据及仍缺少的信息；推进不受影响的工作。不要重做结果未知的操作，也不要仅凭我的说明将它标为成功。\n我补充的情况："
   }
 }
