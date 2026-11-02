@@ -13,13 +13,17 @@ import type { AnthropicRequest } from '../src/server/openai-bridge/types/anthrop
 
 const scratch = await mkdtemp(join(tmpdir(), 'mox-operation-scoped-'));
 const abort = new AbortController();
-const timer = setTimeout(() => abort.abort(), 60_000);
+const injectHttpCooldown = process.argv.includes('--http-rejection-cooldown');
+const timer = setTimeout(() => abort.abort(), injectHttpCooldown ? 120_000 : 60_000);
 let context: ContextRecoveryController;
 let ledger: { uncertain: string[]; nativeErrors: unknown[]; operationAttempts: NativeOperationJournalData } | undefined;
 let calls = 0;
 const injectReturnedHistoryGap = process.argv.includes('--returned-history-gap');
 const injectHttpRejection = process.argv.includes('--http-rejection');
+assert(!(injectHttpCooldown && injectHttpRejection), 'Select one HTTP rejection scenario');
 let rejectedHttpCalls = 0;
+let cooldownStartedAt = 0;
+let cooldownElapsedMs = 0;
 let backupSwitches = 0;
 let injectedHistoryGap = false;
 let denied = 0;
@@ -37,6 +41,19 @@ const upstream = createServer((req, res) => {
     const chunks: Buffer[] = [];
     for await (const chunk of req) chunks.push(Buffer.from(chunk));
     const body = JSON.parse(Buffer.concat(chunks).toString()) as AnthropicRequest;
+    // Real time and a real SDK connection: the model endpoint rejects once,
+    // then the same admitted inference waits without replaying any native tool.
+    if (injectHttpCooldown && rejectedHttpCalls === 0) {
+      rejectedHttpCalls++;
+      cooldownStartedAt = Date.now();
+      res.writeHead(502, { 'content-type': 'application/json', 'retry-after': '60' });
+      res.end('{"error":{"message":"Synthetic complete upstream HTTP rejection with cooldown"}}');
+      return;
+    }
+    if (injectHttpCooldown && calls === 0) {
+      cooldownElapsedMs = Date.now() - cooldownStartedAt;
+      assert(cooldownElapsedMs >= 60_000, 'provider cooldown must not be shortened');
+    }
     const step = calls++;
     assert(step < 5, 'Unexpected inference replay');
     if (step > 0) assert.deepEqual(ledger?.uncertain, [oldHash], 'verification must preserve the original unknown');
@@ -72,11 +89,11 @@ const rejectingUpstream = injectHttpRejection ? createServer((req, res) => {
 }) : undefined;
 if (rejectingUpstream) await new Promise<void>(resolve => rejectingUpstream.listen(0, '127.0.0.1', resolve));
 const rejectionAddress = rejectingUpstream?.address();
-const failover = injectHttpRejection ? new ModelFailoverController({ scope: () => 'fixture-turn',
+const failover = injectHttpRejection || injectHttpCooldown ? new ModelFailoverController({ scope: () => 'fixture-turn',
   isActive: () => !abort.signal.aborted, canSwitch: () => true, canUsePinnedRoute: () => !abort.signal.aborted,
   canRetry: () => context.canRetryInference(), canRetryRejectedResponse: () => context.canRetryRejectedInference(),
   retryDelaysMs: [0, 0, 0], onSwitch: () => { backupSwitches++; },
-  resolveBackup: () => ({ providerId: 'fixture-backup', apiProtocol: 'anthropic',
+  resolveBackup: () => injectHttpCooldown ? undefined : ({ providerId: 'fixture-backup', apiProtocol: 'anthropic',
     baseUrl: `http://127.0.0.1:${address.port}`, model: 'fixture-model', apiKey: 'fixture' }),
 }) : undefined;
 const handler = createBridgeHandler({ logger: null, getUpstreamConfig: () => ({ providerId: 'fixture',
@@ -168,7 +185,7 @@ try {
   }
   assert(terminal);
   assert.equal(calls, 5);
-  assert.equal(rejectedHttpCalls, injectHttpRejection ? 4 : 0);
+  assert.equal(rejectedHttpCalls, injectHttpRejection ? 4 : injectHttpCooldown ? 1 : 0);
   assert.equal(backupSwitches, injectHttpRejection ? 1 : 0);
   assert.equal(denied, 2);
   await assert.rejects(readFile(join(scratch, 'original-launch.txt')), { code: 'ENOENT' });
@@ -181,7 +198,7 @@ try {
   assert.match(restored.beforeTool('Bash', oldInput) ?? '', /uncertain outcome/);
   assert.match(restored.beforeTool('Bash', nextInput) ?? '', /already completed/);
   assert.equal(restored.beforeTool('Bash', { command: "ssh fixture-host 'tail -n 80 /var/log/build.log'" }), undefined);
-  const receipt = { status: 'PASS', scratch, injectedHistoryGap, rejectedHttpCalls, backupSwitches, calls, denied, packageCount: 1, originalLaunchCount: 0,
+  const receipt = { status: 'PASS', scratch, injectedHistoryGap, rejectedHttpCalls, cooldownElapsedMs, backupSwitches, calls, denied, packageCount: 1, originalLaunchCount: 0,
     unknown: ledger?.uncertain.length, actualSdkNativeAndShell: true, journalReload: true,
     syntheticModel: true, actualRemoteSsh: false, productionStore: false, installedClient: false };
   await writeFile(join(scratch, 'receipt.json'), JSON.stringify(receipt, null, 2), { mode: 0o600 });

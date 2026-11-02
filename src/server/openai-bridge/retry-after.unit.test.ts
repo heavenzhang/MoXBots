@@ -1,10 +1,138 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { ModelFailoverController } from './model-failover';
 import type { RecoveryCausalDiagnostic } from './recovery-causal-diagnostics';
+import type { UpstreamConfig } from './types/bridge';
 const primary = { providerId: 'fixture', model: 'fixture', baseUrl: 'http://fixture.invalid' };
 const request = (signal?: AbortSignal) => new Request('http://localhost/fixture', { signal });
 const response = (status: number, value: string) => Response.json({ error: { message: 'fixture unavailable' } }, { status, headers: { 'retry-after': value } });
 afterEach(() => vi.useRealTimers());
+
+it('waits out a proven rejection cooldown within the admitted request while old operations remain fenced', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(0);
+  const wait = vi.fn(async () => 0);
+  const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+    canRetryRejectedResponse: () => true, resolveBackup: () => undefined, onSwitch: () => {},
+    retryDelaysMs: [0, 0, 0], recovery: { wait, complete: async () => {} } });
+  const execute = vi.fn(async (target: UpstreamConfig) => {
+    if (execute.mock.calls.length > 1) return Response.json({ ok: true });
+    target.onRejectedResponse?.(502); return response(502, '60');
+  });
+  let settled = false;
+  const pending = controller.run(request(), primary, execute, 'exact').then(r => { settled = true; return r; });
+  await vi.advanceTimersByTimeAsync(0);
+  expect(settled).toBe(false); expect(execute).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(59_999); expect(execute).toHaveBeenCalledTimes(1);
+  await vi.advanceTimersByTimeAsync(1);
+  expect(await (await pending).json()).toEqual({ ok: true });
+  expect(execute).toHaveBeenCalledTimes(2); expect(wait).not.toHaveBeenCalled();
+  expect((await controller.run(request(), primary, execute, 'exact')).status).toBe(409);
+  expect(execute).toHaveBeenCalledTimes(2);
+});
+
+it('tries the allowed backup first and waits only after the candidate chain cannot advance', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(0);
+  const backup = { ...primary, providerId: 'backup', baseUrl: 'http://backup.invalid' };
+  let backupCalls = 0;
+  const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+    canRetryRejectedResponse: () => true, resolveBackup: () => backup, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
+  const execute = vi.fn(async (target: UpstreamConfig) => {
+    if (target.providerId === 'backup' && ++backupCalls > 1) return Response.json({ ok: true });
+    target.onRejectedResponse?.(502); return response(502, '60');
+  });
+  const pending = controller.run(request(), primary, execute, 'exact');
+  await vi.advanceTimersByTimeAsync(0);
+  expect(execute.mock.calls.map(([target]) => target.providerId)).toEqual(['fixture', 'backup']);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect((await pending).status).toBe(200);
+  expect(execute.mock.calls.map(([target]) => target.providerId)).toEqual(['fixture', 'backup', 'backup']);
+});
+
+it('spends only the remaining per-target attempts when cooldown appears after a short retry', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(0);
+  const wait = vi.fn(async () => 0);
+  const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+    canRetryRejectedResponse: () => true, resolveBackup: () => undefined, onSwitch: () => {},
+    retryDelaysMs: [0, 0, 0], recovery: { wait, complete: async () => {} } });
+  const execute = vi.fn(async (target: UpstreamConfig) => {
+    target.onRejectedResponse?.(502); return response(502, execute.mock.calls.length === 1 ? '0' : '60');
+  });
+  const pending = controller.run(request(), primary, execute, 'exact');
+  await vi.advanceTimersByTimeAsync(0); expect(execute).toHaveBeenCalledTimes(2);
+  await vi.advanceTimersByTimeAsync(60_000); expect(execute).toHaveBeenCalledTimes(3);
+  await vi.advanceTimersByTimeAsync(60_000); expect(execute).toHaveBeenCalledTimes(4);
+  expect((await pending).status).toBe(502); expect(wait).not.toHaveBeenCalled();
+  const repeated = await controller.run(request(), primary, execute, 'exact');
+  expect(repeated.status).toBe(502); expect(await repeated.text()).toContain('automatic_replay_blocked');
+  expect(execute).toHaveBeenCalledTimes(4);
+});
+
+it.each(['abort', 'owner', 'route', 'background', 'policy', 'deadline', 'end-turn'] as const)(
+  'revokes a known rejection cooldown on %s without another provider request', async change => {
+    vi.useFakeTimers(); vi.setSystemTime(0);
+    let active = true, allowed = true, foreground = true, identity = 'original', deadline = Infinity;
+    const abort = new AbortController();
+    const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+      canRetryRejectedResponse: () => allowed, isActive: () => active, canSwitch: () => foreground,
+      requestIdentity: () => identity, deadlineAt: () => deadline,
+      resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
+    const execute = vi.fn(async (target: UpstreamConfig) => { target.onRejectedResponse?.(502); return response(502, '60'); });
+    let settled = false;
+    const pending = controller.run(request(abort.signal), primary, execute, 'exact').then(r => { settled = true; return r; });
+    await vi.advanceTimersByTimeAsync(0); expect(settled).toBe(false);
+    if (change === 'abort') abort.abort();
+    if (change === 'owner') active = false;
+    if (change === 'route') identity = 'replaced';
+    if (change === 'background') foreground = false;
+    if (change === 'policy') allowed = false;
+    if (change === 'deadline') deadline = 25;
+    if (change === 'end-turn') controller.endTurn();
+    await vi.advanceTimersByTimeAsync(50);
+    expect(settled).toBe(true);
+    expect((await pending).ok).toBe(false); expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+it.each(['60', '9999999999'])('does not shorten an unfit cooldown (%s) to dispatch before the deadline', async value => {
+  vi.useFakeTimers(); vi.setSystemTime(0);
+  const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+    canRetryRejectedResponse: () => true, deadlineAt: () => 30_000,
+    resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
+  const execute = vi.fn(async (target: UpstreamConfig) => { target.onRejectedResponse?.(502); return response(502, value); });
+  const result = await controller.run(request(), primary, execute, 'exact');
+  expect(result.status).toBe(502); expect(result.headers.get('retry-after')).toBe(value);
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(execute).toHaveBeenCalledTimes(1);
+});
+
+it('rechecks authority when backup validation finishes after cooldown', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(0);
+  let allowed = true;
+  let validated!: (value: boolean) => void;
+  const validation = new Promise<boolean>(resolve => { validated = resolve; });
+  const backup = { ...primary, providerId: 'backup', baseUrl: 'http://backup.invalid' };
+  const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+    canRetryRejectedResponse: () => allowed, resolveBackup: () => backup, onSwitch: () => {},
+    validateBackup: async () => Date.now() === 0 ? true : validation, retryDelaysMs: [0, 0, 0] });
+  const execute = vi.fn(async (target: UpstreamConfig) => { target.onRejectedResponse?.(502); return response(502, '60'); });
+  const pending = controller.run(request(), primary, execute, 'exact');
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect(execute.mock.calls.map(([target]) => target.providerId)).toEqual(['fixture', 'backup']);
+  allowed = false; validated(true);
+  expect((await pending).status).toBe(502);
+  expect(execute).toHaveBeenCalledTimes(2);
+});
+
+it('does not reuse cooldown rejection proof after a synthetic connection failure', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(0);
+  const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+    canRetryRejectedResponse: () => true, resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
+  const execute = vi.fn(async (target: UpstreamConfig) => {
+    if (execute.mock.calls.length === 1) target.onRejectedResponse?.(502);
+    return response(502, '60');
+  });
+  const pending = controller.run(request(), primary, execute, 'exact');
+  await vi.advanceTimersByTimeAsync(60_000);
+  expect((await pending).status).toBe(502); expect(execute).toHaveBeenCalledTimes(2);
+});
 
 it.each([429, 503, 529])('does not hammer HTTP %s during cooldown without a durable wait owner', async status => {
   for (const background of [false, true]) {
