@@ -11,7 +11,7 @@ Integrate the reviewed Phase18 continuation and foreground command fix into the 
 - [ ] Publication and corresponding normal TLS checks; original 502 recovery is not complete until original session acceptance.
 
 ## Ownership and scope
-Desktop/macOS ARM64/updater/shared CI/main: 01a12bc2-907a-7702-b6dd-788225c5dfe4. Website remains its existing owner. This batch contains Phase18 and version changes only. User is actively using the daily application, so installation and native acceptance remain deferred.
+Desktop/macOS ARM64/updater/shared CI/main: 01a12bc2-907a-7702-b6dd-788225c5dfe4. Website remains its existing owner. This batch contains Phase18 and version changes only. Prior pause was explicitly revoked by the human on 2026-10-31 and installation and original-session validation reaffirmed on 2026-11-01. Installation remains authorized, subject to a fresh activity review, consistent backup and rollback, and protection of unknown operations.
 
 ## Status and next step
 Integration worktree begins at exact source commit 16fefc238. Host task-init declined because existing adopted source is ahead of base; adopt declined because vendored skill differs. Both failures are preserved in batch evidence; no reset, vendored skill replacement, or false pass. Prepare version delta, validate and sync using appropriate reviewed project workflow.
