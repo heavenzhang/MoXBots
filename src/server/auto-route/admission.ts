@@ -124,17 +124,29 @@ export async function applyAutoRouteAdmission(
     // remains frozen; only a genuinely idle new turn may revoke stale state.
     if (deps.isSessionBusy()) return undefined;
     const previousState = getAutoRouteSessionState(input.sessionId);
-    setAutoRouteSessionState(input.sessionId, previousState?.tier ? { tier: previousState.tier } : undefined);
     const stored = deps.getSessionMetadata(input.sessionId);
     // Store implementations may return a live object. The caller must observe
     // the exact pre-route snapshot, including edits racing classification.
     const meta = stored && request.autoRouteSnapshotAdmission ? structuredClone(stored) : stored;
     const text = autoRouteMessageText(input.text);
+    const current = deps.current();
+    // A hidden product continuation has no new user intent to classify. Keep
+    // its existing candidate plan only while it still belongs to this primary.
+    // Otherwise the acceptance loop silently loses failover after its first turn.
+    const primary = previousState?.primary;
+    if (!text && !input.hasImages && shouldRoute(meta) && primary
+      && primary.providerId === current.providerId && primary.model === current.model
+      && (request.model === undefined || request.model === primary.model)
+      && request.providerEnv === undefined
+      && (request.providerRoute === undefined || (request.providerRoute.kind === 'provider'
+        && request.providerRoute.providerId === primary.providerId && request.providerRoute.model === primary.model))) {
+      return fallback();
+    }
+    setAutoRouteSessionState(input.sessionId, previousState?.tier ? { tier: previousState.tier } : undefined);
     if (!shouldRoute(meta) || !text) return undefined;
 
     const messages = deps.getMessages();
     const previous = previousTurn(messages);
-    const current = deps.current();
     const currentRef: AutoModelRef | undefined = current.providerId && current.model
       ? { providerId: current.providerId, model: current.model }
       : undefined;

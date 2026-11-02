@@ -1513,6 +1513,64 @@ describe('builtin V2 execution independent of product storage', () => {
     expect((await active.file.read()).projection.messages).toEqual(active.writer.projection.messages);
   });
 
+  it('restores verification after a foreground shell returns without a background state update', async () => {
+    state.protocolFrames = [
+      { type: 'system', subtype: 'task_started', task_id: 'foreground-bash', run_id: 'run-1',
+        tool_use_id: 'foreground-call', task_type: 'local_bash', is_backgrounded: false },
+      { type: 'system', subtype: 'task_notification', task_id: 'foreground-bash', run_id: 'run-1',
+        tool_use_id: 'foreground-call', status: 'completed', summary: 'finished', output_file: '' },
+      { type: 'user', tool_use_result: { stdout: 'done', stderr: '', interrupted: false },
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'foreground-call', content: 'done' }] } },
+    ];
+    const lifecycle = await import('../builtin-session/lifecycle');
+    let checkedBeforeReceipt = false;
+    state.beforeFrame.mockImplementation(frame => {
+      if (frame.type === 'user' && frame.tool_use_result) {
+        expect(lifecycle.getQueryExecutionVerificationEpoch()).toBeUndefined();
+        checkedBeforeReceipt = true;
+      }
+    });
+    const workspace = join(state.home, 'workspace');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let finish!: (outcome: TurnTerminalOutcome) => void;
+    const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
+    await agent.enqueueUserMessage('question', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined,
+      { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
+    await expect(terminal).resolves.toMatchObject({ status: 'complete' });
+    expect(checkedBeforeReceipt).toBe(true);
+    expect(lifecycle.getQueryExecutionVerificationEpoch()).toEqual(expect.any(String));
+    expect(lifecycle.snapshotSettledQueryBackground(lifecycle.getCurrentQueryAuthority()!)?.()).toBe(true);
+  });
+
+  it.each(['detached', 'synthetic', 'child', 'promoted'])('keeps a foreground shell unsettled for a %s receipt', async reason => {
+    state.protocolFrames = [
+      { type: 'system', subtype: 'task_started', task_id: 'shell', run_id: 'run-1',
+        tool_use_id: 'shell-call', task_type: 'local_bash', is_backgrounded: false },
+      ...(reason === 'promoted' ? [{ type: 'system', subtype: 'task_updated', task_id: 'shell', run_id: 'run-1', patch: { is_backgrounded: true } }] : []),
+      { type: 'system', subtype: 'task_notification', task_id: 'shell', run_id: 'run-1',
+        tool_use_id: 'shell-call', status: 'completed', summary: 'finished', output_file: '' },
+      { type: 'user', isSynthetic: reason === 'synthetic', parent_tool_use_id: reason === 'child' ? 'parent' : null,
+        tool_use_result: { stdout: 'done', stderr: '', interrupted: false, ...(reason === 'detached' ? { detachedToolCall: true } : {}) },
+        message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'shell-call', content: 'done' }] } },
+    ];
+    const workspace = join(state.home, 'workspace');
+    await mkdir(workspace);
+    const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+    await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+    let finish!: (outcome: TurnTerminalOutcome) => void;
+    const terminal = new Promise<TurnTerminalOutcome>(resolve => { finish = resolve; });
+    await agent.enqueueUserMessage('question', [], undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined,
+      { channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: finish });
+    await expect(terminal).resolves.toMatchObject({ status: 'complete' });
+    const lifecycle = await import('../builtin-session/lifecycle');
+    expect(lifecycle.getQueryExecutionVerificationEpoch()).toBeUndefined();
+    expect(lifecycle.snapshotSettledQueryBackground(lifecycle.getCurrentQueryAuthority()!)).toBeUndefined();
+  });
+
   it('reads a local_bash raw receipt output before structured result rendering discards its path', async () => {
     state.protocolFrames = [
       { type: 'system', subtype: 'task_started', task_id: 'background-bash', run_id: 'run-1',

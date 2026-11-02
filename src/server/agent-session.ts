@@ -336,6 +336,7 @@ export { hasBuiltinActivityForUpdate, setUpdateRestartFrozen } from './builtin-s
 import {
   clearQueryMcpPrewarmOwner,
   completeQueryBackgroundTask,
+  completeQueryForegroundBash,
   snapshotSettledQueryBackground,
   getQueryMcpPrewarmOwner,
   hasQueryBackgroundTask,
@@ -13823,9 +13824,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           if (!hasBuiltinBackgroundWork()) wakeSessionExecution(sessionId);
         }
         const taskMsg = sdkMessage as { subtype?: string; task_id?: string; run_id?: string;
-          tool_use_id?: string; description?: string; task_type?: string; ambient?: boolean;
+          tool_use_id?: string; description?: string; task_type?: string; ambient?: boolean; is_backgrounded?: boolean;
           status?: string; summary?: string; output_file?: string;
-          patch?: { status?: string; error?: string; description?: string; end_time?: number } };
+          patch?: { status?: string; error?: string; description?: string; end_time?: number; is_backgrounded?: boolean } };
         if (taskMsg.subtype === 'task_started' && taskMsg.task_id) {
           const recorded = recordQueryBackgroundTask(activeQuery, taskMsg.task_id, {
             toolUseId: taskMsg.tool_use_id,
@@ -13834,6 +13835,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             agentType: taskMsg.task_type,
             runId: taskMsg.run_id,
             ambient: taskMsg.ambient,
+            isBackgrounded: taskMsg.is_backgrounded,
           });
           if (recorded) {
             if (taskMsg.tool_use_id && taskMsg.task_type !== 'local_bash') observeSessionTasksInBackground(sessionId, {
@@ -13854,6 +13856,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
             });
           }
         } else if (taskMsg.task_id && (taskMsg.subtype === 'task_notification' || taskMsg.subtype === 'task_updated')) {
+          if (taskMsg.subtype === 'task_updated' && taskMsg.patch?.is_backgrounded === true) {
+            recordQueryBackgroundTask(activeQuery, taskMsg.task_id, { runId: taskMsg.run_id, isBackgrounded: true });
+          }
           const status = taskMsg.subtype === 'task_updated' ? taskMsg.patch?.status : taskMsg.status;
           if (status === 'completed' || status === 'failed' || status === 'killed' || status === 'stopped') {
             const summary = taskMsg.subtype === 'task_updated' ? taskMsg.patch?.error ?? '' : taskMsg.summary ?? '';
@@ -14485,6 +14490,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
 
               const parentToolUseId =
                 childToolToParent.get(toolResultBlock.tool_use_id) ?? sdkMessage.parent_tool_use_id;
+              if (!parentToolUseId) {
+                completeQueryForegroundBash(activeQueryAuthority, toolResultBlock.tool_use_id, toolUseResultData, toolResultBlock.is_error === true);
+              }
               if (parentToolUseId) {
                 if (!childToolToParent.has(toolResultBlock.tool_use_id)) {
                   ensureSubagentToolPlaceholder(parentToolUseId, toolResultBlock.tool_use_id);

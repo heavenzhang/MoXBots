@@ -4,6 +4,7 @@ import {
   claimQueryMcpMutation,
   clearAbortFlag,
   completeQueryBackgroundTask,
+  completeQueryForegroundBash,
   getQueryBackgroundTask,
   getPreWarmFailCount,
   hasQueryBackgroundTask,
@@ -1040,6 +1041,66 @@ describe('builtin-session owners', () => {
 
 describe('result-boundary background proof', () => {
   beforeEach(() => resetLifecycleForTest());
+  const shellOutput = { stdout: 'done', stderr: '', interrupted: false };
+  const foreground = { agentType: 'local_bash', toolUseId: 'tool-1', runId: 'run-1', isBackgrounded: false };
+  it.each(['receipt-first', 'notification-first'])('settles a foreground Bash only with its native tool result: %s', order => {
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    const before = getQueryExecutionVerificationEpoch();
+    recordQueryBackgroundTask(query, 'shell', { ...foreground });
+    expect(getQueryExecutionVerificationEpoch()).toBeUndefined();
+    if (order === 'notification-first') {
+      completeQueryBackgroundTask(query, 'shell', { runId: 'run-1', status: 'completed' });
+      expect(getQueryExecutionVerificationEpoch()).toBeUndefined();
+    }
+    expect(completeQueryForegroundBash(authority, 'tool-1', shellOutput)).toBe(true);
+    if (order === 'receipt-first') completeQueryBackgroundTask(query, 'shell', { runId: 'run-1', status: 'completed' });
+    expect(getQueryExecutionVerificationEpoch()).toEqual(expect.any(String));
+    expect(getQueryExecutionVerificationEpoch()).not.toBe(before);
+    expect(snapshotSettledQueryBackground(authority)?.()).toBe(true);
+  });
+  it.each([
+    undefined, 'done', { stdout: 'done', stderr: '' },
+    { ...shellOutput, detachedToolCall: true }, { ...shellOutput, backgroundTaskId: 'shell' },
+    { ...shellOutput, timedOutAfterMs: 300000 }, { ...shellOutput, backgroundedByUser: true },
+  ])('rejects an incomplete or still-running native shell result: %j', output => {
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    recordQueryBackgroundTask(query, 'shell', { ...foreground });
+    completeQueryBackgroundTask(query, 'shell', { runId: 'run-1', status: 'completed' });
+    expect(completeQueryForegroundBash(authority, 'tool-1', output)).toBe(false);
+    expect(getQueryExecutionVerificationEpoch()).toBeUndefined();
+  });
+  it.each(['unknown-mode', 'unknown-run', 'agent', 'promotion', 'level-before-start', 'level-after-start', 'reused-tool-id'])('cannot use a foreground result for an unproven or background run: %s', reason => {
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    const level = [{ task_id: 'shell', run_id: 'run-1', task_type: 'local_bash', description: '' }];
+    if (reason === 'level-before-start') { replaceQueryBackgroundActivity(query, level); replaceQueryBackgroundActivity(query, []); }
+    recordQueryBackgroundTask(query, 'shell', { ...foreground,
+      ...(reason === 'unknown-mode' ? { isBackgrounded: undefined } : {}),
+      ...(reason === 'unknown-run' ? { runId: undefined } : {}),
+      ...(reason === 'agent' ? { agentType: 'agent' } : {}),
+    });
+    if (reason === 'promotion') {
+      recordQueryBackgroundTask(query, 'shell', { runId: 'run-1', isBackgrounded: true });
+      recordQueryBackgroundTask(query, 'shell', { ...foreground });
+    }
+    if (reason === 'level-after-start') { replaceQueryBackgroundActivity(query, level); replaceQueryBackgroundActivity(query, []); }
+    if (reason === 'reused-tool-id') recordQueryBackgroundTask(query, 'shell', { ...foreground, runId: 'run-2' });
+    expect(completeQueryForegroundBash(authority, 'tool-1', shellOutput)).toBe(false);
+    expect(getQueryExecutionVerificationEpoch()).toBeUndefined();
+  });
+  it('rejects a previous run result, a different tool and revoked Query authority', () => {
+    const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
+    const authority = setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });
+    recordQueryBackgroundTask(query, 'shell', { ...foreground });
+    recordQueryBackgroundTask(query, 'shell', { ...foreground, runId: 'run-2', toolUseId: 'tool-2' });
+    expect(completeQueryForegroundBash(authority, 'tool-1', shellOutput)).toBe(false);
+    expect(completeQueryForegroundBash(authority, 'other-tool', shellOutput)).toBe(false);
+    requestAbort();
+    expect(completeQueryForegroundBash(authority, 'tool-2', shellOutput)).toBe(false);
+    expect(getQueryExecutionVerificationEpoch()).toBeUndefined();
+  });
   it('keeps explicit ambient task_started without run_id out of verification activity', () => {
     const query = {} as Parameters<typeof setQuerySessionWithAuthority>[0];
     setQuerySessionWithAuthority(query, { productSessionId: 'product', expectedSdkSessionId: 'native' });

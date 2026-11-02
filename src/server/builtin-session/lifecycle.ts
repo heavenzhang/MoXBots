@@ -71,6 +71,7 @@ export type QueryBackgroundTaskInfo = {
   outputPath?: string;
   command?: string;
   ambient?: boolean;
+  isBackgrounded?: boolean;
 };
 
 type QueryBackgroundTask = {
@@ -103,8 +104,8 @@ export function hasBuiltinActivityForUpdate(): boolean {
 // Keep the full snapshot so continuation admission can classify current work.
 // Keep acknowledgements separately: they are user decisions about exact runs,
 // not SDK facts, and must never leak to a replacement Query.
-const backgroundProofHistory = new WeakMap<Query, { runs: Map<string, { taskId: string; runId: string; terminal?: boolean }>; disabled: boolean }>();
-function rememberBackgroundRun(query: Query, taskId: string, runId: string | undefined): void {
+const backgroundProofHistory = new WeakMap<Query, { runs: Map<string, { taskId: string; runId: string; toolUseId?: string; terminal?: boolean; backgrounded?: boolean }>; disabled: boolean }>();
+function rememberBackgroundRun(query: Query, taskId: string, runId: string | undefined, backgrounded = false, toolUseId?: string): void {
   let history = backgroundProofHistory.get(query);
   if (!history) { history = { runs: new Map(), disabled: false }; backgroundProofHistory.set(query, history); }
   if (typeof runId !== 'string' || !runId || runId.length > 256
@@ -113,6 +114,14 @@ function rememberBackgroundRun(query: Query, taskId: string, runId: string | und
   if (!history.runs.has(key)) {
     if (history.runs.size >= 4096) history.disabled = true;
     else history.runs.set(key, { taskId, runId });
+  }
+  // Promotion is sticky for the exact run, including a level that precedes its
+  // task_started edge. A later foreground receipt cannot settle that run.
+  const run = history.runs.get(key);
+  if (run && backgrounded) run.backgrounded = true;
+  if (run && toolUseId) {
+    if (run.toolUseId && run.toolUseId !== toolUseId) history.disabled = true;
+    else run.toolUseId = toolUseId;
   }
 }
 let queryBackgroundRevision = 0;
@@ -337,7 +346,7 @@ export function recordQueryBackgroundTask(
     queryBackgroundTasks.set(query, tasks);
   }
   queryBackgroundRevision++;
-  if (info.ambient !== true) rememberBackgroundRun(query, taskId, info.runId);
+  if (info.ambient !== true) rememberBackgroundRun(query, taskId, info.runId, info.isBackgrounded === true, info.toolUseId);
   const previous = tasks.get(taskId);
   const order = previous ? compareBackgroundTaskRuns(info.runId, previous.info.runId) : 1;
   if (order < 0) return false;
@@ -349,6 +358,7 @@ export function recordQueryBackgroundTask(
     if (info.outputPath !== undefined) previous.info.outputPath = info.outputPath;
     if (info.command !== undefined) previous.info.command = info.command;
     if (info.ambient !== undefined) previous.info.ambient = info.ambient;
+    if (info.isBackgrounded !== undefined && previous.info.isBackgrounded !== true) previous.info.isBackgrounded = info.isBackgrounded;
   } else {
     tasks.set(taskId, { info, active: true });
   }
@@ -430,7 +440,7 @@ export function replaceQueryBackgroundActivity(
 ): void {
   if (querySession !== query) return;
   queryBackgroundRevision++;
-  for (const task of tasks) if (task.ambient !== true) rememberBackgroundRun(query, task.task_id, task.run_id);
+  for (const task of tasks) if (task.ambient !== true) rememberBackgroundRun(query, task.task_id, task.run_id, true);
   queryBackgroundTasksLevel = tasks.map(task => ({
     taskId: task.task_id,
     ...(task.run_id ? { runId: task.run_id } : {}),
@@ -532,7 +542,7 @@ export function getQueryExecutionVerificationEpoch(): string | undefined {
   return `${queryInstanceId}:${queryBackgroundRevision}`;
 }
 
-/** Result-boundary proof. Notifications/ACKs never substitute for an SDK state-machine terminal. */
+/** Result-boundary proof. Notifications/ACKs never substitute for a native terminal receipt. */
 export function snapshotSettledQueryBackground(authority: BuiltinQueryAuthority): (() => boolean) | undefined {
   const settled = () => {
     const history = backgroundProofHistory.get(authority.query);
@@ -587,6 +597,39 @@ export function completeQueryBackgroundTask(
   if (terminal.outputPath) task.info.outputPath = terminal.outputPath;
   tasks.set(taskId, task);
   return { removed, becameQuiescent: removed && !hasQueryBackgroundTasks(query), broadcast, enriching, info: task.info };
+}
+
+/** A foreground Bash blocks its tool call until completion and emits no
+ * task_updated. Only its actual native BashOutput can close that exact run;
+ * display notifications, background/detached receipts and stale Queries cannot. */
+export function completeQueryForegroundBash(
+  authority: BuiltinQueryAuthority | null,
+  toolUseId: string,
+  output: unknown,
+  isError = false,
+): boolean {
+  if (!isCurrentQueryAuthority(authority) || !output || typeof output !== 'object') return false;
+  const result = output as Record<string, unknown>;
+  if (typeof result.stdout !== 'string' || typeof result.stderr !== 'string'
+    || typeof result.interrupted !== 'boolean' || result.detachedToolCall === true
+    || result.backgroundTaskId !== undefined || result.timedOutAfterMs !== undefined
+    || result.backgroundedByUser === true) return false;
+  const matches = [...(queryBackgroundTasks.get(authority.query)?.entries() ?? [])]
+    .filter(([, task]) => task.info.toolUseId === toolUseId);
+  if (matches.length !== 1) return false;
+  const [taskId, task] = matches[0];
+  const runId = task.info.runId;
+  const history = backgroundProofHistory.get(authority.query);
+  const run = history?.runs.get(JSON.stringify([taskId, runId]));
+  if (!runId || !run || !history || history.disabled || run.backgrounded || run.toolUseId !== toolUseId
+    || [...history.runs.values()].filter(candidate => candidate.toolUseId === toolUseId).length !== 1
+    || task.info.agentType !== 'local_bash'
+    || task.info.isBackgrounded !== false || task.info.ambient === true) return false;
+  completeQueryBackgroundTask(authority.query, taskId, {
+    runId, toolUseId, authoritative: true,
+    status: result.interrupted ? 'stopped' : isError ? 'failed' : 'completed',
+  });
+  return true;
 }
 
 /** Transfer remaining task ownership to the exact Query finalizer. */

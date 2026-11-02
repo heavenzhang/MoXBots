@@ -42,6 +42,8 @@
 
 ## 重复执行与不确定性
 
+自动执行的隐藏续接没有新的用户正文，不重新分类，也不清除上一轮已选定的候选计划。仅当当前仍为 builtin 自动模式、实际主模型与计划绑定一致，且没有新的图片或路由/凭据覆盖时保留；池成员、启用状态和实际能力仍在请求接管时复核。新的可见用户输入、手动模式和主模型变化继续使旧计划失效。保留候选不授予未知工具重放权限。
+
 代理连接建立采用与推理重试分离的窄边界：仅交互 Session 的当前 ModelFailover attempt 可提供 `canRetryConnection`，每次等待后复核原 Query、route、attempt、前台归属、后台状态、Stop、paused 与本次推理 deadline。原 Undici connector 在返回可写 HTTP socket 前产生的 `ConnectTimeoutError`，允许同一代理池内最多两次连接重试（250/750ms）；每个 fetch 的重试计时器绑定自己的 AbortSignal，不缓存带旧请求权限的 RetryAgent。工具账本、推理重试、上下文压缩和流中断权限均不改变，历史未知操作仍受精确保护。
 
 此边界只作用于代理路径的 POST 连接建立，不处理已收到的 HTTP 429/5xx、证书失败、socket reset 或部分流，也不从错误正文、日志或 bytes=0 推断未发送。原 HTTP 错误分类、Retry-After、候选切换及持久等待继续由已有 owner 决定；未获 Session connection capability 的 utility/probe 不获得重试。原 fetch 重定向规则不变，但每个 fetch 只有首次 HTTP dispatch 可恢复连接；307等响应后的第二跳直接用原池，不重新获取连接重试权。原生请求体一旦被消费，Undici 不允许本层重复；连接尝试不重建任务，不重放旧请求或工具。测试必须包括实际 ProxyAgent CONNECT/TLS、仅一次 HTTP POST、取消后不再连接、代次/预算撤销、响应/断流负例及旧未知账本和 SDK 重复请求保护。
