@@ -9,6 +9,7 @@ import { formatReplayBlockedStreamError, formatSSEFrame } from './utils/sse-writ
 import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
 import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader';
 import { observeRecoveryDiagnostic, type RecoveryDiagnosticObserver } from './recovery-causal-diagnostics';
+import { isConnectionEstablishmentFailure } from './connection-retry';
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
@@ -161,12 +162,14 @@ export class ModelFailoverController implements BridgeModelFailover {
     let observedTarget = primary;
     let rejectedStatus: number | undefined;
     let completeRejectedResponse = false;
+    let connectionFailed = false;
     const finish = () => { activeAttempt++; lease.finish(); };
     const executeAttempt = (target: UpstreamConfig): Promise<Response> => {
       observedTarget = target;
       const attempt = ++activeAttempt;
       rejectedStatus = undefined;
       completeRejectedResponse = false;
+      connectionFailed = false;
       attemptInterruption = undefined;
       attemptDiagnostic = undefined;
       const onModelProgress = (): boolean => {
@@ -182,8 +185,12 @@ export class ModelFailoverController implements BridgeModelFailover {
       const admittedTarget: UpstreamConfig = this.options.canRetryRejectedResponse ? { ...target, onRejectedResponse: status => {
         if (attempt === activeAttempt && live()) rejectedStatus = status;
       } } : target;
-      return execute(this.options.canRetryConnection ? { ...admittedTarget, canRetryConnection: () => attempt === activeAttempt &&
-        live() && rootLive() && withinDeadline() && this.options.canRetryConnection?.() === true }
+      return execute(this.options.canRetryConnection ? { ...admittedTarget,
+        onConnectionFailure: error => {
+          if (attempt === activeAttempt && live() && isConnectionEstablishmentFailure(error)) connectionFailed = true;
+        },
+        canRetryConnection: () => attempt === activeAttempt &&
+          live() && rootLive() && withinDeadline() && this.options.canRetryConnection?.() === true }
       : admittedTarget, onModelProgress, onStreamInterruption);
     };
     const cancelResponse = (response: Response) => { void response.body?.cancel().catch(() => undefined); };
@@ -192,7 +199,8 @@ export class ModelFailoverController implements BridgeModelFailover {
     // Keep the stricter stream/durable-recovery authority separate. A complete
     // HTTP rejection permits only the existing attempt budget and configured backup.
     const rejectionRetryLive = () => completeRejectedResponse && this.options.canRetryRejectedResponse?.() === true;
-    const failoverLive = () => live() && rootLive() && (this.options.canRetry?.() !== false || rejectionRetryLive());
+    const connectionRetryLive = () => connectionFailed && this.options.canRetryConnection?.() === true;
+    const failoverLive = () => live() && rootLive() && (this.options.canRetry?.() !== false || rejectionRetryLive() || connectionRetryLive());
     const pinnedRouteLive = () => live() && rootLive()
       && (this.options.canUsePinnedRoute?.() ?? (this.options.canRetry?.() !== false));
     let inferenceAttempts = 0;
@@ -314,7 +322,9 @@ export class ModelFailoverController implements BridgeModelFailover {
         if (!live()) { cancelResponse(inspected.response); return cancelled(); }
         if (inspected.recoverable)
           this.options.onObservation?.(target, "failure");
-        if (!inspected.recoverable || restoredWaiting || attempt >= delays.length || !retryLive()) return inspected.response;
+        // The transport already exhausted its initial + two connection attempts.
+        // Pass directly to the existing candidate chain, never multiply budgets.
+        if (!inspected.recoverable || connectionFailed || restoredWaiting || attempt >= delays.length || !retryLive()) return inspected.response;
         // A provider cooldown applies even without a durable foreground owner.
         // Return the rejection to the existing candidate/wait policy; background
         // or unmanaged waits must not turn it into rapid repeated calls.
