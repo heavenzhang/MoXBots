@@ -22,3 +22,7 @@ Deliver the reviewed Phase19 connection-establishment recovery through the exist
 ## Next step
 
 Finish current shared CI/Main Host fix, reconcile latest main, freeze one exact 539.1 candidate and run its source checks once. Do not use preceding source results as new-candidate CI. Signing, installation, real Provider recovery and stable promotion remain separate gates.
+
+## Search lifecycle fixture follow-up
+
+The Host-main full Rust run41510515314 observed a writer LockBusy at the V2 startup test's immediate same-process drop/reopen. Current539 exact Rust run passed; the earlier failure remains preserved. Existing search/test_process.rs already isolates identical writer lifecycle tests from concurrent libtest process spawns, which can inherit the flock descriptor until exec. Apply that existing exact-child entry to this omitted V2 test, with the entire original assertion body unchanged. No production index code, lock removal, retry, sleep, timeout or ignore policy changes. Review and test the new source before updating the candidate; old-source CI does not become new-source evidence.
