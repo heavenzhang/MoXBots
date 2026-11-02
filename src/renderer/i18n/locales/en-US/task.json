@@ -444,13 +444,12 @@
       "cancelGoalButton": "Cancel goal",
       "resumeGoalTitle": "Resume automatic goal continuation",
       "pauseGoalButton": "Pause",
-      "pauseGoalFailed": "Failed to pause goal. Please try again.",
+      "pauseGoalFailed": "The goal was paused, but the current response could not be confirmed stopped. Try Stop again.",
       "resumeGoalFailed": "Failed to resume goal. Please try again.",
       "resumeGoalButton": "Resume",
       "cancelGoalConfirmTitle": "Cancel the current goal?",
       "cancelGoalConfirmMessage": "The goal will become canceled and automatic continuation will stop. Existing conversation history and work results are kept.",
       "cancelGoalFailed": "Could not cancel the goal. Please try again.",
-      "pauseGoalFailed": "The goal was paused, but the current response could not be confirmed stopped. Try Stop again.",
       "dismissStoppedTitle": "Close and restore task content to the input box",
       "dismissGoalTitle": "Dismiss goal status",
       "stopButton": "Stop"
@@ -950,7 +949,9 @@
     "filter": {
       "all": "All",
       "needs": "Needs me",
-      "todo": "Not started"
+      "todo": "To do",
+      "running": "Running",
+      "done": "Finished / review"
     },
     "groups": {
       "running": "Running",
@@ -985,7 +986,7 @@
     "durationStaleHint": "Observation has expired. Showing duration at the last read; refresh to confirm whether execution continues.",
     "details": "Details",
     "status": "Status",
-    "summary": "Summary",
+    "summary": "Latest update",
     "updated": "Updated",
     "action": "Action",
     "taskError": "Failed to load tasks. Previous results retained.",
@@ -1048,7 +1049,7 @@
     "archiveHint": "Accept: archive once you have reviewed the result; restore it from History. A task awaiting review is marked done first, then archived",
     "idleHint": "Conversations untouched for over 24 hours. Use \"Convert to task\" if there is something to deliver; otherwise archive. Idle does not mean the goal is complete.",
     "scheduledHint": "Scheduled, recurring or conditional automations waiting for the next trigger; enabled does not mean currently executing.",
-    "inactiveHint": "Inactive for 7 days. Convert to a task to track delivery, or archive it.",
+    "inactiveHint": "No activity for over 7 days. Convert to a Task if there is a clear goal; otherwise archive.",
     "reasons": {
       "paused": "Goal paused",
       "waiting": "Waiting for an answer or permission",
@@ -1090,6 +1091,22 @@
     },
     "inactive": "Inactive for 7+ days",
     "checkingTrigger": "Checking trigger",
-    "inactiveHint": "No activity for over 7 days. Convert to a Task if there is a clear goal; otherwise archive."
+    "projectOverview": "Project overview",
+    "overviewBoundary": "Unarchived tasks and conversations; not project delivery percentage",
+    "overviewPartial": "Some states are unverified. Counts reflect available data.",
+    "metrics": {
+      "tasks": "Tasks",
+      "completed": "Completed tasks",
+      "running": "Running",
+      "needs": "Needs me",
+      "review": "Awaiting review",
+      "conversations": "Conversations"
+    },
+    "filtersLabel": "Status filters",
+    "viewLabel": "View",
+    "sortLabel": "Sort",
+    "sortAttention": "Attention first",
+    "sortRecent": "Recent activity",
+    "moreActions": "More actions"
   }
 }

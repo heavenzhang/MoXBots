@@ -54,3 +54,6 @@ export const taskArchive=async(id)=>{window.boardCalls.push({kind:'archive',id})
 tasks.push({...tasks.find(t=>t.status==='done'),id:'task-archived',name:'已归档的合成任务',status:'archived'});
 sessions.push({...sessions[1],id:'alpha-archived',title:'已归档的合成会话',archived:true});
 snapshot={...snapshot,sessions:[...sessions]};
+// Explicit writes stay inside the synthetic fixture's task/session arrays.
+export const taskAppendSession=async()=>{};
+export const taskCreateDirect=async(fields)=>({...fields,id:'synthetic-created',status:'todo',sessionIds:[],tags:[]});

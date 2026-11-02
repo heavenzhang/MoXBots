@@ -134,3 +134,13 @@ describe('project board stages and archive history',()=>{
   expect(mocks.create).not.toHaveBeenCalled();
  });
 });
+
+it('keeps the project overview stable while filtering and searching rows', () => {
+ const {container}=render(<ProjectBoard workspacePath='/work'/>);
+ const overview=container.querySelector('.pb-project-overview')!;
+ const before=overview.textContent;
+ fireEvent.click(screen.getByRole('button',{name:/projectBoard.filter.running/}));
+ fireEvent.change(screen.getByRole('searchbox'),{target:{value:'no matching work'}});
+ expect(overview.textContent).toBe(before);
+ expect(container.querySelector('.pb-empty')).toBeTruthy();
+});

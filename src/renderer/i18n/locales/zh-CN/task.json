@@ -444,13 +444,12 @@
       "cancelGoalButton": "取消目标",
       "resumeGoalTitle": "恢复目标自动续跑",
       "pauseGoalButton": "暂停",
-      "pauseGoalFailed": "暂停目标失败，请重试",
+      "pauseGoalFailed": "目标已暂停，但当前响应未确认停止，请再次点击停止。",
       "resumeGoalFailed": "继续目标失败，请重试",
       "resumeGoalButton": "继续",
       "cancelGoalConfirmTitle": "取消当前目标？",
       "cancelGoalConfirmMessage": "目标将进入已取消终态，后续不再自动续跑。此操作不会删除已有会话和工作结果。",
       "cancelGoalFailed": "取消目标失败，请重试。",
-      "pauseGoalFailed": "目标已暂停，但当前响应未确认停止，请再次点击停止。",
       "dismissStoppedTitle": "关闭并恢复任务内容到输入框",
       "dismissGoalTitle": "关闭目标状态",
       "stopButton": "停止"
@@ -950,7 +949,9 @@
     "filter": {
       "all": "全部",
       "needs": "需要我",
-      "todo": "待开始"
+      "todo": "待开始",
+      "running": "执行中",
+      "done": "已完成 / 待验收"
     },
     "groups": {
       "running": "执行中",
@@ -985,7 +986,7 @@
     "durationStaleHint": "状态快照已过期，仅显示查询时的时长；刷新后确认是否仍在执行。",
     "details": "详情",
     "status": "状态",
-    "summary": "摘要",
+    "summary": "最新进展",
     "updated": "最近更新",
     "action": "操作",
     "taskError": "任务读取失败，已保留上次结果。",
@@ -1089,6 +1090,23 @@
     "convertLinkFailed": "任务已创建，但关联原会话失败，请刷新后在任务详情中确认。",
     "convertTaskDoc": "# {{title}}\\n\\n来源：由会话转为任务，关联原会话。\\n\\n## 背景\\n\\n{{summary}}\\n\\n## 完成标准\\n\\n- [ ] 补充本任务要交付的成果与验收条件\\n",
     "doneHint": "AI 跑完、等你验收的任务，以及 24 小时内刚停下的会话（超过 24 小时移到“待继续”）。满意就“归档”收起；不满意就进入会话继续，它会回到“执行中”。“已完成”表示执行结束，不代表成果已达标。",
-    "archiveHint": "验收：看过成果后归档收起，可在历史中恢复。待验收的任务会先记为完成再归档"
+    "archiveHint": "验收：看过成果后归档收起，可在历史中恢复。待验收的任务会先记为完成再归档",
+    "projectOverview": "项目概览",
+    "overviewBoundary": "汇总未归档任务与会话；不代表项目交付完成率",
+    "overviewPartial": "部分状态尚未核实，以下为当前可读取的数据。",
+    "metrics": {
+      "tasks": "正式任务",
+      "completed": "已完成任务",
+      "running": "执行中",
+      "needs": "需要我",
+      "review": "待验收",
+      "conversations": "独立会话"
+    },
+    "filtersLabel": "状态筛选",
+    "viewLabel": "显示方式",
+    "sortLabel": "排序",
+    "sortAttention": "优先关注",
+    "sortRecent": "最近活动",
+    "moreActions": "更多操作"
   }
 }

@@ -1213,3 +1213,7 @@ M1合并前回执修正（2026-11-02）：实际App启动失败传播、not-star
 Human requests latestdesktop package on https://101.42.11.29/moxbots/download/. Originalwebsite/cloudowner01a12b99 publishes onlystaticrelease metadata/history using immutable0.5.36/build536.1 archive302230704B/SHA06bbca4f20b7e61468d5ae5f9d3114d722e5c317288b28cae2228f2819f120f1, producer137fd178, tagv0.5.36/main1626ca58. sharedCI/main/desktop/updaterowner01a12bc2 unchanged. Preserveold0.5.27/Windowspreparing/design/allotherfiles; originalnonblocking3locks,backup,ownershipCAS/rollback. Original535session502/recovery remainsunresolved, no paidmodel/productionruntimeclaim. No secondpackagebuild/sharedCI/updater/Nginx/TLS/Hostidentity/clientinstall. Taskcurrentbranchrecordanddev-docs/website-download-0536-20261102.md; actualprivatepublication/UIevidence output/website-download-0536-20261102.
 
 WEB-DOWNLOAD-0536-20261102 production/UIclosure:0.5.36(536.1) live at20261102-web0536-e6fbdf880317; only3aggregate staticfiles,1narrow-noteSHAwraprepair.23websitechecks/13normalTLSreads/primaryIAB1440+390andoriginalRootindependentIABPASS; prior527backupretained. Existingwholepublicarchive/SHA/minisign reused andindependentlyrehash/gzipchecked; no thirdfullGET/packagechange. SourceCI/mainhandoffstilloriginalRoot01a12bc2, remoteclosurependingatthisreceiptcommit.
+
+## MB-PROJECT-OVERVIEW-20261102
+
+项目整体概览、紧凑列表与状态筛选。任务记录 `.agent-sync/tasks/codex-project-overview-20261102-531b064f.md`；桌面 CI/发布归属继续沿用 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，不得由开发分支并行触发共享 CI。

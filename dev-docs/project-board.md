@@ -59,3 +59,9 @@ HTTP activity字段progress可选，旧版state-only仍兼容。过期/失败标
 ## 共享会话的进度去重（MOXBOTS-BOARD-DEDUP-001）
 
 Task.sessionIds保留历史关联，不表示当前Query同时属于所有关联Task。每个Session的观察只装饰一张代表Task卡片：优先具体running/stopping/stop_failed执行态，其次最近执行/dispatch证据，再以创建时间和稳定ID打平。旧任务编辑updatedAt不改变代表；同一Task可独立接收多个Session。其余Task保留原状态、执行结果和原会话入口，不复制当前TODO/计时/Goal；Task自身的具体执行态不被去重。此规则只裁决展示归属，不改TaskStore、调度或Session执行权威，也不宣称证明当前Query所属Task。回归与合成页面见 `project-board-validation/dedup/`；正式056原生验收单独进行。
+
+## MB-PROJECT-OVERVIEW-20261102
+
+工作台顶部展示未归档正式任务、已完成任务、运行项、需要我、待验收及独立会话。概览不随列表筛选/搜索变化；完成任务只按 Task done 且无活跃执行/待验收状态统计，不将 TODO、普通会话或一次执行结束当项目交付百分比。列表新增状态筛选、关注优先与最近活动排序，限制摘要两行，更多操作折叠；详情保留完整进展与日志。
+
+合成页面验收使用 `PROJECT_BOARD_AUDIT_OUTPUT=<output> node dev-docs/project-board-validation/run.mjs --overview-check`，验证真实 React 组件、隔离数据及 1440/1024/768/540 布局，不代表原生安装或生产验收。发布归属与剩余门禁见 `.agent-sync/tasks/codex-project-overview-20261102-531b064f.md`。

@@ -10,11 +10,12 @@ import { actions as sessionActions } from '@/hooks/taskCenterStore';
 import { readBoardSessionActivity } from '@/features/project-board/activity';
 import { formatTime, getFolderName } from '@/utils/taskCenterUtils';
 import { useProjectBoardData } from '@/features/project-board/useProjectBoardData';
-import { projectBoardRows, filterBoardRows, boardGoalState, boardRowStateKey, type BoardGroup, type BoardRow } from '@/features/project-board/projection';
+import { projectBoardRows, projectOverview, filterBoardRows, boardGoalState, boardRowStateKey, type BoardGroup, type BoardRow } from '@/features/project-board/projection';
 import { useBoardOverlay } from '@/features/project-board/useBoardOverlay';
 import SessionWorkProgress from '@/features/project-board/SessionWorkProgress';
 import SessionExecutionTime from '@/features/project-board/SessionExecutionTime';
 import ProjectBoardDetail from '@/features/project-board/ProjectBoardDetail';
+import CustomSelect from '@/components/CustomSelect';
 import './ProjectBoard.css';
 
 const GROUPS: BoardGroup[] = ['todo', 'running', 'needs', 'done'];
@@ -33,7 +34,8 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
   const [scope, setScope] = useState<'work' | 'history'>('work');
   const [organizingId, setOrganizingId] = useState<string | null>(null);
   const [organizingError, setOrganizingError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<'all' | 'needs' | 'todo'>('all');
+  const [filter, setFilter] = useState<'all' | BoardGroup>('all');
+  const [sort, setSort] = useState<'attention' | 'recent'>('attention');
   const [query, setQuery] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<ReadonlySet<BoardGroup>>(() => new Set(['todo', 'running', 'needs', 'done', 'archived']));
@@ -49,9 +51,15 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
   const rowRefs = useRef(new Map<string, HTMLButtonElement>());
   const rows = useMemo(() => projectBoardRows({ id: project?.id, path: workspacePath }, data.tasks, data.sessions, data.activity, data.now), [project?.id, workspacePath, data.tasks, data.sessions, data.activity, data.now]);
   const scopedRows = useMemo(() => rows.filter(r => scope === 'history' ? r.group === 'archived' : r.group !== 'archived'), [rows, scope]);
-  const visible = useMemo(() => filterBoardRows(scopedRows, filter, query), [scopedRows, filter, query]);
+  const visible = useMemo(() => filterBoardRows(scopedRows, filter, query).sort((a, b) => {
+    const priority = (r: BoardRow) => r.group === 'needs' ? 0 : r.reviewReady ? 1 : r.group === 'running' ? 2 : 3;
+    return (sort === 'attention' ? priority(a) - priority(b) : 0) || b.updatedAt - a.updatedAt;
+  }), [scopedRows, filter, query, sort]);
+  const workRows = rows.filter(r => r.group !== 'archived');
+  const overview = projectOverview(workRows);
+  const overviewIncomplete = !!data.taskError || !!data.sessionError || workRows.some(r => r.confirmationReason === 'unknown');
   const selected = rows.find(r => r.id === selectedId);
-  const groups = scope === 'history' ? ['archived'] as BoardGroup[] : filter === 'todo' ? ['todo'] as BoardGroup[] : filter === 'needs' ? ['needs'] as BoardGroup[] : GROUPS;
+  const groups = scope === 'history' ? ['archived'] as BoardGroup[] : filter !== 'all' ? [filter] as BoardGroup[] : GROUPS;
   const counts = Object.fromEntries([...GROUPS, 'idle', 'inactive', 'scheduled', 'archived'].map(g => [g, scopedRows.filter(r => r.group === g).length]));
   const needCount = rows.filter(r => r.group === 'needs').length;
   const observationFailures = [...data.activity.values()].filter(a => a.error).length;
@@ -165,16 +173,22 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
       <div className="pb-actions"><button type="button" className="pb-button" onClick={data.refresh} disabled={data.checking}>{t(data.checking ? 'projectBoard.checking' : 'projectBoard.refresh')}</button>
         <button type="button" className="pb-button primary" onClick={() => window.dispatchEvent(new CustomEvent(CUSTOM_EVENTS.OPEN_TASK_CREATE, { detail: { initialMode: 'manual', source: 'task-center', defaultWorkspacePath: workspacePath } }))}><PlusIcon className="h-4 w-4" />{t('projectBoard.create')}</button></div>
     </header>
+    <section className="pb-project-overview" aria-label={t('projectBoard.projectOverview')}>
+      <div className="pb-overview-heading"><h2>{t('projectBoard.projectOverview')}</h2><span className="pb-meta">{t('projectBoard.overviewBoundary')}</span></div>
+      <div className="pb-metrics">{(['tasks', 'completed', 'running', 'needs', 'review', 'conversations'] as const).map(metric => <div className={`pb-metric ${metric}`} key={metric}><strong>{data.tasksLoading || data.sessionsLoading ? '—' : overview[metric]}</strong><span>{t(`projectBoard.metrics.${metric}`)}</span></div>)}</div>
+      {overviewIncomplete && <p className="pb-meta">{t('projectBoard.overviewPartial')}</p>}
+    </section>
     <nav className="pb-scope-tabs" aria-label={t('projectBoard.scopeLabel')}>
       {(['work', 'history'] as const).map(value => <button type="button" key={value} className="pb-scope-tab" aria-pressed={scope === value}
         onClick={() => { setScope(value); setFilter('all'); setSelectedId(null); }}>
         {t(`projectBoard.scopes.${value}`)} <span className="count">{rows.filter(r => value === 'history' ? r.group === 'archived' : r.group !== 'archived').length}</span>
       </button>)}
     </nav>
-    <div className="pb-controls"><div className="pb-control-left"><button type="button" className="pb-button" aria-pressed={view === 'board'} onClick={() => setView('board')}><GridIcon className="h-4 w-4" />{t('projectBoard.board')}</button>
-      <button type="button" className="pb-button" aria-pressed={view === 'list'} onClick={() => setView('list')}><ListIcon className="h-4 w-4" />{t('projectBoard.list')}</button>
-      {(scope === 'work' ? ['all', 'needs'] as const : ['all'] as const).map(f => <button type="button" key={f} className="pb-button" aria-pressed={filter === f} onClick={() => setFilter(f)}>{t(`projectBoard.filter.${f}`)}{f === 'needs' ? ` ${needCount}` : ''}</button>)}</div>
-      <label className="pb-search"><SearchIcon className="h-4 w-4 text-[var(--ink-muted)]" /><input ref={searchRef} type="search" aria-label={t('projectBoard.search')} placeholder={t('projectBoard.search')} value={query} onChange={e => setQuery(e.target.value)} /></label></div>
+    <div className="pb-controls"><div className="pb-control-left" role="group" aria-label={t('projectBoard.filtersLabel')}>
+      {(scope === 'work' ? ['all', 'needs', 'running', 'todo', 'done'] as const : ['all'] as const).map(f => <button type="button" key={f} className="pb-button" aria-pressed={filter === f} onClick={() => setFilter(f)}>{t(`projectBoard.filter.${f}`)}{f === 'all' ? ` ${scopedRows.length}` : ` ${counts[f]}`}</button>)}</div>
+      <div className="pb-control-right"><label className="pb-search"><SearchIcon className="h-4 w-4 text-[var(--ink-muted)]" /><input ref={searchRef} type="search" aria-label={t('projectBoard.search')} placeholder={t('projectBoard.search')} value={query} onChange={e => setQuery(e.target.value)} /></label>
+      <CustomSelect ariaLabel={t('projectBoard.sortLabel')} size="toolbar" value={sort} onChange={value => setSort(value as 'attention' | 'recent')} options={[{value:'attention',label:t('projectBoard.sortAttention')},{value:'recent',label:t('projectBoard.sortRecent')}]} />
+      <div className="pb-view-switch" role="group" aria-label={t('projectBoard.viewLabel')}><button type="button" className="pb-button" aria-pressed={view === 'board'} onClick={() => setView('board')}><GridIcon className="h-4 w-4" />{t('projectBoard.board')}</button><button type="button" className="pb-button" aria-pressed={view === 'list'} onClick={() => setView('list')}><ListIcon className="h-4 w-4" />{t('projectBoard.list')}</button></div></div></div>
     {organizingError && <div className="pb-error" role="alert">{organizingError}</div>}
     {!!observationFailures && <div className="pb-error" role="alert">{t('projectBoard.observationFailed', {count: observationFailures})}</div>}
     {data.taskError && <div className="pb-error" role="alert">{t('projectBoard.taskError')} {data.taskError}</div>}
@@ -195,7 +209,7 @@ export default function ProjectBoard({ workspacePath, isActive = true }: { works
           {scope === 'work' && filter === 'all' && auxiliaryGroups.map(({group, rows: extraRows}) => !!extraRows.length && <details key={group} className="pb-other" open={otherOpen.has(group)} onToggle={e => { const open = e.currentTarget.open; setOtherOpen(current => { const next = new Set(current); if (open) next.add(group); else next.delete(group); return next; }); }}><summary>{t(`projectBoard.groups.${group}`)} · {extraRows.length}</summary>
             <p className="pb-meta">{t(`projectBoard.${group}Hint`)}</p><div className="pb-other-grid">{extraRows.map(card)}</div></details>)}
         </> : <div className="pb-table-wrap"><table className="pb-table"><thead><tr><th>{t('projectBoard.task')}</th><th>{t('projectBoard.status')}</th><th className="summary-col">{t('projectBoard.summary')}</th><th className="time-col">{t('projectBoard.updated')}</th><th>{t('projectBoard.action')}</th></tr></thead>
-          <tbody>{visible.map(row => <tr key={row.id}><td><button type="button" ref={node => { if (node) rowRefs.current.set(row.id, node); else rowRefs.current.delete(row.id); }} className="title-button" onClick={() => select(row)}>{row.title}</button><div className="pb-meta">{t(row.task ? 'projectBoard.task' : 'projectBoard.conversation')}</div><SessionWorkProgress snapshot={row.activity} now={data.now} /></td><td><span className={`pb-badge ${row.group}`}>{rowState(row)}</span><SessionExecutionTime snapshot={row.activity} now={data.now} /></td><td className="summary-col summary">{row.summary}</td><td className="time-col pb-meta">{formatTime(new Date(row.updatedAt).toISOString())}</td><td><button type="button" className="pb-button" onClick={() => select(row)}>{t('projectBoard.details')}</button>{canConvert(row) && <button type="button" className="pb-card-action" disabled={!!organizingId} title={t('projectBoard.convertHint')} onClick={() => { void convertToTask(row); }}>{t('projectBoard.convert')}</button>}{canOrganize(row) && <button type="button" className="pb-card-action" disabled={!!organizingId} title={row.group === 'archived' ? undefined : t('projectBoard.archiveHint')} onClick={() => { void organize(row); }}>{t(row.group === 'archived' ? 'projectBoard.restore' : 'projectBoard.archive')}</button>}{row.sessions.length === 1 && <button type="button" className="pb-card-action pb-enter-session" onClick={() => openSession(row.sessions[0].id)} aria-label={t('projectBoard.enterSessionFor', { title: row.sessions[0].title })}>{t('projectBoard.enterSession')} ↗</button>}</td></tr>)}</tbody></table></div>}
+          <tbody>{visible.map(row => <tr key={row.id}><td><button type="button" ref={node => { if (node) rowRefs.current.set(row.id, node); else rowRefs.current.delete(row.id); }} className="title-button" onClick={() => select(row)}>{row.title}</button><div className="pb-meta">{t(row.task ? 'projectBoard.task' : 'projectBoard.conversation')}</div><SessionWorkProgress snapshot={row.activity} now={data.now} /></td><td><span className={`pb-badge ${row.group}`}>{rowState(row)}</span><SessionExecutionTime snapshot={row.activity} now={data.now} /></td><td className="summary-col summary"><div className="pb-summary-text" title={row.summary}>{row.summary || t('projectBoard.noSummary')}</div></td><td className="time-col pb-meta">{formatTime(new Date(row.updatedAt).toISOString())}</td><td className="pb-row-actions"><button type="button" className="pb-button" onClick={() => select(row)}>{t('projectBoard.details')}</button><details className="pb-row-menu"><summary aria-label={t('projectBoard.moreActions')}>⋯</summary><div>{canConvert(row) && <button type="button" className="pb-card-action" disabled={!!organizingId} title={t('projectBoard.convertHint')} onClick={() => { void convertToTask(row); }}>{t('projectBoard.convert')}</button>}{canOrganize(row) && <button type="button" className="pb-card-action" disabled={!!organizingId} title={row.group === 'archived' ? undefined : t('projectBoard.archiveHint')} onClick={() => { void organize(row); }}>{t(row.group === 'archived' ? 'projectBoard.restore' : 'projectBoard.archive')}</button>}{row.sessions.length === 1 && <button type="button" className="pb-card-action pb-enter-session" onClick={() => openSession(row.sessions[0].id)} aria-label={t('projectBoard.enterSessionFor', { title: row.sessions[0].title })}>{t('projectBoard.enterSession')} ↗</button>}</div></details></td></tr>)}</tbody></table></div>}
       </div>
       <footer className="pb-footer"><span>{data.checkedAt ? t('projectBoard.snapshotAt', { time: formatTime(new Date(data.checkedAt).toISOString()) }) : t('projectBoard.snapshotPending')}{unknownCount ? ` · ${t('projectBoard.unknownCount', { count: unknownCount })}` : ''}</span>
         <span>{data.unobservedCount ? t('projectBoard.boundedSnapshot', { count: data.unobservedCount }) : t('projectBoard.snapshotHint')}</span></footer>

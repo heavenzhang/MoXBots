@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { Task } from '@/../shared/types/task';
 import type { SessionMetadata } from '@/api/sessionClient';
-import { boardRowStateKey, filterBoardRows, INACTIVE_AFTER_MS, RECENT_FINISH_MS, projectBoardRows, freshActivity, sessionExecutionTime, type ActivitySnapshot } from './projection';
+import { projectOverview, boardRowStateKey, filterBoardRows, INACTIVE_AFTER_MS, RECENT_FINISH_MS, projectBoardRows, freshActivity, sessionExecutionTime, type ActivitySnapshot } from './projection';
 const now = 100000;
 const task = (fields: Partial<Task> = {}): Task => ({ id: 't1', name: 'Task', executor: 'agent', workspaceId: 'p', workspacePath: '/work/p', executionMode: 'once', sessionIds: ['s1'], status: 'running', tags: [], createdAt: now, updatedAt: now, statusHistory: [], dispatchOrigin: 'direct', ...fields });
 const session = (fields: Partial<SessionMetadata> = {}): SessionMetadata => ({ id: 's1', title: 'Conversation', agentDir: '/work/p', createdAt: new Date(now).toISOString(), lastActiveAt: new Date(now).toISOString(), ...fields });
@@ -198,5 +198,22 @@ describe('project board authority projection', () => {
     const rows = projectBoardRows({path:'/work/p'},[task({id:'probe',executionMode:'recurring',executionState:'checking',sessionIds:[]}),task({id:'once',executionState:'checking',sessionIds:[]})],[],new Map(),now);
     expect(Object.fromEntries(rows.map(r=>[r.task?.id,r.group]))).toEqual({probe:'scheduled',once:'running'});
     expect(boardRowStateKey(rows.find(r=>r.task?.id==='probe')!,now)).toBe('projectBoard.checkingTrigger');
+  });
+});
+
+describe('project overview evidence boundaries', () => {
+  it('keeps accepted tasks separate from verifying tasks and finished conversations', () => {
+    const rows = projectBoardRows({path:'/work/p'}, [task({id:'accepted',status:'done',sessionIds:[]}),task({id:'review',status:'verifying',sessionIds:[]})], [session()], new Map([['s1',{state:'idle',checkedAt:now}]]), now);
+    const overview = projectOverview(rows);
+    expect(overview.tasks).toBe(2);
+    expect(overview.completed).toBe(1);
+    expect(overview.conversations).toBe(1);
+    expect(overview.review).toBeGreaterThanOrEqual(1);
+  });
+  it('does not count a done Task with an active Goal as completed', () => {
+    const rows = projectBoardRows({path:'/work/p'}, [task({status:'done'})], [session()], new Map([['s1',{state:'idle',checkedAt:now,goal:{checkedAt:now,value:{status:'active',isExecuting:true}}}]]), now);
+    expect(projectOverview(rows)).toMatchObject({tasks:1,completed:0,running:1});
+    expect(filterBoardRows(rows,'running','')).toHaveLength(1);
+    expect(filterBoardRows(rows,'done','')).toHaveLength(0);
   });
 });

@@ -160,10 +160,9 @@ export function projectBoardRows(
   return rows.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
 }
 
-export function filterBoardRows(rows: readonly BoardRow[], filter: 'all' | 'needs' | 'todo', query: string): BoardRow[] {
+export function filterBoardRows(rows: readonly BoardRow[], filter: 'all' | BoardGroup, query: string): BoardRow[] {
   const needle = query.trim().toLocaleLowerCase();
-  return rows.filter(row => (filter === 'all' || filter === 'needs' && row.group === 'needs'
-    || filter === 'todo' && row.group === 'todo')
+  return rows.filter(row => (filter === 'all' || row.group === filter)
     && (!needle || `${row.title} ${row.summary} ${row.task?.tags.join(' ') ?? ''}`.toLocaleLowerCase().includes(needle)));
 }
 
@@ -177,4 +176,18 @@ export function boardRowStateKey(row: BoardRow, now: number): string {
   if (row.group === 'archived') return 'projectBoard.groups.archived';
   if (row.task) return `badges.status.${row.task.status}`;
   return freshActivity(row.activity, now) ? 'projectBoard.idle' : 'projectBoard.unknown';
+}
+
+/** Counts execution evidence separately from accepted Task completion. Conversations
+ * and TODO items cannot establish project delivery or its percentage. */
+export function projectOverview(rows: readonly BoardRow[]) {
+  const tasks = rows.filter(row => row.task);
+  return {
+    tasks: tasks.length,
+    completed: tasks.filter(row => row.task?.status === 'done' && row.group === 'done' && !row.reviewReady).length,
+    review: rows.filter(row => row.reviewReady || row.confirmationReason === 'verification').length,
+    running: rows.filter(row => row.group === 'running').length,
+    needs: rows.filter(row => row.group === 'needs').length,
+    conversations: rows.filter(row => !row.task).length,
+  };
 }
