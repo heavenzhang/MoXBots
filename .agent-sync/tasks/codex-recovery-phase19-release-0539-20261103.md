@@ -17,7 +17,7 @@ Deliver the reviewed Phase19 connection-establishment recovery through the exist
 - [ ] Synchronize actual main after the already active Host fix PR242 and resolve candidate membership before freeze. Host deployment remains separate.
 - [ ] Exact-source CI, applicable independent ARM admission, verified remote main and immutable version/tag/artifact.
 - [ ] Once-only formal build/sign/notary/archive, normal maintenance backup/rollback and installation by desktop owner.
-- [ ] Bounded original-session validation with fresh execution identities; preserve completed/unknown actions, histories and user work. Native UI currently deferred by direct user reply while using the app; source/build preparation continues.
+- [ ] Bounded original-session validation with fresh execution identities; preserve completed/unknown actions, histories and user work. The October31 16:07Z UI pause was revoked by the direct October31 16:30Z reply authorizing original publisher installation and verification, with later November1 confirmations. Continue normal authorized maintenance, fresh activity checks and backup; do not treat that old pause as current.
 
 ## Next step
 
