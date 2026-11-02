@@ -1,0 +1,30 @@
+{
+  "task": "MB-CROSS-END-WORKFLOW-01",
+  "base": "186f88dc942607ddb5e58db158b294c37f0ad83d",
+  "scope": "mobile only first batch, not complete V10",
+  "policy": {
+    "pass": 117,
+    "fail": 0
+  },
+  "typecheck": "pass",
+  "scopedLint": "pass",
+  "browser": {
+    "realProductComponent": true,
+    "data": "local QA synthetic",
+    "nativeRequests": false,
+    "viewports": [
+      {
+        "cssWidth": 390,
+        "scrollWidth": 390
+      },
+      {
+        "cssWidth": 320,
+        "scrollWidth": 320
+      }
+    ],
+    "visibleTurnCompletionBoundary": true,
+    "openOriginalSession": true,
+    "consoleErrors": []
+  },
+  "nativeInstall": "pending original owner"
+}

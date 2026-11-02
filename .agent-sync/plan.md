@@ -1222,3 +1222,8 @@ WEB-DOWNLOAD-0536-20261102 production/UIclosure:0.5.36(536.1) live at20261102-we
 原R3计划已校正：R1/M1/M2实际已主干/发行，M2隔离原生与下载链通过；M3真实群组与任务交接尚未实现。先完成P0导航可用性，再P1群组单一收件Bot、一次真实交接/成果/review，后续跨端。29定向/tsc/lint/分类/本地renderer build、Root实际组件深浅/390px/过滤/原ID/错误恢复/键盘通过；独立源码/静态视觉无P1/P2，其live浏览器不可用不标通过，真实原生留待新包。
 
 本轮新安装授权已由原desktop owner完成0.5.37/537.1本机替换、备份与重启，Root版本/进程/摘要/签名复核通过；不含本轮NAV。0.5.37原会话502/unknown和stable晋级另追踪，stable仍0.5.36。唯一desktop/macOS-arm64/updater/sharedCI/main/安装owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发仅提交精确源/本地证据，请原owner下一未冻结UI候选统一CI/main/包/安装，不另分配版本、不覆盖冻结包。不涉及mobile/cloud/Host/website发布，也不混入dirty cross-end/group工作树。
+
+
+## MB-CROSS-END-WORKFLOW-01 / mobile test install 20261103
+
+User explicitly requests the improvement on their current phone. Isolatedcodex/mobile-workflow-release-20261103 starts main186f88dc and extracts only3mobile files from95390685, adding actually visible status detail. Originaldesktop pending batch stays separate.117policy/type/lint and actual320/390Expo QA product-page pass; no real-provider/phone acceptance yet. OriginalsharedCI/mainowner01a12bc2-907a-7702-b6dd-788225c5dfe4 and mobilebuild/installowner01a12b99-7b38-78b1-831f-9c60257d386a remain; build9 reserved by mobile owner, developer allocates no version or CI. No dailyMac/original101 changes; targetKevin iPhone16ProMax per current connection and originalowner latest installed target. This is V10first-batch semantics, not completeV10. Evidence dev-docs/mobile-workflow-release-20261103/acceptance.md and currentbranch taskrecord.
