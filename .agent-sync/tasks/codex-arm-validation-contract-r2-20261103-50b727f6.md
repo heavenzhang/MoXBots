@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=33e0bdc33a4652825e4fe0c312cbb26a1118d95df19980098c41e10cb8c1ddc6 -->
+<!-- git-project-sync-task:source-digest=076a4b2f1dcfe4e4e149cdcc4626d95eb46caee30c9000ab3459716f30cdd18c -->
 <!-- git-project-sync-task:id=ca72c644-c0f2-4924-af1e-584b3e1b608d -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/arm-validation-contract-r2-20261103 -->
@@ -13,13 +13,15 @@ Define explicit hosted ARM and local ARM validation environments for the 0.5.38 
 
 ## Acceptance criteria
 
-- Exact environment and source/lock identity fail-closed; negative tests; independent review; exact candidate CI and local native evidence; safe installation. Hosted cancellation remains recorded.
+- Exact environment and source/lock identity fail-closed; negative tests; independent review; exact candidate CI and local native evidence; safe installation. Hosted cancellation remains recorded. Source-controlled admission criteria in dev-docs/arm-validation-20261103.md.
 
 ## Completed
 
 - Original NAV source merged in main; 538.1 candidate has two hosted ARM acquisitions cancelled. Prior exact candidate local ARM supplement passed 12 product checks under Xcode27.1.
 
 ## Verification
+
+- Source digest: `076a4b2f1dcfe4e4e149cdcc4626d95eb46caee30c9000ab3459716f30cdd18c`; Source contract tests 6 passed; admission distinguishes hosted cancellation, local evidence and stable gate; exact source local suite pending.
 
 - Source digest: `33e0bdc33a4652825e4fe0c312cbb26a1118d95df19980098c41e10cb8c1ddc6`; Node contract tests 6 passed including five lock coverage; git diff --check passed; exact candidate local full suite pending.
 
