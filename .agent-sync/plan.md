@@ -1213,3 +1213,12 @@ M1合并前回执修正（2026-11-02）：实际App启动失败传播、not-star
 Human requests latestdesktop package on https://101.42.11.29/moxbots/download/. Originalwebsite/cloudowner01a12b99 publishes onlystaticrelease metadata/history using immutable0.5.36/build536.1 archive302230704B/SHA06bbca4f20b7e61468d5ae5f9d3114d722e5c317288b28cae2228f2819f120f1, producer137fd178, tagv0.5.36/main1626ca58. sharedCI/main/desktop/updaterowner01a12bc2 unchanged. Preserveold0.5.27/Windowspreparing/design/allotherfiles; originalnonblocking3locks,backup,ownershipCAS/rollback. Original535session502/recovery remainsunresolved, no paidmodel/productionruntimeclaim. No secondpackagebuild/sharedCI/updater/Nginx/TLS/Hostidentity/clientinstall. Taskcurrentbranchrecordanddev-docs/website-download-0536-20261102.md; actualprivatepublication/UIevidence output/website-download-0536-20261102.
 
 WEB-DOWNLOAD-0536-20261102 production/UIclosure:0.5.36(536.1) live at20261102-web0536-e6fbdf880317; only3aggregate staticfiles,1narrow-noteSHAwraprepair.23websitechecks/13normalTLSreads/primaryIAB1440+390andoriginalRootindependentIABPASS; prior527backupretained. Existingwholepublicarchive/SHA/minisign reused andindependentlyrehash/gzipchecked; no thirdfullGET/packagechange. SourceCI/mainhandoffstilloriginalRoot01a12bc2, remoteclosurependingatthisreceiptcommit.
+
+
+## MB-BOT-NAV-20261102 — M2.1 会话导航紧急整理与原规划校正
+
+用户要求替换本机最新包、复核最初规划，并立即解决左侧会话难以辨认。隔离codex/bot-nav-cleanup-20261102基于main589351245610910476fb4f1328b7c8d4f83da203；两行主题优先、Bot/项目归属、置顶/未读/最近互斥分组、Bot/项目筛选、单一新项目入口。保持原Session打开owner与冻结项目快照，无历史迁移/删除、模型调用或新存储。任务`.agent-sync/tasks/codex-bot-nav-cleanup-20261102-79bcc06a.md`，验收`dev-docs/bot-navigation-20261102/ACCEPTANCE.md`。
+
+原R3计划已校正：R1/M1/M2实际已主干/发行，M2隔离原生与下载链通过；M3真实群组与任务交接尚未实现。先完成P0导航可用性，再P1群组单一收件Bot、一次真实交接/成果/review，后续跨端。29定向/tsc/lint/分类/本地renderer build、Root实际组件深浅/390px/过滤/原ID/错误恢复/键盘通过；独立源码/静态视觉无P1/P2，其live浏览器不可用不标通过，真实原生留待新包。
+
+本轮新安装授权已由原desktop owner完成0.5.37/537.1本机替换、备份与重启，Root版本/进程/摘要/签名复核通过；不含本轮NAV。0.5.37原会话502/unknown和stable晋级另追踪，stable仍0.5.36。唯一desktop/macOS-arm64/updater/sharedCI/main/安装owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发仅提交精确源/本地证据，请原owner下一未冻结UI候选统一CI/main/包/安装，不另分配版本、不覆盖冻结包。不涉及mobile/cloud/Host/website发布，也不混入dirty cross-end/group工作树。
