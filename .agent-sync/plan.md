@@ -1207,3 +1207,7 @@ M1合并前回执修正（2026-11-02）：实际App启动失败传播、not-star
 ### M2 本轮合并与下载发布授权（2026-11-02）
 
 用户明确要求继续本轮、合入主干、打新包并更新现有下载通道。Root在原M2分支整合最新main52405a701（0.5.35恢复，保留既有修复），原desktop/macOS/updater/sharedCI/main owner01a12bc2继续唯一负责版本/候选CI/签名公证/制品/通道/回滚；不覆盖旧版本与冻结制品，不中断活动业务会话。验证和主干/包/下载通道逐项记录；不以源码或HTTP200替代真实验收。
+
+## WEB-DOWNLOAD-0536-20261102 · original website owner
+
+Human requests latestdesktop package on https://101.42.11.29/moxbots/download/. Originalwebsite/cloudowner01a12b99 publishes onlystaticrelease metadata/history using immutable0.5.36/build536.1 archive302230704B/SHA06bbca4f20b7e61468d5ae5f9d3114d722e5c317288b28cae2228f2819f120f1, producer137fd178, tagv0.5.36/main1626ca58. sharedCI/main/desktop/updaterowner01a12bc2 unchanged. Preserveold0.5.27/Windowspreparing/design/allotherfiles; originalnonblocking3locks,backup,ownershipCAS/rollback. Original535session502/recovery remainsunresolved, no paidmodel/productionruntimeclaim. No secondpackagebuild/sharedCI/updater/Nginx/TLS/Hostidentity/clientinstall. Taskcurrentbranchrecordanddev-docs/website-download-0536-20261102.md; actualprivatepublication/UIevidence output/website-download-0536-20261102.
