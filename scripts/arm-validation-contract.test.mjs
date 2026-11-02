@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { cleanStatus, profiles, requiredWorkflowFragments, validate } from './arm-validation-contract.mjs';
+import { cleanStatus, lockPaths, profiles, requiredWorkflowFragments, validate } from './arm-validation-contract.mjs';
 const base = { arch: 'arm64', xcode: profiles['local-macos-arm-27.1'].xcode, sdk: ['27.0','27.1','27.1'], rustRelease: '1.92.0', rustHost: 'aarch64-apple-darwin', nodeMajor: '24', source: 'a'.repeat(40), tree: 'b'.repeat(40), clean: true, locksMatch: true };
 test('accepts exact local and hosted ARM environments only', () => {
   assert.equal(validate('local-macos-arm-27.1', base), true);
@@ -37,6 +37,9 @@ test('full hosted product check list remains present', () => {
   const workflow = readFileSync('.github/workflows/test.yml','utf8');
   for (const fragment of requiredWorkflowFragments) assert.ok(workflow.includes(fragment), fragment);
   for (const sdk of ['macosx', 'iphoneos', 'iphonesimulator']) assert.ok(workflow.includes(`test "$(xcrun --sdk ${sdk} --show-sdk-version)" = 26.2`));
+});
+test('all independently locked components in the product checks are captured', () => {
+  for (const path of ['package-lock.json', 'src-tauri/Cargo.lock', 'src-tauri/document-worker/Cargo.lock', 'src-tauri/agent-network-crypto/Cargo.lock', 'mobile/connection/Cargo.lock']) assert.ok(lockPaths.includes(path));
 });
 test('local product checklist preserves each original workflow command', async () => {
   const { productSteps } = await import('./arm-validation-product-steps.mjs');

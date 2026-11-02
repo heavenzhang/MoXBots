@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=03e317a07e99bf71175df80a5300906480f967377afd8d9798021c2cad1e4103 -->
+<!-- git-project-sync-task:source-digest=33e0bdc33a4652825e4fe0c312cbb26a1118d95df19980098c41e10cb8c1ddc6 -->
 <!-- git-project-sync-task:id=ca72c644-c0f2-4924-af1e-584b3e1b608d -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/arm-validation-contract-r2-20261103 -->
@@ -20,6 +20,8 @@ Define explicit hosted ARM and local ARM validation environments for the 0.5.38 
 - Original NAV source merged in main; 538.1 candidate has two hosted ARM acquisitions cancelled. Prior exact candidate local ARM supplement passed 12 product checks under Xcode27.1.
 
 ## Verification
+
+- Source digest: `33e0bdc33a4652825e4fe0c312cbb26a1118d95df19980098c41e10cb8c1ddc6`; Node contract tests 6 passed including five lock coverage; git diff --check passed; exact candidate local full suite pending.
 
 - Source digest: `03e317a07e99bf71175df80a5300906480f967377afd8d9798021c2cad1e4103`; Node contract tests 5 passed including placeholder integrity and dirty-worktree negatives; node --check and git diff --check passed; exact candidate CI pending.
 

@@ -8,6 +8,7 @@ export const profiles = Object.freeze({
   'local-macos-arm-27.1': Object.freeze({ arch: 'arm64', xcode: 'Xcode 27.1\nBuild version 27A9275', sdk: ['27.0', '27.1', '27.1'] }),
 });
 export const rustHost = 'aarch64-apple-darwin';
+export const lockPaths = Object.freeze(['package-lock.json', 'src-tauri/Cargo.lock', 'src-tauri/document-worker/Cargo.lock', 'src-tauri/agent-network-crypto/Cargo.lock', 'mobile/connection/Cargo.lock']);
 export const requiredWorkflowFragments = Object.freeze([
   'node mobile/scripts/check-ios-native.mjs',
   'node scripts/prepare-cliproxy.mjs',
@@ -40,9 +41,8 @@ export function observe(profile, { allowLocalPlaceholder = false } = {}) {
   const source = read('git', ['rev-parse', 'HEAD']);
   const tree = read('git', ['rev-parse', 'HEAD^{tree}']);
   const rust = read('rustc', ['+1.92.0', '-vV']);
-  const locks = ['package-lock.json', 'src-tauri/Cargo.lock', 'src-tauri/document-worker/Cargo.lock', 'mobile/connection/Cargo.lock'];
-  const locksMatch = locks.every(p => read('git', ['hash-object', p]) === read('git', ['rev-parse', `HEAD:${p}`]));
-  const lockfiles = Object.fromEntries(locks.map(p => [p, createHash('sha256').update(readFileSync(p)).digest('hex')]));
+  const locksMatch = lockPaths.every(p => read('git', ['hash-object', p]) === read('git', ['rev-parse', `HEAD:${p}`]));
+  const lockfiles = Object.fromEntries(lockPaths.map(p => [p, createHash('sha256').update(readFileSync(p)).digest('hex')]));
   const status = read('git', ['status', '--porcelain']);
   const clean = cleanStatus(status, { allowLocalPlaceholder });
   const observed = { source, tree, lockfiles, arch: read('uname', ['-m']), xcode: read('xcodebuild', ['-version']), nodeMajor: process.versions.node.split('.')[0],
