@@ -482,8 +482,11 @@ impl ManagementIpc {
         })
         .await
         .map_err(|_| NetworkError::new("HOST_MANAGEMENT_UNAVAILABLE"))?;
-        let connection = slot
-            .as_mut()
+        // Own the stream while an exchange is in flight. If this future is
+        // cancelled, dropping it closes the stream before another request can
+        // consume a late response under a different request ID or authority.
+        let mut connection = slot
+            .take()
             .ok_or_else(|| NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED"))?;
         let result = async {
             if connection
@@ -533,8 +536,8 @@ impl ManagementIpc {
             Ok(result) => result,
             Err(_) => Err(NetworkError::new("HOST_MANAGEMENT_UNCONFIRMED")),
         };
-        if result.is_err() {
-            *slot = None;
+        if result.is_ok() {
+            *slot = Some(connection);
         }
         result
     }
@@ -902,6 +905,63 @@ mod tests {
                 code: "OWNER_OPERATION_FAILED".into()
             }
         );
+    }
+
+    #[tokio::test]
+    async fn cancelled_local_source_retires_stream_before_next_request() {
+        let uid = unsafe { libc::geteuid() };
+        let (_dir, config) = test_endpoint(uid);
+        let ipc = Arc::new(ManagementIpc::bind_inner(&config, true).unwrap());
+        let mut old_node = UnixStream::connect(&config.socket).await.unwrap();
+        let binding = uuid::Uuid::new_v4().to_string();
+        let authority = LocalSourceAuthority {
+            connection: ConnectionScope {
+                service_id: "s".into(),
+                network_id: "n".into(),
+                boot_epoch: "b".into(),
+                connection_epoch: uuid::Uuid::new_v4().to_string(),
+            },
+            local: DeviceScope {
+                service_id: "s".into(),
+                environment: "t".into(),
+                network_id: "n".into(),
+                principal_id: "p".into(),
+                device_id: "d".into(),
+                key_generation: 1,
+            },
+            account_binding: binding.clone(),
+            management_binding: binding,
+        };
+        {
+            let first = ipc.request_local_source(
+                CanonicalUuid::new(uuid::Uuid::new_v4()),
+                authority.clone(),
+                LocalSourceOperation::Peek,
+            );
+            tokio::pin!(first);
+            tokio::select! {
+                result = &mut first => panic!("first exchange returned before cancellation: {result:?}"),
+                _old = read_message(&mut old_node) => {},
+            }
+        } // Drop the pending future after its request is on the wire.
+        let mut buf = [0u8; 1];
+        let n = tokio::time::timeout(Duration::from_millis(500), old_node.read(&mut buf))
+            .await
+            .expect("cancelled request must close its stream")
+            .unwrap();
+        assert_eq!(n, 0);
+        let mut new_node = UnixStream::connect(&config.socket).await.unwrap();
+        let request = ipc.request_local_source(
+            CanonicalUuid::new(uuid::Uuid::new_v4()),
+            authority,
+            LocalSourceOperation::Peek,
+        );
+        let responder = async {
+            let request = read_message(&mut new_node).await;
+            send_message(&mut new_node, &serde_json::json!({"kind":"local-source-response","requestId":request["requestId"],"authority":request["authority"],"result":{"kind":"source.empty"}})).await;
+        };
+        let (result, _) = tokio::join!(request, responder);
+        assert_eq!(result.unwrap(), serde_json::json!({"kind":"source.empty"}));
     }
 
     #[tokio::test]
