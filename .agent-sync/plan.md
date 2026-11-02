@@ -1231,3 +1231,8 @@ User explicitly requests the improvement on their current phone. Isolatedcodex/m
 ## MOBILE-WORKFLOW-RELEASE-20261103 — mobile build9
 
 Human requests first mobile workflow wording/detail changes on Kevin iPhone; original mobileowner01a12b99 reserves0.2.1-rc.1/platform9 on producer2e2b6194. Original sharedCI/mainowner01a12bc2 reviews/integrates metadata+source once before immutable native/JS build/sign/install by mobileowner. Not completeV10; oldbuild8 preserved, no dailyMac/Xu/101identity/config/business sends. Recorddev-docs/mobile-workflow-release-20261103/release9.md and taskcodex-mobile-build9-20261103.md. Source/CI/main/artifact/physical checks separate.
+
+
+## Recovery Phase20 desktop owner intake — 2026-11-03
+
+Desktop/macOS-arm64/updater/shared CI/main remains solely01a12bc2-907a-7702-b6dd-788225c5dfe4. Selected producer74459ca78cd1bccd8cea0c20e49ee8443632476a at mainc79dd55; new isolated branchcodex/release-recovery-0540-r1-20261103 reserves0.5.40/build540.1. Root additionally reproduced four valid-response selection races and guards original session/model/provider/mode after each awaited classifier result. Exact local/CI/main/formal/native gates remain separate;539.1 immutable QA and stable0.5.36 unchanged. Temporary-review prevention does not restore historical salary execution; original source owner prepares snapshot/CAS recovery separately, reviewed before installation. No cloud/website/Host/mobile deployment or stable promotion in this intake. See taskcodex-release-recovery-0540-r1-20261103-1903b11b and dev-docs/reliability-20261028/release-0540-root-intake.md.

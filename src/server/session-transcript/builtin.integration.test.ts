@@ -434,6 +434,42 @@ describe('first desktop execution intent utility', () => {
     },
   );
 
+  it.each(['first-mode', 'retry-mode', 'retry-model', 'retry-provider'] as const)(
+    'rejects a valid intent returned after its original selection changes (%s)', async change => {
+      const workspace = join(state.home, 'intent-selection-change');
+      await mkdir(workspace);
+      const meta = await store.createSession(workspace, { runtime: 'builtin', modelMode: 'auto' });
+      await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: true });
+      const config = await import('../builtin-session/config');
+      config.setModel('synthetic-current');
+      config.setProviderEnv({ providerId: 'synthetic-provider', baseUrl: 'https://provider.invalid', apiKey: 'synthetic-only' });
+      const router = await import('../auto-route/router');
+      const catalog = router.buildAutoRouteCatalog();
+      vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({ ...catalog,
+        settings: { classifier: { providerId: 'synthetic-provider', model: 'synthetic-current' } } });
+      const valid = JSON.stringify({ kind: 'execute', objective: 'Verify artifact', scope: 'Local only',
+        acceptanceCriteria: ['Verified artifact'], steps: ['Read artifact'], continuationOf: null, preserveExecution: false });
+      const transport = vi.fn(async () => {
+        if (change !== 'first-mode' && transport.mock.calls.length === 1) return 'Not JSON';
+        if (change.endsWith('mode')) await store.updateSessionMetadata(meta.id, { modelMode: 'manual' });
+        else if (change === 'retry-model') config.setModel('synthetic-new-model');
+        else config.setProviderEnv({ providerId: 'synthetic-new-provider', baseUrl: 'https://other.invalid', apiKey: 'synthetic-only' });
+        return valid;
+      });
+      vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(transport);
+      const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
+      const { classifySessionExecutionIntent } = await import('../session-engine/session-execution');
+      const failure = vi.fn();
+      const result = await classifySessionExecutionIntent(engine, { sessionId: meta.id, workspacePath: workspace,
+        scenario: { type: 'desktop' }, text: 'Verify the local artifact' }, new AbortController().signal, failure);
+      expect(result).toBeUndefined();
+      expect(failure).toHaveBeenCalledExactlyOnceWith('cancelled');
+      expect(transport).toHaveBeenCalledTimes(change === 'first-mode' ? 1 : 2);
+      expect(state.sdkInputs).toHaveLength(0);
+      expect(store.getSessionMetadata(meta.id)?.taskOrchestration?.execution).toBeUndefined();
+    },
+  );
+
   it('returns a failed intent admission before the native SDK or product turn starts', async () => {
     const workspace = join(state.home, 'rejected-intent');
     await mkdir(workspace);

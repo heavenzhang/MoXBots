@@ -335,6 +335,9 @@ export function createBuiltinSessionEngine(): SessionEngine {
       const catalog = buildAutoRouteCatalog();
       const sessionId = getSessionId();
       const mode = normalizeModelMode(getSessionMetadata(sessionId)?.modelMode);
+      const selectionIsCurrent = () => getSessionId() === sessionId
+        && getSessionModel() === model && getSessionProviderId() === providerId
+        && normalizeModelMode(getSessionMetadata(sessionId)?.modelMode) === mode;
       let classifier = mode === 'auto' && isAutoRoutingEnabled(catalog.settings)
           ? pickAutoClassifier(catalog.table, catalog.settings, current)
           : current;
@@ -361,6 +364,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
         let invalid: import('../../shared/sessionExecution').ExecutionIntentFailure | undefined;
         for (let attempt = 0; attempt < (task.validateResult ? 2 : 1); attempt++) {
           if (controller.signal.aborted || Date.now() >= deadlineAt) { timedOut ||= !task.signal?.aborted; failed(); return null; }
+          if (!selectionIsCurrent()) { task.onFailure?.('cancelled'); return null; }
           let text: string | null = null;
           let transportFailure = false;
           try {
@@ -380,6 +384,10 @@ export function createBuiltinSessionEngine(): SessionEngine {
             invalid = error instanceof ClassifierTransportError && error.reason === 'output_limit' ? 'output_limit' : 'transport';
           }
           if (controller.signal.aborted) { failed(); return null; }
+          // A valid result is still stale if selection changed while awaiting
+          // transport. Check every response, not only a failed first attempt.
+          if (!selectionIsCurrent()) { task.onFailure?.('cancelled'); return null; }
+          if (Date.now() >= deadlineAt) { timedOut = true; abort(); failed(); return null; }
           if (!transportFailure) invalid = !text?.trim() ? 'empty_response' : task.validateResult?.(text);
           if (!invalid) return text;
           if (!task.validateResult) { task.onFailure?.(invalid); return null; }
@@ -393,8 +401,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
           // remains enabled in the actual pool. Manual stays on its chosen model.
           // Fresh directory membership cannot be replaced by model-name inference.
           const fresh = buildAutoRouteCatalog();
-          if (getSessionId() !== sessionId || getSessionModel() !== model || getSessionProviderId() !== providerId
-            || normalizeModelMode(getSessionMetadata(sessionId)?.modelMode) !== mode) {
+          if (!selectionIsCurrent()) {
             task.onFailure?.('cancelled'); return null;
           }
           if (current && normalizeModelMode(getSessionMetadata(getSessionId())?.modelMode) === 'auto'
