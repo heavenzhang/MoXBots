@@ -1,8 +1,10 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderEnv } from '../provider-types';
+import { createBridgeHandler } from '../openai-bridge/handler';
 
 const fixture = vi.hoisted(() => ({ config: {} as Record<string, unknown>,
-  providers: {} as Record<string, unknown>, envs: {} as Record<string, unknown> }));
+  providers: {} as Record<string, unknown>, envs: {} as Record<string, unknown>, fetch: vi.fn() }));
+vi.mock('undici', async original => ({ ...await original<typeof import('undici')>(), fetch: (...args: unknown[]) => fixture.fetch(...args) }));
 vi.mock('../utils/admin-config', () => ({
   loadConfig: () => fixture.config,
   findEffectiveProvider: (id: string) => fixture.providers[id],
@@ -12,6 +14,7 @@ vi.mock('../utils/admin-config', () => ({
   materializeProviderRouteEnv: (route: { providerId: string }) => fixture.envs[route.providerId],
 }));
 vi.mock('../utils/model-capabilities', () => ({ lookupModelCapability: () => undefined, lookupProviderModelContextLength: () => undefined }));
+vi.mock('../proxy-state', () => ({ getProxyForProviderUrl: () => undefined, getProxyForUrl: () => undefined }));
 import { createSessionModelFailover as createController, sessionApiFailoverEligible } from './model-failover';
 
 describe('Session API failover authority', () => {
@@ -28,6 +31,60 @@ describe('Session API failover authority', () => {
     fixture.envs = { backup: { providerId: 'backup', baseUrl: 'http://backup.test', apiKey: 'fixture-backup' } };
   });
   const request = () => new Request('http://127.0.0.1/bridge/test/v1/messages', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'synthetic text' }], max_tokens: 10 }) });
+  afterEach(() => { vi.useRealTimers(); fixture.fetch.mockReset(); });
+  it.each(['already-unknown', 'unknown-after-election', 'slow-election', 'normal-bound', 'cancel', 'fast-retry'])('uses the live recovery authority for elected backup headers: %s', async scenario => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    let retryAllowed = scenario === 'unknown-after-election';
+    let backupCalls = 0;
+    let lastSignal: AbortSignal | undefined;
+    const nativeFetch = vi.fn(async (url: string, init: RequestInit) => {
+      if (url.includes('primary.test')) return new Response('{}', { status: 502 });
+      backupCalls++;
+      if (backupCalls === 1 && scenario !== 'slow-election' || backupCalls === 3) return new Response('{"content":[{"type":"text","text":"continued"}]}');
+      lastSignal = init.signal!;
+      return new Promise<Response>((resolve, reject) => {
+        const abort = () => { clearTimeout(timer); reject(new DOMException('Aborted', 'AbortError')); };
+        const timer = setTimeout(() => {
+          lastSignal!.removeEventListener('abort', abort);
+          resolve(new Response('{"content":[{"type":"text","text":"continued"}]}'));
+        }, scenario === 'normal-bound' ? 300_001 : 35_000);
+        lastSignal!.addEventListener('abort', abort, { once: true });
+      });
+    });
+    fixture.fetch.mockImplementation(nativeFetch);
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0],
+      current: () => ({ env: primary, model: 'a', turnId: 'root' }), isLive: () => true,
+      canRetry: () => retryAllowed, canRetryRejectedResponse: () => true,
+      canUsePinnedRoute: () => true, onSwitch: switched });
+    const logs: string[] = [];
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({
+      providerId: 'primary', model: 'a', baseUrl: primary.baseUrl!, apiProtocol: 'anthropic',
+      modelFailover: controller,
+    }), logger: line => logs.push(line) });
+    const first = handler(request());
+    await vi.advanceTimersByTimeAsync(scenario === 'slow-election' ? 35_001 : 1);
+    expect((await first).status, logs.join('\n')).toBe(200);
+    expect(switched).toHaveBeenCalledOnce();
+    retryAllowed = scenario === 'fast-retry';
+    const abort = new AbortController();
+    const next = handler(new Request(request(), {
+      signal: abort.signal,
+      body: JSON.stringify({ messages: [{ role: 'user', content: 'next independent inference' }], max_tokens: 10 }),
+    }));
+    await vi.advanceTimersByTimeAsync(30_001);
+    // A confirmed HTTP rejection allowed the earlier election, but provides
+    // no replay permission for this distinct request's transport timeout.
+    expect(lastSignal?.aborted).toBe(scenario === 'fast-retry');
+    if (scenario === 'cancel') abort.abort();
+    await vi.advanceTimersByTimeAsync(scenario === 'normal-bound' ? 270_001 : 5_000);
+    const response = await next;
+    expect(response.status).toBe(scenario === 'cancel' ? 499 : scenario === 'normal-bound' ? 408 : 200);
+    if (response.ok) expect(await response.text()).toContain('continued');
+    expect(backupCalls).toBe(scenario === 'fast-retry' ? 3 : 2);
+    expect(nativeFetch).toHaveBeenCalledTimes(scenario === 'fast-retry' ? 7 : 6);
+    expect(switched).toHaveBeenCalledOnce();
+  });
   it.each([true, false])('recovers complete HTTP rejections with unknown actions while preserving actual candidate eligibility=%s', async hasCandidate => {
     if (!hasCandidate) candidate = undefined;
     const switched = vi.fn();
