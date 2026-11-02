@@ -7,6 +7,7 @@ import { withConnectionRetries } from './connection-retry';
 import { ModelFailoverController } from './model-failover';
 import { ContextRecoveryController } from './context-recovery';
 import type { AnthropicRequest } from './types/anthropic';
+import { ProxyPool } from './proxy-pool';
 
 const servers: Server[] = [];
 const pools: Dispatcher[] = [];
@@ -55,6 +56,22 @@ afterEach(async () => {
 });
 
 describe('request-owned connection establishment', () => {
+  it('retries an actual target TLS handshake reset before target HTTP dispatch', async () => {
+    let tunnels = 0;
+    const proxy = createServer();
+    proxy.on('connect', (_req, socket) => {
+      tunnels++;
+      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n');
+      socket.once('data', () => socket.destroy());
+    });
+    const uri = await listen(proxy);
+    const pool = new ProxyPool().get(uri); pools.push(pool);
+    const signal = AbortSignal.timeout(10_000);
+    await expect(fetch('https://127.0.0.1:443/model', { method: 'POST', body: 'fixture', signal,
+      dispatcher: withConnectionRetries(pool, signal, () => true) }))
+      .rejects.toMatchObject({ cause: { code: 'ECONNRESET' } });
+    expect(tunnels).toBe(3);
+  });
   it('reuses the pool without inheriting another completed request cancellation', async () => {
     const f = await fixture(); const c = failingConnector(0);
     for (let index = 0; index < 2; index++) {

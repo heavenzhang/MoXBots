@@ -170,6 +170,11 @@ fn v2_repaired_tail_and_larger_or_same_size_generation_replacement_rebuild() {
 
 #[test]
 fn v2_startup_reconciles_offline_changes_and_invalid_files_never_use_legacy() {
+    if crate::search::test_process::run_isolated(
+        "search::session_indexer::transcript_tests::v2_startup_reconciles_offline_changes_and_invalid_files_never_use_legacy",
+    ) {
+        return;
+    }
     let (dir, index, _) = setup();
     let path = dir.path().join("sessions-v2/first.jsonl");
     drop(index);
