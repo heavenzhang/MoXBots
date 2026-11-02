@@ -2140,8 +2140,11 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
             readQueryBackgroundTasks(lifecycleState.query),
           ),
         canRetryConnection: inferenceOwnerAllowsRetry,
+        canUsePinnedRoute: inferenceOwnerAllowsRetry,
         canRetry: () => inferenceOwnerAllowsRetry()
           && activeSessionContextRecovery?.canRetryInference() !== false,
+        canRetryRejectedResponse: () => inferenceOwnerAllowsRetry()
+          && activeSessionContextRecovery?.canRetryRejectedInference() === true,
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => {
           const usage = getSessionMetadata(productSessionId)?.lastContextUsage;
@@ -13455,7 +13458,10 @@ async function startStreamingSession(preWarm = false): Promise<void> {
       // the post-answer budget is fresh, and skip the kill. evaluateTick already
       // advanced lastTickAt this tick, so the wait ending produces no spurious
       // suspension credit. (High-2, cross-review.)
-      if (hasPendingInteractiveRequest() || activeSessionModelRecovery?.isWaiting()) {
+      // An authorized provider cooldown is likewise waiting, not a hung model;
+      // its controller revokes this read-only exemption with the exact request.
+      if (hasPendingInteractiveRequest() || activeSessionModelRecovery?.isWaiting()
+        || activeSessionModelFailover?.isWaitingForRetry()) {
         watchdog.markActivity();
         return;
       }

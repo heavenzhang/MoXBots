@@ -19,6 +19,9 @@ export interface BridgeConfig {
    */
   upstreamHeadersTimeoutMs?: number;
 
+  /** Native forwarding idle budget; model heartbeats do not renew it. Default 5 minutes. */
+  upstreamBodyIdleTimeoutMs?: number;
+
   /** Logger function. null to disable. Default console.log */
   logger?: ((msg: string) => void) | null;
 
@@ -39,6 +42,8 @@ export interface BridgeConfig {
 export interface UpstreamConfig {
   /** Original live inference owner, for native pre-connect failure only; never an HTTP replay grant. */
   canRetryConnection?: () => boolean;
+  /** Actual upstream HTTP rejection only; internal attempt proof, never a wire header. */
+  onRejectedResponse?: (status: number) => void;
   /** Internal admitted-request evidence; never serialized or accepted from provider/model text. */
   onStreamInterruption?: StreamInterruptionObserver;
   /** Internal per-attempt signal for accepted model content; never serialized to a provider. */

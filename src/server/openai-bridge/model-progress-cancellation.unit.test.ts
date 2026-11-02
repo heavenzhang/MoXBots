@@ -32,7 +32,8 @@ describe('bridge model progress cancellation fence', () => {
 
   it.each(['chat', 'responses'] as const)('does not notify after %s downstream cancellation', async protocol => {
     let source!: ReadableStreamDefaultController<Uint8Array>;
-    const input = new ReadableStream<Uint8Array>({ start(controller) { source = controller; } });
+    const cancelled = vi.fn();
+    const input = new ReadableStream<Uint8Array>({ start(controller) { source = controller; }, cancel: cancelled });
     const upstreamController = new AbortController();
     const downstreamController = new AbortController();
     const progress = vi.fn();
@@ -59,6 +60,7 @@ describe('bridge model progress cancellation fence', () => {
     try { send('late-fragment'); } catch { /* transport cancellation may retire its source immediately */ }
     await new Promise(resolve => setTimeout(resolve, 20));
     expect(upstreamController.signal.aborted).toBe(true);
+    expect(cancelled).toHaveBeenCalledTimes(1);
     expect(progress).toHaveBeenCalledTimes(before);
     await pending.catch(() => undefined);
   });

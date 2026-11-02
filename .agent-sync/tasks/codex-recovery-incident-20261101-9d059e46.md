@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=d5ee8fe4afa5c3c2d8b946466c3478bb8e367edc63a4a07641dfc7d6c52bc6fa -->
+<!-- git-project-sync-task:source-digest=5b196e1b2906195389469b93dd82639ca562c44ea596402d7df050a47b6a51ef -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -12,6 +12,13 @@
 修复 528.1 四会话反馈中的重复恢复横幅与并发拒绝扩大问题，保全原会话与账本；按最新授权以系统恢复与稳定性实测为优先，原业务结果单独核验。证据：`dev-docs/recovery-incident-20261101/acceptance.md`。
 
 ## Acceptance criteria
+
+- [x] 第十五项真实 HTTP502 与旧未知动作耦合、已选备用下一轮409均复现并修复；294相关用例及实际SDK工具链通过。
+- [x] 第十四/十五项原owner独审、PR228/main185d5165、533.1签名公证和安装核实；原会话仍失败。
+- [x] 第十六项60秒冷却退出复现、同请求剩余预算内等待修复、333回归和原生60秒工具链验证。
+- [x] 第十六项独审、PR229/main20abf332、双CI与534.1签名公证/安装，精确制品独立核实。
+- [ ] 第十七项备用30秒误截断修复、精确独审/交付与下一包原会话验收。
+- [ ] 五原会话整体稳定验收：行情和双滚动条原execution已completed；Max候选接续后408，Kevin与薪资仍未完成。
 
 - [x] 当前安装、main、部署 owner 和四会话只读证据核实。
 - [x] 重复横幅和并发拒绝分别失败复现、修复、回归；未知操作与真实流中断围栏保留。
@@ -35,6 +42,10 @@
 - [ ] 原 owner 统一版本/CI/制品/安装；在可用原生窗口完成原会话验收。
 
 ## Completed
+
+第十六项打包前补证：11分钟合法冷却触发旧10分钟闲置watchdog已实际组合复现；现由原controller只读活跃等待状态沿原watchdog豁免，Stop/owner/route/策略/时限即时撤销，等待结束后真实卡死仍受检测。153项补充回归、三协议真实HTTP40项及tsc/lint通过；最终原生工具链实际等待60.012秒后写1次/旧unknown执行0/unknown1，仍不代表实装验收。
+
+第十六项：533.1原Max真实HTTP502+60秒冷却结束原执行，已保留原失败；新实现沿当前请求lease等待冷却，只消费最后目标剩余有限尝试，候选链优先、手动路由不变。333相关回归、原生SDK60.012秒后独立写入一次且旧未知不执行、tsc/lint/分类/diff通过，安装验收仍待原owner。
 
 第十三项：prearm分析暂缺tool_result时不再把已有精确原生returned工具新升级为legacy unknown；只删本次候选，不修改任何持久unknown/legacy/成功防重放。不同ID/输入、错误矛盾及已有legacy保持；生产5b原新增unknown的具体时序尚未证明，不能自动核销。两项live/cold旧失败复现，141回归/tsc/lint通过，下一批独审/安装验收待完成；532.2已冻结不覆盖。
 
@@ -61,6 +72,18 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `5b196e1b2906195389469b93dd82639ca562c44ea596402d7df050a47b6a51ef`; Phase17: 196 cases in five related unit/integration files PASS; six candidate-header scenarios exercise the real controller and bridge with isolated fake transport/clock. Four old premature aborts reproduced; slow initial election and later pinned response survive 30 seconds, permission changes are re-read, cancellation and the original five-minute bound remain, eligible fast retry still operates. Full TypeScript, scoped ESLint, test classification and diff checks PASS. Installed534.1 remains failed; independent review, main/next package and original-session acceptance pending.
+
+- Source digest: `c0910bf8680d6a3cce2610f79b435cfa3abb6f1dd04886a3110a8aa33898a826`; Phase16 watchdog supplement: real InactivityWatchdog plus 11-minute cooldown reproduces old premature termination. Final five-file 153 tests PASS, three-protocol HTTP 40 tests PASS, full tsc/scoped lint/diff PASS. Concurrent request cancellation preserves the other live wait; all revocations remove the read-only exemption, and genuine post-wait hangs still expire. Final actual SDK/native Bash 60012ms cooldown/history-gap PASS (one write, zero old unknown executions, unknown count one). No durable wait/checkpoint or retry authority added; next owner review/main/install/native acceptance pending.
+
+- Source digest: `c814b13970efa69c59d3eab9d240e67885c9d4c15fcaf99dc1f785e987c13e1b`; Phase16: 333 related unit/integration cases in nine files PASS, full TypeScript/scoped ESLint/classification/diff PASS. Baseline reproduces 11 failures. Actual SDK/native Bash with a real 60-second HTTP cooldown and returned-history gap PASS (60012ms, 1 rejection, 0 switches, 5 model calls, new write 1, old unknown execution 0, uncertain count 1, cold journal reload). Three protocols use real loopback HTTP. Stop/owner/route/background/policy/deadline/end-turn revoke within a controlled 50ms tick; asynchronous validation and unfit cooldown cannot dispatch. Installed533.1 remains failed; next owner release and original-session acceptance pending.
+
+- Source digest: `05d181b34fe9ce917b62c9fbef44812856ce1f58f129d69e42e1453cbe0f8b39`; Phase15: 294 distinct unit/integration cases PASS; actual SDK/native Bash with complete HTTP502 and returned-history gap PASS (4 rejections, 1 switch, 5 model calls, test write 1, old unknown execution 0, unknown count 1). Full tsc, scoped ESLint, classification and diff checks PASS. Both old HTTP retry failure and next pinned-request 409 reproduced before correction. Installed532.3 still fails overall acceptance; owner review/main/candidate/native checks pending.
+
+- Source digest: `31d7e0126d537f792f630af3e7d8941fe1f82daf6e0799414d3563d119fd6c78`; Phase14: pre-fix query tests reproduce 3 FAIL; final 236 related route/parser/native admission/execution tests PASS. Full TypeScript, scoped ESLint, classification and diff checks PASS. Direct compact queries preserve post-write verification, repeated cold queries preserve unknown operations, and explicit continuation after readonly control permits authorized Write/Bash on the original execution. Installed 532.3 still fails overall native acceptance; independent review and next owner release pending.
+
+Phase14：532.3真实原会话验收发现大账本查询包装导致验收失效，新增原list可选有界execution证据视图，直接刷新仍按原生精确identity记录；说明历史只读复测仅约束当轮，不永久撤销原任务修改授权。基于实际main630ae62快进，无原运行数据修改。旧3项失败复现，6文件236项相关回归PASS；全量tsc、定向ESLint、分类和diff检查PASS，真实新包验收待原owner。新增Max上游502与行情旧评审误标尚未闭环。
 
 - Source digest: `d5ee8fe4afa5c3c2d8b946466c3478bb8e367edc63a4a07641dfc7d6c52bc6fa`; Phase13 Store/native supplement: full real-SessionStore checkpoint suite 11 PASS, including success and known Bash-exit gap cases after complete module reload. Actual SDK/native-Bash loopback with and without --returned-history-gap: both PASS, five calls, two expected denials, package count 1, original unknown launch count 0, unknown count 1. Full tsc, scoped ESLint, diff PASS. First Store fixture lacked published V2 birth and correctly failed; it was corrected with a durable first user message and explicit reloaded-owner assertion. No product logic change, real user session mutation, paid inference or installed-client acceptance claimed.
 
@@ -108,12 +131,12 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-第十一批已主干/CI/532.1安装，四原会话实测未全部通过；第十二批独审已通过、532.2/PR226待CI和后续安装复验；第十三批精确7c3fe1f09独审及失败Bash补证已通过，补充反例交付后进入下一未冻结批。薪资此前核对被分类为新执行，不能据此宣称更早的execution已恢复，也不手动改回ID；Kevin本轮为control核查，未证明原execution恢复。旧未知结果不得清标记或凭截图核销；原任务业务外部依赖、上游429与系统恢复验收分别列示。用户持续授权更新和原生验证，并明确允许替代系统控制工具完成安装验证，系统稳定优先。公开stable保持0.5.27 HOLD。
+534.1 已安装并独立核实，原 Max 真实502后候选续接且完成工具操作，但候选首响应30秒超时使同一execution再次失败，不能宣布稳定。第十七项修复备用固定短超时；真实供应商仍可能故障，原未知操作不清除。行情与双滚动条原执行已completed/accept，不重跑已完成任务；Kevin534.1与薪资原execution恢复仍未通过。原owner同时协调另一桥接修复PR230，集成前需同步新main并复核组合结果，独立源码与已冻结制品分开。
 
 ## Deployment request
 
-desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。本开发线程不新增部署 owner、不触发共享 CI/PR/正式构建或安装；由原owner统一版本分配和发布，不能覆盖已冻结532.1。新的源码交付与候选安装/真实验收分开。
+desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。本开发线程不新增部署 owner、不触发共享 CI/PR/正式构建或安装；由原owner统一版本分配和发布，不能覆盖已冻结534.1。新的源码交付与候选安装/真实验收分开。
 
 ## Next step
 
-将精确分支 SHA 交原 owner 独立审查并正常集成 main；按最新授权由原owner安装候选并验证四原会话，失败继续定位，真实会话验收单列。
+完成第十七项备用首响应计时的相关验证和精确提交，交原desktop owner01a12bc2-907a-7702-b6dd-788225c5dfe4独审、合入实际main、统一下一未冻结批与原会话复验。原owner另有桥接PR230正在CI，按其串行集成安排，不另触发共享CI或安装；当前534.1仍未通过整体验收。

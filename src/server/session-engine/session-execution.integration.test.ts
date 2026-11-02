@@ -259,6 +259,81 @@ async function waitForContinuation(
   return continuationRequests.at(-1)!;
 }
 
+describe('bounded native execution evidence view', () => {
+  const view = (beforeOrder?: number) => executionOwner.projectSessionExecutionEvidence(
+    store.getSessionMetadata(id)!.taskOrchestration!, engine.getExecutionVerificationEpoch?.(), beforeOrder,
+  );
+  it('keeps successful post-write Read evidence valid through the direct compact query and native review receipt', async () => {
+    const prepared = await prepare();
+    expect(prepared.request.runtimeReminder).toContain('"view":"execution"');
+    const queue = prepared.request.queueId!;
+    await tool(queue, { id: 'write', name: 'Write', stage: 'success', output: 'Saved' });
+    await tool(queue, { id: 'verified', name: 'Read', stage: 'success', output: 'Actual final artifact' });
+    const snapshot = view();
+    await tool(queue, { id: 'compact-query', name: 'Bash', stage: 'success',
+      input: { command: `myagents session tasks --json --data '{"kind":"list","view":"execution"}'` }, output: JSON.stringify(snapshot) });
+    expect(view().evidence).toContainEqual(expect.objectContaining({ id: 'verified', eligible: true }));
+    expect(view().lastPossibleMutation?.id).toBe('write');
+    await submitReview(queue, { decision: 'accept', summary: 'Verified actual artifact', checks: executeIntent.acceptanceCriteria.map((_, criterion) => ({ criterion, toolUseIds: ['verified'] })) });
+    await prepared.request.onTerminal?.({ status: 'complete', text: 'Delivered', assistantMessagePresent: true });
+    expect(currentExecution()?.phase).toBe('completed');
+  });
+  it('exposes the exact later shell mutation that invalidated prior Reads instead of relaxing verification', async () => {
+    const prepared = await prepare(); const queue = prepared.request.queueId!;
+    await tool(queue, { id: 'verified', name: 'Read', stage: 'success', output: 'Artifact' });
+    await tool(queue, { id: 'wrapped-query', name: 'Bash', stage: 'success',
+      input: { command: 'myagents session tasks --json > /tmp/ledger.json; python3 filter.py' }, output: 'filtered IDs' });
+    expect(view()).toMatchObject({ lastPossibleMutation: { id: 'wrapped-query' }, evidence: [
+      { id: 'wrapped-query', eligible: false, reason: 'not_verification_tool' },
+      { id: 'verified', eligible: false, reason: 'before_last_possible_mutation' },
+    ] });
+    await submitReview(queue, { decision: 'accept', summary: 'Rejected stale check', checks: executeIntent.acceptanceCriteria.map((_, criterion) => ({ criterion, toolUseIds: ['verified'] })) });
+    await prepared.request.onTerminal?.({ status: 'complete', text: 'Proposal', assistantMessagePresent: true });
+    expect(currentExecution()).toMatchObject({ reworks: 1, reason: 'acceptance_evidence_incomplete' });
+    expect(currentExecution()?.phase).not.toBe('completed');
+  });
+  it('does not promote pending, failed, retired-generation or overlapping verification', async () => {
+    await prepare(); const queue = currentExecution()!.currentQueueId!;
+    await tool(queue, { id: 'old', name: 'Read', stage: 'success', output: 'Old' });
+    engine.getExecutionVerificationEpoch = () => 'native-query-2:0';
+    await tool(queue, { id: 'pending', name: 'Read', stage: 'start' });
+    await tool(queue, { id: 'failed', name: 'Read', stage: 'start' });
+    await tool(queue, { id: 'failed', name: 'Read', stage: 'failure' });
+    expect(view().evidence).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'old', eligible: false, reason: 'not_current_native_generation' }),
+      expect.objectContaining({ id: 'pending', eligible: false, reason: 'pending' }),
+      expect.objectContaining({ id: 'failed', eligible: false }),
+    ]));
+    engine.getExecutionVerificationEpoch = () => undefined;
+    expect(view().evidence.every(row => !row.eligible)).toBe(true);
+  });
+  it('paginates a large persisted ledger below native output limits without leaking full content or mutating facts', async () => {
+    await prepare();
+    await taskOwner.mutateSessionTaskLedger(id, ledger => {
+      ledger.executionEvidence = Array.from({ length: 400 }, (_, index) => ({
+        id: `proof-${index}-${'x'.repeat(220)}`, queueId: currentExecution()!.currentQueueId!,
+        name: 'Read', digest: 'private-digest', successful: true, startOrder: index * 2 + 1,
+        observationOrder: index * 2 + 2, mutating: false, verificationEpoch: 'native-query-1:0',
+      }));
+      ledger.execution!.assessment = { decision: 'accept', summary: 'private-summary'.repeat(10000), checks: [] };
+      return ledger;
+    });
+    const before = JSON.stringify(store.getSessionMetadata(id)!.taskOrchestration);
+    const seen = new Set<string>(); let cursor: number | undefined;
+    for (let page = 0; page < 21; page++) {
+      const result = view(cursor); const wire = JSON.stringify(result, null, 2);
+      expect(Buffer.byteLength(wire)).toBeLessThan(24_500);
+      expect(wire).not.toContain('private-');
+      for (const row of result.evidence) { expect(seen.has(row.id)).toBe(false); seen.add(row.id); }
+      if (result.nextBeforeOrder === null) break;
+      cursor = result.nextBeforeOrder;
+    }
+    expect(seen.size).toBe(400);
+    expect(view(0).evidence).toEqual([]);
+    expect(JSON.stringify(store.getSessionMetadata(id)!.taskOrchestration)).toBe(before);
+  });
+});
+
 describe("durable Session execution owner", () => {
   it('gives a readonly follow-up current recovery guidance without restarting or replacing the original execution', async () => {
     const original = await prepare();
@@ -276,6 +351,13 @@ describe("durable Session execution owner", () => {
     await check.request.onTerminal?.({ status: 'complete', text: 'Read-only result', assistantMessagePresent: true });
     expect(currentExecution()).toEqual(execution);
     expect(continuationRequests).toHaveLength(0);
+    const resumed = await prepare('Continue the original task, including its authorized edits', 'resume-authorized-edits',
+      { ...executeIntent, continuationOf: execution!.id });
+    expect(currentExecution()?.id).toBe(execution!.id);
+    expect(resumed.request.runtimeReminder).toContain('原任务已授权的必要文件或数据修改可以继续');
+    expect(resumed.request.runtimeReminder).not.toContain('本轮只读核对不恢复原任务写入权限');
+    expect(executionOwner.sessionExecutionToolDenial(id, resumed.request.queueId, 'Write', { file_path: '/new' })).toBeUndefined();
+    expect(executionOwner.sessionExecutionToolDenial(id, resumed.request.queueId, 'Bash', { command: 'run-authorized-work' })).toBeUndefined();
   });
 
   it('commits the actual review route response with a large ledger and a native output cap', async () => {

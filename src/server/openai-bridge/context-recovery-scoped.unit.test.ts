@@ -90,9 +90,9 @@ describe('operation-scoped recovery admission', () => {
     expect(h.controller.inspectActionLedger().uncertainCount).toBe(2);
   });
 
-  it('refreshes a completed product task-list query with a new native identity, including after cold restoration', async () => {
+  it.each(['', ` --data '{"kind":"list","view":"execution"}'`, ` --data '{"kind":"list","view":"execution","beforeOrder":50}'`])('refreshes a completed product task-list query with a new native identity, including after cold restoration: %s', async suffix => {
     const h = fixture();
-    const query = { command: `${APP_CLI_NAME} session tasks --json`, description: 'Read session task ledger' };
+    const query = { command: `${APP_CLI_NAME} session tasks --json${suffix}`, description: 'Read session task ledger' };
     await h.emit('tasks-first', query);
     expect(await h.controller.authorizeTool('Bash', query, 'tasks-first')).toBeUndefined();
     await h.controller.commitToolResult('Bash', query, '{"revision":1}', false, 'tasks-first');
@@ -117,9 +117,9 @@ describe('operation-scoped recovery admission', () => {
       .toHaveLength(3);
   });
 
-  it.each(['unknown', 'stopped', 'storage-failure'] as const)('retains %s protection for a repeated task-list query', async condition => {
+  it.each((['unknown', 'stopped', 'storage-failure'] as const).flatMap(condition => ['', ` --data '{"kind":"list","view":"execution"}'`].map(suffix => ({ condition, suffix }))))('retains $condition protection for a repeated task-list query: $suffix', async ({ condition, suffix }) => {
     const h = fixture();
-    const query = { command: `${APP_CLI_NAME} session tasks --json` };
+    const query = { command: `${APP_CLI_NAME} session tasks --json${suffix}` };
     await h.emit('tasks-first', query);
     await h.controller.authorizeTool('Bash', query, 'tasks-first');
     if (condition === 'unknown') {

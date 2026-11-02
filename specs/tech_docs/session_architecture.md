@@ -243,7 +243,7 @@ Builtin API 普通会话和 Goal 的模型不可用等待复用原 Query 推理 
 
 活跃 transcript 的 metadata patch 只更新内存并请求写入。Watchdog Stop 必须等待同一原 writer 的有界 `flush()` 成功，覆盖 transcript 和 index 的实际提交后才确认清除；旧 writer 被替换或提交失败均返回不耐久错误。失败后的内存 `false` 不能免除后续 Stop 的未提交义务；更新退出继续被该错误阻断，进程内撤销 fence 保持有效。
 
-SDK 的 `system/status`（包括周期性的 `compacting` / `requesting`）只证明运行时存活，保留状态展示，但不刷新 watchdog 进展时钟，也不能单独作为自动恢复的实质活动。实际 `compact_boundary`、文本和工具进展继续刷新既有 10 分钟活动预算；用户审批等待和原模型恢复等待仍由其现有 owner 暂停计时。
+SDK 的 `system/status`（包括周期性的 `compacting` / `requesting`）只证明运行时存活，保留状态展示，但不刷新 watchdog 进展时钟，也不能单独作为自动恢复的实质活动。实际 `compact_boundary`、文本和工具进展继续刷新既有 10 分钟活动预算；用户审批等待和原模型恢复等待仍由其现有 owner 暂停计时。原 Query 内完整 HTTP 拒绝的有限冷却等待由同一 ModelFailoverController 提供活跃计时器只读状态，当前 lease/root/route/策略/deadline 任一失效或计时结束即撤销闲置豁免；它不计为业务进展、不续任务预算、不建立持久恢复 owner。
 
 ### 5.1 Goal
 

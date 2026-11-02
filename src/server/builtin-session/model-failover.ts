@@ -29,6 +29,8 @@ export function createSessionModelFailover(options: {
   onSwitch: (target: UpstreamConfig, status: number) => void;
   onUnavailable?: (reason: string) => void;
   canRetry?: () => boolean;
+  canRetryRejectedResponse?: () => boolean;
+  canUsePinnedRoute?: () => boolean;
   canRetryConnection?: () => boolean;
   retryDelaysMs?: readonly [number, number, number];
   recovery?: InferenceRecoveryHooks;
@@ -97,8 +99,12 @@ export function createSessionModelFailover(options: {
       providerId: ref.providerId, model: ref.modelId, apiKey: backup.apiKey, baseUrl: backup.baseUrl,
       apiProtocol: backup.apiProtocol ?? 'anthropic', authType: backup.authType,
       upstreamFormat: backup.upstreamFormat, maxOutputTokens: backup.maxOutputTokens,
-      maxOutputTokensParamName: backup.maxOutputTokensParamName, headersTimeoutMs: 30_000,
-      continuationInstruction: 'Continue the existing task using the conversation and completed tool results. Do not restart the user task or repeat confirmed successful writes, sends, submissions or deployments. If an earlier action has an uncertain outcome, verify it with a read-only check first; if verification is unavailable, stop and explain instead of repeating it.',
+      maxOutputTokensParamName: backup.maxOutputTokensParamName,
+      // A complete rejection may elect this route while old unknown actions
+      // still forbid retrying a later transport failure. Match the primary's
+      // live timeout policy instead of terminating an unrecoverable slow call.
+      headersTimeoutMs: () => controller.fastRecoveryAuthorized() ? 30_000 : undefined,
+      continuationInstruction: 'Continue the existing task using the conversation and completed tool results. Do not restart the user task or repeat confirmed successful writes, sends, submissions or deployments. If an earlier action has an uncertain outcome, verify that specific action with a read-only check before depending on or repeating it. If verification is unavailable, pause that action and its dependent steps; continue independent steps within the original user authorization, including authorized edits.',
       responseModel: ref.modelId,
     };
   };
@@ -127,7 +133,7 @@ export function createSessionModelFailover(options: {
     }
     return pending;
   };
-  return new ModelFailoverController({
+  const controller = new ModelFailoverController({
     canRetryConnection: options.canRetryConnection,
     scope: () => {
       if (!options.isLive()) return undefined;
@@ -220,6 +226,8 @@ export function createSessionModelFailover(options: {
     },
     canSwitch: options.canSwitch,
     canRetry: options.canRetry,
+    canRetryRejectedResponse: options.canRetryRejectedResponse,
+    canUsePinnedRoute: options.canUsePinnedRoute,
     retryDelaysMs: options.retryDelaysMs,
     recovery: options.recovery,
     deadlineAt: options.deadlineAt,
@@ -231,4 +239,5 @@ export function createSessionModelFailover(options: {
     },
     onTurnEnd: () => { root = undefined; },
   });
+  return controller;
 }

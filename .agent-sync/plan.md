@@ -1200,3 +1200,10 @@ M1合并前回执修正（2026-11-02）：实际App启动失败传播、not-star
 ## MB-BOT-R3-DEV-20261101 / M2 — 项目工作台与会话上下文
 
 用户授权继续M2；M1已在main630ae62。隔离分支codex/bot-project-context-m2-20261102，新任务记录.agent-sync/tasks/codex-bot-project-context-m2-20261102-b8fe4d4b.md。Bot原workspace唯一身份规则保留；config.json的projectSpaces组织目标/成员/资料引用；SessionStore原出生事务冻结项目与Bot快照，防止自动背景A/B/legacy混用。不新增writer或执行owner，不宣称文件沙盒；不改cross-end-workflow正在调整的旧ProjectBoard与Task归档语义，不复制group-phase1 dirty代码。契约/待办dev-docs/bot-project-context-m2/{CONTRACT,PLAN}.md。desktop/macOS/updater/sharedCI/main仍由01a12bc2-907a-7702-b6dd-788225c5dfe4唯一负责；代码、模拟、原生、发行分别记录，CI最终候选冻结后避免反复移动主干。
+
+## MB-BRIDGE-STABILITY-20261102
+修复桥接取消、代理池有界排空及原生流闲置保护。记录 `.agent-sync/tasks/codex-bridge-stability-20261102-32b795b2.md`。桌面 builtin client 的共享 CI/main/版本/发布继续由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责；本开发分支只执行隔离测试。下一未冻结批候选，未发布、未做真实供应商验收。
+
+### M2 本轮合并与下载发布授权（2026-11-02）
+
+用户明确要求继续本轮、合入主干、打新包并更新现有下载通道。Root在原M2分支整合最新main52405a701（0.5.35恢复，保留既有修复），原desktop/macOS/updater/sharedCI/main owner01a12bc2继续唯一负责版本/候选CI/签名公证/制品/通道/回滚；不覆盖旧版本与冻结制品，不中断活动业务会话。验证和主干/包/下载通道逐项记录；不以源码或HTTP200替代真实验收。

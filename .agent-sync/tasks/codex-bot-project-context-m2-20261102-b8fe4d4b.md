@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=59944dcb7dc5a658f6b6bd37b068924d90445ab76d5aa23cc428e104f503cf62 -->
+<!-- git-project-sync-task:source-digest=1525f0f3e593977e7994a0b8428ced7f5a7176204e380716ba3951c20f1043e0 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=1f3c1c2b-ee66-47db-9661-20374230dc40 -->
 <!-- git-project-sync-task:branch=codex/bot-project-context-m2-20261102 -->
@@ -9,6 +9,8 @@
 # Task: MB-BOT-R3-DEV-20261101 / M2 项目工作台与会话上下文
 
 ## Objective
+
+2026-11-02本轮新增明确授权：完成M2合入主干、打新包并更新现有下载通道。由原desktop/macOS/updater/sharedCI/main唯一owner负责版本/CI/包/发布，Root负责源码整合/自查、精确交接和独立远端/下载验证。
 
 落实用户已同意的M2：项目首页、已有Bot多项目成员、项目内新对话和固定会话上下文。保留M1风格与旧workspace-Bot一对一兼容。关系见dev-docs/bot-project-context-m2/CONTRACT.md，进度见PLAN.md。M1已通过PR225进入main630ae62，原生界面/发行另由原owner处理。
 
@@ -23,6 +25,8 @@
 
 ## Completed
 
+- [x] 本轮整合main52405a701（0.5.35），保留M2/Bridge计划与项目reset围栏；934项M2/恢复/Bridge定向用例、类型/75文件ESLint通过。
+
 - [x] 最新main630ae62已验证，新隔离worktree及start/task-init通过。
 - [x] 发现并保留cross-end-workflow并行看板修改；M2不改ProjectBoard与task语义。
 - [x] 只读会话路径勘察完成，识别pending出生及双向上下文泄漏边界。
@@ -33,6 +37,8 @@
 - [ ] 原owner共享CI（含完整Rust crate）、远端main核验；原生配置/真实Provider/正式制品与生产验收。
 
 ## Verification
+
+- Source digest: `1525f0f3e593977e7994a0b8428ced7f5a7176204e380716ba3951c20f1043e0`; Merged main 52405a701; Node24 unit469 DOM214 integration251 total934 PASS; tsc 75-file ESLint and Vite PASS; Rust/native/new package/download verification pending original release owner.
 
 - Source digest: `59944dcb7dc5a658f6b6bd37b068924d90445ab76d5aa23cc428e104f503cf62`; Node24 targeted 535 distinct tests PASS; final UTF8/receipt reruns PASS; tsc ESLint classification deps(no errors) Vite PASS; Rust crate execution blocked by missing DSH resources; native and production pending owner.
 
@@ -48,4 +54,4 @@ desktop/macOS/updater/shared CI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5d
 
 ## Next step
 
-候选提交推送后，向原owner交精确SHA/535项定向结果及Rust待验，先纳入其已知前置修改再一次冻结完整CI；Root继续读回远端main祖先/源码树。安装和发布沿原owner下一未冻结批，不替换既有候选。
+整合最新main52405a701后复核M2及恢复/Bridge影响面，交新精确source给原owner冻结CI/main/新版本/签名公证包与下载发布；Root独立读回main、下载URL/版本/摘要/签名及原生回执，完成后再宣布本轮交付。

@@ -34,3 +34,12 @@
 Root 负责契约、共享数据模型、页面/导航集成和最终验收。m2_session_map 独占 Session 后端/客户端和 App 行为测试；m2_memory_guard 独占 Rust 窄修及配置/侧栏行为补验；r3_acceptance 独立只读审查并拥有回归测试。文件边界明确，修复回到原 worker，生产动作留给原 owner。跨模块出生/持久化和原生未知操作的风险支持本轮 Sol medium 请求；实际 token/费用未由工具暴露，不估算节省。没有调用外部模型。主要返工来自真实独立审查发现的状态恢复问题，未为增加测试数量复制实现。
 
 最终边界复核：最大合法emoji、HTML符号、引号及控制字符，经JSON/提醒协议转义后仍≤6000 UTF8 bytes，JSON/XML保持完整；省略显式标truncated。普通/managed未知出生回执保存pending/prepared/最后确认owner三标识。Root最后web构建、类型和全改动ESLint输出分别为`/tmp/m2-final-web-build.log`、`/tmp/m2-final-all-typecheck.log`、`/tmp/m2-final-all-lint.log`。
+
+## 本轮主干整合复核（2026-11-02）
+
+用户明确要求合并、打新包、更新现有下载通道。Root在原M2工作树整合main52405a70118ee575e772618bbd9d78f8e1598ed9（0.5.35恢复）；唯一冲突是共享plan的追加段落，保留M2与Bridge两段；agent-session自动合并后项目reset围栏仍在，未改恢复算法。
+
+- Node v24.21.0：unit17文件469、DOM5文件214、真实临时存储/恢复/Bridge integration9文件251，共934项通过。
+- tsc、75个影响文件ESLint无错误；MoXBots profile本地production renderer build另见本轮日志。版本仍来自主干0.5.35，Root没有分配新的正式版本。
+- 日志 `/tmp/m2-release-{unit,dom,integration,types,lint,web-build}.log`。旧535项记录保留为前序证据，不与本轮934重复相加。
+- 原Rust crate、原生M2路径、最终新版本/签名公证制品/下载通道由原唯一owner统一执行，Root独立核对远端main及下载字节后才报告本轮发布完成。

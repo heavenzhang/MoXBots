@@ -36,6 +36,20 @@ export function parseSessionTaskCommand(input: unknown,
   return data as Record<string, unknown>;
 }
 
+/** Shared by the read route and native replay admission; never accepts write or authority fields. */
+export function isSessionTaskListAction(input: unknown): input is {
+  kind: 'list'; view?: 'execution'; beforeOrder?: number;
+} {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return false;
+  const value = input as Record<string, unknown>;
+  if (value.kind !== 'list') return false;
+  if (value.view === undefined) return Object.keys(value).every(key => key === 'kind');
+  return value.view === 'execution'
+    && Object.keys(value).every(key => ['kind', 'view', 'beforeOrder'].includes(key))
+    && (value.beforeOrder === undefined || (typeof value.beforeOrder === 'number'
+      && Number.isSafeInteger(value.beforeOrder) && value.beforeOrder >= 0));
+}
+
 /** Only the product CLI's foreground list operation may refresh a completed read.
  * This is not a general shell safety classifier or historical settlement proof.
  */
@@ -52,7 +66,7 @@ export function isDirectSessionTaskListCommand(input: unknown): boolean {
   const executable = value.command.trim().split(/\s/, 1)[0];
   if (executable !== APP_CLI_NAME && executable !== `${APP_CLI_NAME}.cmd`) return false;
   const action = parseSessionTaskCommand(value);
-  return action?.kind === 'list' && Object.keys(action).length === 1;
+  return isSessionTaskListAction(action);
 }
 
 export function parseTaskReviewCommand(

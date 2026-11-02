@@ -1,12 +1,20 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const mocks = vi.hoisted(() => ({ read: vi.fn(), mutate: vi.fn(), plan: vi.fn(), act: vi.fn(), proof: vi.fn(), support: vi.fn(), executionReview: vi.fn() }));
-vi.mock('../session-engine', () => ({ getSessionEngine: () => ({ getRuntimeIdentity: () => ({ sessionId: 's1' }) }) }));
+const mocks = vi.hoisted(() => ({ read: vi.fn(), mutate: vi.fn(), plan: vi.fn(), act: vi.fn(), proof: vi.fn(), support: vi.fn(), executionReview: vi.fn(), evidence: vi.fn() }));
+vi.mock('../session-engine', () => ({ getSessionEngine: () => ({ getRuntimeIdentity: () => ({ sessionId: 's1' }), getExecutionVerificationEpoch: () => 'native-epoch' }) }));
 vi.mock('../session-engine/task-orchestration', () => ({ readSessionTasks: mocks.read, mutateSessionTasks: mocks.mutate, mutateSessionPlan: mocks.plan, actOnSessionPlan: mocks.act, readSessionPlanSupport: mocks.support }));
 vi.mock('../session-engine/user-action-proof', () => ({ verifySessionUserAction: mocks.proof }));
-vi.mock('../session-engine/session-execution', () => ({ requestSessionExecutionReview: mocks.executionReview, reconcileSessionExecution: vi.fn() }));
+vi.mock('../session-engine/session-execution', () => ({ requestSessionExecutionReview: mocks.executionReview, reconcileSessionExecution: vi.fn(), projectSessionExecutionEvidence: mocks.evidence }));
 import { handleSessionTaskCommand, handleSessionTaskRoute } from './session-task-orchestration';
 beforeEach(() => { vi.clearAllMocks(); mocks.support.mockReturnValue({ supported: true, runtime: 'builtin' }); mocks.proof.mockReturnValue(false); mocks.read.mockResolvedValue({ sessionId: 's1', ledger: { revision: 2 }, tasks: [], planSupport: { supported: true, runtime: 'builtin' }, messages: ['private transcript'] }); });
 describe('Session task route boundaries', () => {
+  it('accepts a bounded execution evidence query without exposing the full ledger', async () => {
+    mocks.evidence.mockReturnValue({ ledgerRevision: 2, evidence: [], nextBeforeOrder: null });
+    const result = await handleSessionTaskCommand({ kind: 'list', view: 'execution', beforeOrder: 50, sessionId: 's1' });
+    expect(result).toMatchObject({ success: true, sessionId: 's1', view: 'execution', ledgerRevision: 2 });
+    expect(mocks.evidence).toHaveBeenCalledWith({ revision: 2 }, 'native-epoch', 50);
+    expect(result).not.toHaveProperty('ledger');
+    expect(result).not.toHaveProperty('messages');
+  });
   it('returns only the task snapshot and requires exact current Session identity', async () => {
     expect(await handleSessionTaskCommand({ kind: 'list', sessionId: 's1' })).toEqual({ success: true, sessionId: 's1', ledger: { revision: 2 }, tasks: [], planSupport: { supported: true, runtime: 'builtin' } });
     expect(await handleSessionTaskCommand({ kind: 'list', sessionId: 's2' })).toMatchObject({ success: false, error: 'TASK_SESSION_CHANGED' });
@@ -17,6 +25,11 @@ describe('Session task route boundaries', () => {
     { kind: 'ensure', taskId: 't', title: 'Task', expectedRevision: -1 },
     { kind: 'bind', taskId: 't', toolUseId: 'a', expectedRevision: 0, root: true },
     { kind: 'list', unexpected: true },
+    { kind: 'list', view: 'execution', verificationEpoch: 'forged' },
+    { kind: 'list', view: 'execution', beforeOrder: -1 },
+    { kind: 'list', view: 'execution', beforeOrder: 1.5 },
+    { kind: 'list', view: 'other' },
+    { kind: 'list', beforeOrder: 1 },
   ])('rejects malformed actions and client-supplied authority: %j', async action => {
     expect(await handleSessionTaskCommand({ ...action, sessionId: 's1' })).toMatchObject({ success: false });
     expect(mocks.mutate).not.toHaveBeenCalled();

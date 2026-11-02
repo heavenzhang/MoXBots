@@ -34,6 +34,8 @@ describe('repeatable product task-list query', () => {
     `${APP_CLI_NAME} session tasks`,
     `${APP_CLI_NAME}.cmd session tasks --json`,
     `${query} --data '{"kind":"list"}'`,
+    `${query} --data '{"kind":"list","view":"execution"}'`,
+    `${query} --data '{"kind":"list","view":"execution","beforeOrder":50}'`,
   ])('recognizes only a direct list operation: %s', command => {
     expect(isDirectSessionTaskListCommand({ command, description: 'Read tasks', timeout: 10_000, run_in_background: false })).toBe(true);
   });
@@ -44,6 +46,11 @@ describe('repeatable product task-list query', () => {
     `${query} --data '{"kind":"review"}'`, `${query} --data '{"kind":"list","extra":true}'`,
     `${query} --data '{"kind":"list"}' --data '{"kind":"review"}'`,
     `${query} --unknown`, `${query} $(echo changed)`, `${query} \`echo changed\``,
+    `${query} --data '{"kind":"list","view":"execution","beforeOrder":-1}'`,
+    `${query} --data '{"kind":"list","view":"execution","beforeOrder":1.5}'`,
+    `${query} --data '{"kind":"list","view":"execution","verificationEpoch":"forged"}'`,
+    `${query} --data '{"kind":"list","view":"other"}'`,
+    `${query} --data '{"kind":"list","beforeOrder":50}'`,
   ])('does not exempt shell programs, alternate binaries or other actions: %s', command => {
     expect(isDirectSessionTaskListCommand({ command })).toBe(false);
   });

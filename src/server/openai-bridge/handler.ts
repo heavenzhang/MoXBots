@@ -1,3 +1,6 @@
+import { ProxyPool } from './proxy-pool';
+import { ModelBodyReader } from './model-body-reader';
+import { parseModelStreamEvent, hasModelStreamProgress } from './utils/model-stream-event';
 import { streamFailure } from './stream-failure-diagnostic';
 import { APP_BUILD_PROFILE } from '../../shared/appProfile';
 import { createHash } from 'node:crypto';
@@ -9,7 +12,7 @@ import { createHash } from 'node:crypto';
 // `UND_ERR_INVALID_ARG: invalid onRequestStart method` (internal API drift
 // between majors). Importing fetch from the same package guarantees the
 // dispatcher and fetch share the same internal contract.
-import { fetch, ProxyAgent, type Dispatcher } from 'undici';
+import { fetch, type Dispatcher } from 'undici';
 import type { BridgeConfig, UpstreamConfig, StreamInterruptionObserver } from './types/bridge';
 import type { AnthropicRequest } from './types/anthropic';
 import type { OpenAIRequest, OpenAIResponse, OpenAIStreamChunk } from './types/openai';
@@ -122,14 +125,10 @@ export function getProxyForUrl(url: string): string | undefined {
  * bridge's HTTP URL, so by the time we resolve provider-owned proxy here the
  * URL is always plain http://.
  */
-const proxyDispatchers = new Map<string, Dispatcher>();
+const proxyDispatchers = new ProxyPool();
 
 function getDispatcherForProxy(proxyUrl: string, signal: AbortSignal, canRetryConnection?: () => boolean): Dispatcher {
-  let agent = proxyDispatchers.get(proxyUrl);
-  if (!agent) {
-    agent = new ProxyAgent(proxyUrl);
-    proxyDispatchers.set(proxyUrl, agent);
-  }
+  const agent = proxyDispatchers.get(proxyUrl);
   return canRetryConnection ? withConnectionRetries(agent, signal, canRetryConnection) : agent;
 }
 
@@ -373,7 +372,7 @@ export interface BridgeHandler {
 
 /** Same token boundary as OpenAI translation; SDK transcript stays native. */
 async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
-  upstream: UpstreamConfig, timeoutMs: number, log: (message: string) => void): Promise<Response> {
+  upstream: UpstreamConfig, timeoutMs: number, bodyIdleTimeoutMs: number | undefined, log: (message: string) => void): Promise<Response> {
   const controller = new AbortController();
   let timedOut = false;
   let bytesDelivered = 0;
@@ -404,19 +403,38 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
       ...(proxy ? { dispatcher: getDispatcherForProxy(proxy, controller.signal, upstream.canRetryConnection) } : {}),
     }));
     clearTimeout(timer);
+    if (!response.ok) upstream.onRejectedResponse?.(response.status);
     const diagnostic = (phase: 'response_headers' | 'response_body', error?: unknown) => log(transportDiagnostic(upstream,
       { phase, route, transport: transport.snapshot(), error, status: response.status, response, cancelled: request.signal.aborted, timedOut, bytesDelivered }));
     if (!response.ok) diagnostic('response_headers');
     const reader = response.body?.getReader();
+    const bodyReader = reader ? new ModelBodyReader(
+      // Undici and DOM describe the same Web reader with different done.value optionality.
+      reader as unknown as ReadableStreamDefaultReader<Uint8Array>, controller.signal, () => !consumerCancelled, bodyIdleTimeoutMs) : undefined;
+    const parser = new SSEParser();
+    const decoder = new TextDecoder();
+    const isSse = response.headers.get('content-type')?.includes('text/event-stream') === true;
     const stream = reader ? new ReadableStream<Uint8Array>({
       async pull(output) {
         try {
-          const next = await reader.read();
+          const next = await bodyReader!.read();
           if (next.done) { cleanup(); output.close(); }
-          else { output.enqueue(next.value); bytesDelivered += next.value.byteLength; }
+          else {
+            if (isSse) {
+              for (const event of parser.feed(decoder.decode(next.value, { stream: true }))) {
+                // Observation must not reclassify protocol failures as socket failures.
+                // Forward unchanged bytes so the existing protocol/recovery owner decides.
+                try {
+                  const payload = parseModelStreamEvent(event);
+                  if (payload && hasModelStreamProgress(payload)) bodyReader!.markProgress();
+                } catch { /* malformed events never renew the idle budget */ }
+              }
+            } else bodyReader!.markProgress();
+            output.enqueue(next.value); bytesDelivered += next.value.byteLength;
+          }
         } catch (error) {
           if (!consumerCancelled && !request.signal.aborted) upstream.onStreamInterruption?.('transport', streamFailure('transport'));
-          if (!consumerCancelled) diagnostic('response_body', error); cleanup(); output.error(error);
+          if (!consumerCancelled) diagnostic('response_body', error); cleanup(); controller.abort(); output.error(error);
         }
       },
       async cancel() {
@@ -528,7 +546,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         : [...(anthropicReq.system ?? []), { type: 'text', text: upstream.continuationInstruction }] };
     }
     if (upstream.apiProtocol === 'anthropic') {
-      return forwardAnthropicRequest(request, anthropicReq, upstream, routeTimeout.timeoutMs, log);
+      return forwardAnthropicRequest(request, anthropicReq, upstream, routeTimeout.timeoutMs, config.upstreamBodyIdleTimeoutMs, log);
     }
 
     let effectiveApiKey = upstream.apiKey || apiKey;
@@ -802,7 +820,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         const status = attempt.upstreamResp.status;
         let errBody: string;
         try {
-          const bounded = routeTimeout.explicit
+          const bounded = routeTimeout.explicit || upstream.onRejectedResponse
             ? await readBoundedErrorBody(attempt.upstreamResp.body)
             : await attempt.upstreamResp.text();
           if (bounded === undefined) {
@@ -909,6 +927,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         if (translated.status !== status) {
           log(`[bridge] Remapped ${status} → ${translated.status} (${translated.body.error.type})`);
         }
+        upstream.onRejectedResponse?.(translated.status);
         return {
           ok: false,
           response: new Response(JSON.stringify(translated.body), {
@@ -1247,11 +1266,8 @@ export function handleStreamResponse(
       try {
         // Cancel the composed pipe — this propagates to the SSE parse
         // transform's source (the upstream body reader) automatically.
-        finalReadable.cancel(reason).catch((e) => {
-          // Fix #8: surface (debug) the "stream is locked" path that the
-          // legacy code silently swallowed — we still don't want it as a
-          // warning (cancel after pipeThrough often hits this), but
-          // observable for diagnostics.
+        reader.cancel(reason).catch((e) => {
+          // Cancel through the reader that owns the lock; retain diagnostics for source failures.
           console.debug(`[bridge] cancel() on finalReadable failed: ${e instanceof Error ? e.message : String(e)}`);
         });
       } catch { /* ignore */ }
@@ -1486,7 +1502,7 @@ export function handleResponsesStreamResponse(
       detachDownstream();
       try { upstreamController.abort(new Error('Downstream cancel')); } catch { /* ignore */ }
       try {
-        finalReadable.cancel(reason).catch((e) => {
+        reader.cancel(reason).catch((e) => {
           console.debug(`[bridge] cancel() on Responses finalReadable failed: ${e instanceof Error ? e.message : String(e)}`);
         });
       } catch { /* ignore */ }
