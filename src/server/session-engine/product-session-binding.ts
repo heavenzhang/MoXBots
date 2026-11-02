@@ -1,3 +1,4 @@
+import { projectSpaceSnapshotsEqual } from '../../shared/projectSpaces';
 import { randomUUID } from 'node:crypto';
 
 import { isPendingSessionId } from '../../shared/constants';
@@ -222,6 +223,7 @@ export async function preparePendingProductSession(
       [K in keyof ProductSessionSnapshotPatch]: ProductSessionSnapshotPatch[K] | null;
     }>;
     origin?: SessionOrigin;
+    birthSnapshot?: Partial<SessionMetadata>;
   },
   options: {
     hasActiveWork: boolean;
@@ -244,10 +246,21 @@ export async function preparePendingProductSession(
     };
   }
 
+  const birthScopeMatches = (metadata: SessionMetadata): boolean => {
+    if (!request.birthSnapshot) return true;
+    const previous = metadata.projectSpace;
+    const desired = request.birthSnapshot.projectSpace;
+    if (previous === undefined && desired === undefined) return true;
+    if (!previous || !desired) return false;
+    try { return projectSpaceSnapshotsEqual(previous, { ...desired, capturedAt: previous.capturedAt }); }
+    catch { return false; }
+  };
+  const scopeConflict = { success: false as const, error: 'Pending conversation belongs to a different project scope', status: 409 };
   const pending = pendingDesktopMaterialization;
   if (pending) {
     const metadata = getSessionMetadata(pending.targetSessionId);
     if (metadata) {
+      if (!birthScopeMatches(metadata)) return scopeConflict;
       if (!preparedMaterializationOwnsMetadata(pending, metadata)) {
         return {
           success: false,
@@ -291,7 +304,7 @@ export async function preparePendingProductSession(
 
   if (!isPendingSessionId(currentProductSessionId)) {
     const metadata = getCurrentProductSessionMetadata();
-    if (metadata) return { success: true, sessionId: currentProductSessionId, metadata };
+    if (metadata) { if (!birthScopeMatches(metadata)) return scopeConflict; return { success: true, sessionId: currentProductSessionId, metadata }; }
     if (!allowLazySessionMaterialization) {
       return { success: false, error: 'Active session is not pending and has no metadata.', status: 404 };
     }

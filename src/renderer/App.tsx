@@ -1,3 +1,7 @@
+import { findProjectSpaceBotWorkspace, readProjectSpaces, type ProjectSpace } from '../shared/projectSpaces';
+import { SessionMaterializationError } from '@/api/sessionMaterialize';
+import type { ProjectConversationRequest, ProjectConversationTarget } from '@/features/project-spaces/ProjectConversationDialog';
+import type { ProjectSpaceBinding } from '@/features/project-spaces/tabModule';
 import type { SidebarConversationLaunchAttempt, SidebarConversationLaunchResult } from '@/utils/sidebarConversationLaunch';
 import UpdateRestartConfirmation from '@/components/UpdateRestartConfirmation';
 import { restoreRemoteTabForAccount } from '@/features/remote-session/accountFence';
@@ -446,6 +450,9 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
   // Owned by GlobalSidebar (which renders the single New Agent panel); lifted
   // here so launcher entry points open that same instance.
   const [newAgentPanelOpen, setNewAgentPanelOpen] = useState(false);
+  const [projectConversationRequest, setProjectConversationRequest] = useState<ProjectConversationRequest | null>(null);
+  const projectConversationNonce = useRef(0);
+  const requestProjectConversation = useCallback((projectId: string, botId?: string) => { setProjectConversationRequest({ id: ++projectConversationNonce.current, projectId, botId }); }, []);
   const [appVersion, setAppVersion] = useState('');
   useEffect(() => {
     if (isTauriEnvironment()) {
@@ -2118,11 +2125,14 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
               origin:
                 sessionBirthHint?.origin ??
                 originFromDesktopSurface(pendingSurfaceForLaunch?.surface),
+              ...(sessionBirthHint?.projectSpaceSelection ? { projectSpaceSelection: sessionBirthHint.projectSpaceSelection } : {}),
               prepareForFirstUserMessage: true,
               materializationSourceSessionId: effectiveSessionId,
             }, { type: 'tab', id: targetTabId, pendingSessionId: effectiveSessionId });
             effectiveSessionId = prepared.id;
           } catch (err) {
+            if (sidebarAttempt && err instanceof SessionMaterializationError && err.outcome === 'failed') sidebarAttempt.sideEffectsStarted = false;
+            if (sidebarAttempt && err instanceof SessionMaterializationError && err.outcome === 'unknown') sidebarAttempt.birthReceipt = { pendingSessionId: err.pendingSessionId, preparedSessionId: err.preparedSessionId, ownerSessionId: err.ownerSessionId };
             console.error(
               '[App] Failed to create runtime-backed provider session:',
               err,
@@ -2133,6 +2143,32 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
             }));
             setLoadingTabs((prev) => ({ ...prev, [targetTabId]: false }));
             launchingTabRef.current = null;
+            return false;
+          }
+        }
+
+        // Project birth must commit before Chat mounts (and before eager prewarm).
+        // Runtime/model policy still comes from the Bot's original workspace.
+        if (sessionBirthHint?.projectSpaceSelection && !runtimeBackedProviderIdentity) {
+          if (sidebarAttempt) { sidebarAttempt.sideEffectsStarted = true; sidebarAttempt.tabId = targetTabId; }
+          try {
+            const prepared = await createSession(project.path, workspaceOpenAnalytics.runtime, {
+              projectSpaceSelection: sessionBirthHint.projectSpaceSelection,
+              runtimeSource: normalizeRuntimeSourceForOpen(workspaceOpenAnalytics.runtime, agentForLaunchBirth?.runtimeConfig?.source),
+              ...(sessionBirthHint.builtinSelection ? { providerId: sessionBirthHint.builtinSelection.providerId, model: sessionBirthHint.builtinSelection.model } : {}),
+              ...(sessionBirthHint.runtimeModel ? { model: sessionBirthHint.runtimeModel } : {}),
+              permissionMode: sessionBirthHint.permissionMode,
+              reasoningEffort: sessionBirthHint.reasoningEffort,
+              origin: originFromDesktopSurface(pendingSurfaceForLaunch.surface),
+              materializationSourceSessionId: effectiveSessionId,
+            }, { type: 'tab', id: targetTabId, pendingSessionId: effectiveSessionId });
+            effectiveSessionId = prepared.id;
+          } catch (error) {
+            if (sidebarAttempt && error instanceof SessionMaterializationError && error.outcome === 'failed') sidebarAttempt.sideEffectsStarted = false;
+            if (sidebarAttempt && error instanceof SessionMaterializationError && error.outcome === 'unknown') sidebarAttempt.birthReceipt = { pendingSessionId: error.pendingSessionId, preparedSessionId: error.preparedSessionId, ownerSessionId: error.ownerSessionId };
+            setTabErrors(previous => ({ ...previous, [targetTabId]: t('projectSpaces.birthFailed') }));
+            // The client retains the original owner on an unknown acknowledgement.
+            // Never mount a scope-less fallback Chat or replay this intent.
             return false;
           }
         }
@@ -3106,6 +3142,14 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
         return false;
       }
 
+      // Project conversations have immutable context. The new-conversation
+      // action asks for a fresh project birth while retaining the source Tab.
+      const source = isPendingSessionId(sourceSessionId) ? undefined : await apiGetJson<{ success: boolean; session?: SessionMetadata }>(`/sessions/${encodeURIComponent(sourceSessionId)}?view=metadata`);
+      if (source && (!source.success || !source.session)) throw new Error('Source conversation is unavailable');
+      if (source?.session?.projectSpace) {
+        requestProjectConversation(source.session.projectSpace.projectId, source.session.projectSpace.botId);
+        return true;
+      }
       const oldSessionId = currentTab.sessionId;
 
       // Each birth needs its own slot, including when the source is pending.
@@ -3179,7 +3223,7 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
         throw error;
       }
     },
-    [tabWorkspaceController],
+    [tabWorkspaceController, requestProjectConversation],
   );
 
   const handleSelectTab = useCallback(
@@ -3289,7 +3333,7 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
   // Bot creation needs a receipt with ownership, rather than the legacy boolean
   // used by workspace navigation. Never infer delivery from tab existence.
   const handleStartBotConversation = useCallback(
-    async (project: Project, initialMessage?: InitialMessage): Promise<SidebarConversationLaunchResult> => {
+    async (project: Project, initialMessage?: InitialMessage, birthHint?: LaunchSessionBirthHint): Promise<SidebarConversationLaunchResult> => {
       if (tabWorkspaceController.getSnapshot().tabs.length >= TAB_ADMISSION_LIMIT) {
         toastRef.current.info(t('appChrome.maxTabsReached'));
         return { status: 'not-started' };
@@ -3301,19 +3345,33 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
         const launched = await handleLaunchProject(project, initialMessage, {
           surface: 'global_sidebar',
           entryIntent: initialMessage ? 'send_message' : 'open_workspace',
-        }, undefined, attempt);
+        }, birthHint, attempt);
         if (launched) return { status: 'opened' };
       } catch (error) {
         console.error('[App] Bot conversation launch failed:', error);
       }
       if (attempt.sideEffectsStarted) {
-        return { status: 'uncertain', tabId: attempt.tabId };
+        return { status: 'uncertain', tabId: attempt.tabId, birthReceipt: attempt.birthReceipt };
       }
       removeUnusedPrecreatedLaunchTab(launchTab.id);
       return { status: 'not-started' };
     },
     [handleLaunchProject, openLaunchTabNow, removeUnusedPrecreatedLaunchTab, t, tabWorkspaceController],
   );
+
+  const handleStartProjectConversation = useCallback(async (target: ProjectConversationTarget, message?: InitialMessage): Promise<SidebarConversationLaunchResult> => {
+    const cfg = configRef.current;
+    const botId = target.kind === 'project' ? target.selection.botId : target.botId;
+    const workspace = findProjectSpaceBotWorkspace(botId, configProjects);
+    if (!workspace || !cfg.agents?.some(bot => bot.id === botId)) return { status: 'not-started' };
+    if (target.kind === 'project') {
+      try {
+        const project = readProjectSpaces(cfg.projectSpaces).find(item => item.id === target.selection.projectId);
+        if (!project || project.archivedAt || project.revision !== target.selection.projectRevision || !project.memberBotIds.includes(botId)) return { status: 'not-started' };
+      } catch { return { status: 'not-started' }; }
+    }
+    return handleStartBotConversation(workspace, message, target.kind === 'project' ? { projectSpaceSelection: target.selection } : undefined);
+  }, [configProjects, handleStartBotConversation]);
 
   const handleViewBotConversationAttempt = useCallback((tabId: string) => {
     if (tabWorkspaceController.getSnapshot().tabs.some(tab => tab.id === tabId)) {
@@ -3700,6 +3758,10 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
       );
     };
   }, [handleOpenCapabilities, handleOpenSettings]);
+
+  const handleOpenProjectSpace = useCallback((project: ProjectSpace) => {
+    tabWorkspaceController.open('projectspace', { projectSpaceId: project.id, title: project.name });
+  }, [tabWorkspaceController]);
 
   const handleOpenProjectBoard = useCallback((project: Project) => {
     tabWorkspaceController.open('projectboard', {
@@ -5113,6 +5175,15 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
       });
     },
   }), [openRemoteSession, t, tabWorkspaceController]);
+  const projectSpaceBinding = useMemo<ProjectSpaceBinding>(() => ({
+    onNewConversation: requestProjectConversation,
+    onCreateBot: () => setNewAgentPanelOpen(true),
+    onOpenConversation: session => {
+      const matches = configProjects.filter(project => workspacePathsEqual(project.path, session.agentDir));
+      if (matches.length === 1) void handleOpenSidebarSession(session, matches[0]);
+      else toastRef.current.error(t('projectSpaces.workspaceConflict'));
+    },
+  }), [requestProjectConversation, configProjects, handleOpenSidebarSession, t]);
   const tabBindings = useMemo<BuiltinTabBindings>(
     () => composeBuiltinTabBindings({
       launcher: launcherBinding,
@@ -5124,9 +5195,11 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
       agentnetwork: agentNetworkBinding,
       'remote-session': remoteSessionBinding,
       projectboard: null,
+      projectspace: projectSpaceBinding,
       record: recordBinding,
     }),
     [
+      projectSpaceBinding,
       capabilitiesBinding,
       chatBinding,
       agentNetworkBinding,
@@ -5163,6 +5236,9 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
             onOpenSettings={handleOpenGeneralSettings}
             onOpenBugReport={handleOpenBugReport}
             onOpenProjectBoard={handleOpenProjectBoard}
+            onOpenProjectSpace={handleOpenProjectSpace}
+            projectConversationRequest={projectConversationRequest}
+            onStartProjectConversation={handleStartProjectConversation}
             onOpenWorkspace={handleOpenWorkspaceFromSidebar}
             onStartBotConversation={handleStartBotConversation}
             onViewBotConversationAttempt={handleViewBotConversationAttempt}

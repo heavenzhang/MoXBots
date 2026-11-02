@@ -7,6 +7,9 @@ import * as composerUpdateCheckpoint from '@/utils/composerUpdateCheckpoint';
 
 import { CODEX_SUBSCRIPTION_PROVIDER_ID } from '../shared/config-types';
 import { CUSTOM_EVENTS } from '../shared/constants';
+import { SessionMaterializationError } from '@/api/sessionMaterialize';
+import type { ProjectSpace, ProjectSpaceSessionSnapshot } from '../shared/projectSpaces';
+import type { ProjectConversationTarget, ProjectConversationRequest } from '@/features/project-spaces/ProjectConversationDialog';
 import type { SessionMetadata } from '@/api/sessionClient';
 import type { CapturedTabIdentity } from '@/tab-workspace/workspaceState';
 import type { ChatTab } from '@/features/chat/tabContract';
@@ -56,6 +59,12 @@ const mocks = vi.hoisted(() => {
 
   return {
     project,
+    projectSpaces: [] as ProjectSpace[],
+    sessionMetadata: new Map<string, SessionMetadata>(),
+    apiGetJson: vi.fn(async (path: string) => {
+      const match = /^\/sessions\/([^?]+)\?view=metadata$/.exec(path);
+      return { success: true, ...(match ? { session: mocks.sessionMetadata.get(decodeURIComponent(match[1])) } : {}) };
+    }),
     spaceDevGate: undefined as boolean | undefined,
     spaceBuildAvailable: true,
     configLoading: false,
@@ -262,7 +271,7 @@ vi.mock('@/api/SseConnection', () => ({
 }));
 
 vi.mock('@/api/apiFetch', () => ({
-  apiGetJson: vi.fn(async () => ({ success: true })),
+  apiGetJson: mocks.apiGetJson,
 }));
 
 vi.mock('@/api/cronTaskClient', () => ({
@@ -478,6 +487,7 @@ vi.mock('@/hooks/useConfig', () => ({
   useConfig: () => ({
     config: {
       projects: [mocks.project],
+      projectSpaces: mocks.projectSpaces,
       agents: [mocks.agent],
       managedCodexProviderDevGate: true,
       managedCodexRuntimeInstall: { status: 'installed', usable: true },
@@ -595,6 +605,8 @@ async function releaseUpdateHandoff() {
 describe('App helper launch', () => {
   afterEach(() => {
     vi.restoreAllMocks();
+    mocks.projectSpaces = [];
+    mocks.sessionMetadata.clear();
     mocks.configLoading = false;
     mocks.spaceDevGate = undefined;
     mocks.spaceBuildAvailable = true;
@@ -739,11 +751,148 @@ describe('App helper launch', () => {
         entryIntent?: 'open_workspace' | 'workspace_init',
       ) => Promise<boolean>;
       onStartBotConversation: (project: typeof mocks.project, message?: InitialMessage) => Promise<SidebarConversationLaunchResult>;
+      onStartProjectConversation: (target: ProjectConversationTarget, message?: InitialMessage) => Promise<SidebarConversationLaunchResult>;
+      projectConversationRequest: ProjectConversationRequest | null;
+      onOpenProjectSpace: (project: ProjectSpace) => void;
       onOpenSession: (session: { id: string; agentDir: string; title: string }, project: typeof mocks.project) => Promise<boolean>;
       onContinueSession: (session: SessionMetadata, project: typeof mocks.project) => Promise<boolean>;
       onRenameSession: (sessionId: string, newTitle: string) => Promise<SessionMetadata | null>;
     };
   }
+
+  function projectSpace(id: string): ProjectSpace {
+    return { id, name: `Project ${id}`, description: `${id} description`, instructions: `${id} instructions`,
+      memberBotIds: [mocks.agent.id], materials: [{ id: 'material', title: 'Reference', content: `${id} material` }], resources: [],
+      revision: id === 'A' ? 3 : 7, createdAt: '2026-11-02T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z' };
+  }
+  function projectTarget(id: string): ProjectConversationTarget {
+    const project = mocks.projectSpaces.find(item => item.id === id)!;
+    return { kind: 'project', selection: { projectId: id, botId: mocks.agent.id, projectRevision: project.revision } };
+  }
+  function projectMetadata(id: string): SessionMetadata {
+    const project = mocks.projectSpaces.find(item => item.id === id)!;
+    const snapshot: ProjectSpaceSessionSnapshot = { schemaVersion: 1, projectId: id, projectName: project.name,
+      projectRevision: project.revision, botId: mocks.agent.id, botName: mocks.agent.name,
+      workspacePath: mocks.project.path, capturedAt: '2026-11-02T00:00:00Z', description: project.description,
+      instructions: project.instructions, materials: project.materials, resources: project.resources };
+    return { id: `project-${id}-session`, agentDir: mocks.project.path, title: project.name,
+      createdAt: '2026-11-02T00:00:00Z', lastActiveAt: '2026-11-02T00:00:00Z', projectSpace: snapshot };
+  }
+
+  it('births A and B with the same Bot IDs before mounting either project Chat', async () => {
+    mocks.projectSpaces = [projectSpace('A'), projectSpace('B')];
+    render(<App />);
+    await screen.findByTestId('launcher-page');
+    for (const id of ['A', 'B']) {
+      const previousChats = latestTabWorkspace().tabs.filter(tab => tab.view === 'chat').map(tab => tab.sessionId);
+      let resolveBirth!: (metadata: SessionMetadata) => void;
+      mocks.createSession.mockImplementationOnce(() => new Promise(resolve => { resolveBirth = resolve; }));
+      let opening!: Promise<SidebarConversationLaunchResult>;
+      act(() => { opening = latestSidebarProps().onStartProjectConversation(projectTarget(id), { text: `${id} original intent` }); });
+      await waitFor(() => expect(mocks.createSession).toHaveBeenCalledTimes(id === 'A' ? 1 : 2));
+      expect(latestTabWorkspace().tabs.filter(tab => tab.view === 'chat').map(tab => tab.sessionId)).toEqual(previousChats);
+      expect(mocks.tabProviderProps.some(props => props.sessionId === projectMetadata(id).id)).toBe(false);
+      expect(mocks.tabProviderProps.some(props => String(props.sessionId).startsWith('pending-'))).toBe(false);
+      expect(mocks.createSession).toHaveBeenLastCalledWith(mocks.project.path, 'builtin', expect.objectContaining({ projectSpaceSelection: { projectId: id, botId: mocks.agent.id, projectRevision: id === 'A' ? 3 : 7 } }),
+        expect.objectContaining({ type: 'tab', pendingSessionId: expect.stringMatching(/^pending-/) }));
+      const opts = (mocks.createSession.mock.calls.at(-1) as unknown as [string, string, Record<string, unknown>])[2];
+      expect(opts).not.toHaveProperty('providerExecutionIdentity');
+      expect(opts).not.toHaveProperty('prepareForFirstUserMessage');
+      await act(async () => { resolveBirth(projectMetadata(id)); expect(await opening).toEqual({ status: 'opened' }); });
+      await waitFor(() => expect(mocks.tabProviderProps.some(props => props.sessionId === projectMetadata(id).id)).toBe(true));
+    }
+    expect(latestTabWorkspace().tabs.filter(tab => tab.view === 'chat').map(tab => tab.sessionId).sort()).toEqual(['project-A-session', 'project-B-session']);
+  });
+
+  it('keeps project selection on the managed provider birth without creating another ordinary birth', async () => {
+    mocks.projectSpaces = [projectSpace('A')];
+    mocks.agent.providerId = CODEX_SUBSCRIPTION_PROVIDER_ID;
+    mocks.agent.model = 'gpt-5.5';
+    mocks.createSession.mockResolvedValueOnce(projectMetadata('A'));
+    render(<App />);
+    await screen.findByTestId('launcher-page');
+    await act(async () => { expect(await latestSidebarProps().onStartProjectConversation(projectTarget('A'))).toEqual({ status: 'opened' }); });
+    expect(mocks.createSession).toHaveBeenCalledExactlyOnceWith(mocks.project.path, 'codex', expect.objectContaining({
+      projectSpaceSelection: { projectId: 'A', botId: mocks.agent.id, projectRevision: 3 },
+      runtimeSource: 'managed-provider', prepareForFirstUserMessage: true,
+      providerExecutionIdentity: expect.objectContaining({ providerId: CODEX_SUBSCRIPTION_PROVIDER_ID, runtime: 'codex' }),
+    }), expect.objectContaining({ type: 'tab', pendingSessionId: expect.stringMatching(/^pending-/) }));
+    expect(mocks.tabProviderProps.some(props => props.sessionId === 'project-A-session')).toBe(true);
+  });
+
+  it.each([['builtin', 'failed'], ['builtin', 'unknown'], ['managed', 'failed'], ['managed', 'unknown']] as const)('keeps %s %s project birth out of Chat without starting a scope-less fallback', async (runtime, outcome) => {
+    mocks.projectSpaces = [projectSpace('A')];
+    if (runtime === 'managed') { mocks.agent.providerId = CODEX_SUBSCRIPTION_PROVIDER_ID; mocks.agent.model = 'gpt-5.5'; }
+    mocks.createSession.mockRejectedValueOnce(new SessionMaterializationError('birth receipt', outcome, 'pending-A', outcome === 'unknown' ? 'project-A-session' : undefined, outcome === 'unknown' ? 'project-A-session' : 'pending-A'));
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    render(<App />);
+    await screen.findByTestId('launcher-page');
+    let result!: SidebarConversationLaunchResult;
+    await act(async () => { result = await latestSidebarProps().onStartProjectConversation(projectTarget('A'), { text: 'retained project intent' }); });
+    expect(result).toMatchObject({ status: outcome === 'unknown' ? 'uncertain' : 'not-started' });
+    expect(mocks.createSession).toHaveBeenCalledOnce();
+    expect(mocks.ensureSessionSidecar).not.toHaveBeenCalled();
+    expect(mocks.releaseTabSession).not.toHaveBeenCalled();
+    expect(latestTabWorkspace().tabs.some(tab => tab.view === 'chat')).toBe(false);
+    expect(mocks.chatProps).toHaveLength(0);
+    expect(mocks.tabProviderProps).toHaveLength(0);
+    expect(screen.queryAllByTestId('launcher-page').length).toBeGreaterThan(0);
+    if (result.status === 'uncertain') expect(result.birthReceipt).toEqual({ pendingSessionId: 'pending-A', preparedSessionId: 'project-A-session', ownerSessionId: 'project-A-session' });
+    const uncertainTabId = result.status === 'uncertain' ? result.tabId : undefined;
+    if (uncertainTabId) expect(latestTabWorkspace().tabs.some(tab => tab.id === uncertainTabId)).toBe(true);
+    errorSpy.mockRestore();
+  });
+
+  it('retains legacy Bot/workspace launch without explicit project birth', async () => {
+    mocks.projectSpaces = [projectSpace('A')];
+    render(<App />);
+    await screen.findByTestId('launcher-page');
+    await act(async () => { expect(await latestSidebarProps().onStartProjectConversation({ kind: 'workspace', botId: mocks.agent.id }, { text: 'ordinary workspace' })).toEqual({ status: 'opened' }); });
+    expect(mocks.createSession).not.toHaveBeenCalled();
+    expect(latestTabWorkspace().tabs.filter(tab => tab.view === 'chat')[0]?.sessionId).toMatch(/^pending-/);
+  });
+
+  it('requests a fresh conversation from source metadata without resetting or reassigning the original project Session', async () => {
+    mocks.projectSpaces = [projectSpace('A'), projectSpace('B')];
+    const original = projectMetadata('A');
+    mocks.sessionMetadata.set(original.id, original);
+    mocks.createSession.mockResolvedValueOnce(original);
+    render(<App />);
+    await screen.findByTestId('launcher-page');
+    await act(async () => { expect(await latestSidebarProps().onStartProjectConversation(projectTarget('A'))).toEqual({ status: 'opened' }); });
+    const before = latestTabWorkspace();
+    const originalTab = before.tabs.find(tab => tab.sessionId === original.id)!;
+    mocks.createSession.mockClear();
+    mocks.ensureSessionSidecar.mockClear();
+    mocks.releaseTabSession.mockClear();
+    await act(async () => { expect(await latestChatProps().onNewSession(original.id)).toBe(true); });
+    expect(mocks.apiGetJson).toHaveBeenCalledWith(`/sessions/${original.id}?view=metadata`);
+    expect(latestSidebarProps().projectConversationRequest).toMatchObject({ projectId: 'A', botId: mocks.agent.id });
+    expect(latestTabWorkspace().tabs.find(tab => tab.id === originalTab.id)?.sessionId).toBe(original.id);
+    expect(latestTabWorkspace().tabs).toHaveLength(before.tabs.length);
+    expect(mocks.createSession).not.toHaveBeenCalled();
+    expect(mocks.ensureSessionSidecar).not.toHaveBeenCalled();
+    expect(mocks.releaseTabSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps a persistent source unchanged when its metadata cannot be read for new-conversation admission', async () => {
+    mocks.projectSpaces = [projectSpace('A')];
+    const original = projectMetadata('A');
+    mocks.createSession.mockResolvedValueOnce(original);
+    render(<App />);
+    await screen.findByTestId('launcher-page');
+    await act(async () => { await latestSidebarProps().onStartProjectConversation(projectTarget('A')); });
+    const before = latestTabWorkspace().tabs.map(tab => ({ ...tab }));
+    mocks.createSession.mockClear();
+    mocks.ensureSessionSidecar.mockClear();
+    mocks.releaseTabSession.mockClear();
+    await act(async () => { await expect(latestChatProps().onNewSession(original.id)).rejects.toThrow('Source conversation is unavailable'); });
+    expect(latestTabWorkspace().tabs).toEqual(before);
+    expect(latestSidebarProps().projectConversationRequest).toBeNull();
+    expect(mocks.createSession).not.toHaveBeenCalled();
+    expect(mocks.ensureSessionSidecar).not.toHaveBeenCalled();
+    expect(mocks.releaseTabSession).not.toHaveBeenCalled();
+  });
 
   it('creates a distinct conversation while a pending source continues in the background', async () => {
     render(<App />);

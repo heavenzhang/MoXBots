@@ -1,3 +1,4 @@
+import { projectSpaceSnapshot } from '../__tests__/fixtures/project-space';
 import { describe, it, expect } from 'vitest';
 
 import { snapshotForForkedSession, snapshotForOwnedSession, snapshotForImSession } from './session-snapshot';
@@ -361,4 +362,20 @@ describe('snapshotForForkedSession', () => {
     expect(snapshot).not.toHaveProperty('managedCodexExtensionProtocolVersion');
     expect(snapshot).not.toHaveProperty('managedCodexHostCatalogFingerprint');
   });
+});
+
+
+it('forks clone the immutable project configuration without sharing arrays', () => {
+  const projectSpace = projectSpaceSnapshot('/workspace');
+  const source = { id: 'source', agentDir: '/workspace', title: 'source', createdAt: 't', lastActiveAt: 't', projectSpace };
+  const fork = snapshotForForkedSession(source);
+  expect(fork.projectSpace).toEqual(projectSpace);
+  fork.projectSpace!.materials[0].content = 'fork-only';
+  expect(source.projectSpace.materials[0].content).toBe('A-material-secret');
+});
+
+
+it('does not silently fork malformed project metadata into an unscoped conversation', () => {
+  const source = { id: 'source', agentDir: '/workspace', title: 'source', createdAt: 't', lastActiveAt: 't', projectSpace: null };
+  expect(() => snapshotForForkedSession(source as unknown as SessionMetadata)).toThrow();
 });

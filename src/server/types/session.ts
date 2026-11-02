@@ -55,6 +55,8 @@ export interface AutoRouteSnapshotAdmission {
  * Session metadata stored in sessions.json
  */
 export interface SessionMetadata {
+  /** Immutable organizational context, compiled by the birth owner. */
+  projectSpace?: import("../../shared/projectSpaces").ProjectSpaceSessionSnapshot;
   /** Product task associations/reviews; Runtime execution remains authoritative. */
   taskOrchestration?: import("../../shared/sessionTaskOrchestration").SessionTaskLedger;
   /** Durable inference wait; never an instruction to replay the original input. */

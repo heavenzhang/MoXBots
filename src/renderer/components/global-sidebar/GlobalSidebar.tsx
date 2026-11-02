@@ -1,6 +1,9 @@
 import type { SidebarConversationLaunchResult } from '@/utils/sidebarConversationLaunch';
 import BotConversationNavigation from './BotConversationNavigation';
-import NewBotConversationDialog from './NewBotConversationDialog';
+import ProjectConversationDialog, { type ProjectConversationRequest, type ProjectConversationTarget } from '@/features/project-spaces/ProjectConversationDialog';
+import ProjectSpaceEditor from '@/features/project-spaces/ProjectSpaceEditor';
+import { readProjectSpaces, type ProjectSpace } from '../../../shared/projectSpaces';
+import { mutateProjectSpace } from '@/config/services/projectSpaceService';
 import {
   DndContext,
   DragOverlay,
@@ -243,6 +246,9 @@ interface GlobalSidebarProps {
   onStartBotConversation?: (project: Project, message?: InitialMessage) => Promise<SidebarConversationLaunchResult>;
   onViewBotConversationAttempt?: (tabId: string) => void;
   onOpenProjectBoard?: (project: Project) => void;
+  onOpenProjectSpace?: (project: ProjectSpace) => void;
+  projectConversationRequest?: ProjectConversationRequest | null;
+  onStartProjectConversation?: (target: ProjectConversationTarget, message?: InitialMessage) => Promise<SidebarConversationLaunchResult>;
   onOpenSession: (session: SessionMetadata, project: Project) => Promise<boolean>;
   onContinueSession?: (session: SessionMetadata, project: Project) => Promise<boolean>;
   onRenameSession: (sessionId: string, title: string) => Promise<SessionMetadata | null>;
@@ -530,6 +536,9 @@ export default memo(function GlobalSidebar({
   onStartBotConversation,
   onViewBotConversationAttempt,
   onOpenProjectBoard,
+  onOpenProjectSpace,
+  projectConversationRequest,
+  onStartProjectConversation,
   onOpenSession,
   onContinueSession,
   onRenameSession,
@@ -563,6 +572,11 @@ export default memo(function GlobalSidebar({
     return loadGlobalSidebarPreference(window.localStorage);
   });
   const [newConversationOpen, setNewConversationOpen] = useState(false);
+  const [newProjectOpen, setNewProjectOpen] = useState(false);
+  const [newProjectId, setNewProjectId] = useState(() => crypto.randomUUID());
+  const openNewProject = useCallback(() => { if (!newProjectOpen) { setNewProjectId(crypto.randomUUID()); setNewProjectOpen(true); } }, [newProjectOpen]);
+  const projectCatalog = useMemo(() => { try { return { spaces: readProjectSpaces(config.projectSpaces), error: false }; } catch { return { spaces: [], error: true }; } }, [config.projectSpaces]);
+  useEffect(() => { if (projectConversationRequest) setNewConversationOpen(true); }, [projectConversationRequest]);
   const botExperience = APP_BUILD_PROFILE === 'moxbot';
   const [sessionLimits, setSessionLimits] = useState<Record<string, number>>({});
   const [archivedExpanded, setArchivedExpanded] = useState(false);
@@ -595,7 +609,7 @@ export default memo(function GlobalSidebar({
   const [statsSession, setStatsSession] = useState<SessionMetadata | null>(null);
   const pinInFlightRef = useRef(new Set<string>());
   const archiveInFlightRef = useRef(new Set<string>());
-  const childLayerOpen = newConversationOpen || newAgentPanelOpen
+  const childLayerOpen = newConversationOpen || newProjectOpen || newAgentPanelOpen
     || projectToRemove !== null
     || agentWorkspacePath !== null
     || pendingDeleteSession !== null
@@ -1212,7 +1226,7 @@ export default memo(function GlobalSidebar({
         />
       </div>
       <div className="min-h-0 flex-1">
-    {botExperience && preference.resourceView !== 'history' ? <BotConversationNavigation view={preference.resourceView} projects={activeProjects} agents={config.agents ?? []} data={taskCenterData} tabs={tabs} activeTab={activeTab} badges={sessionNotificationBadgeCounts} onOpenSession={(session, project) => { void handleOpenSession(session, project); }} onOpenProject={project => { onOpenProjectBoard?.(project); closeFlyout(); }} onNewConversation={() => setNewConversationOpen(true)} onCreateBot={() => handleOpenNewAgentPanel()} onManageHistory={() => updatePreference(current => ({ ...current, resourceView: 'history' }))} /> : <WorkspaceTree
+    {botExperience && preference.resourceView !== 'history' ? <BotConversationNavigation spaces={projectCatalog.spaces} catalogError={projectCatalog.error} onOpenProjectSpace={project => { onOpenProjectSpace?.(project); closeFlyout(); }} onCreateProject={openNewProject} view={preference.resourceView} projects={activeProjects} agents={config.agents ?? []} data={taskCenterData} tabs={tabs} activeTab={activeTab} badges={sessionNotificationBadgeCounts} onOpenSession={(session, project) => { void handleOpenSession(session, project); }} onOpenProject={project => { onOpenProjectBoard?.(project); closeFlyout(); }} onNewConversation={() => setNewConversationOpen(true)} onCreateBot={() => handleOpenNewAgentPanel()} onManageHistory={() => updatePreference(current => ({ ...current, resourceView: 'history' }))} /> : <WorkspaceTree
       organization={preference.organization}
       onUpdateOrganization={(update) => new Promise<boolean>((resolve) => updatePreference((current) => ({ ...current, organization: update(current.organization) }), resolve))}
       fadeBottom={expanded}
@@ -1325,15 +1339,27 @@ export default memo(function GlobalSidebar({
 
   return (
     <>
-      {APP_BUILD_PROFILE === 'moxbot' && <NewBotConversationDialog
-        open={newConversationOpen}
-        projects={activeProjects}
-        agents={config.agents ?? []}
-        onOpen={onStartBotConversation ?? (async () => ({ status: 'not-started' as const }))}
-        onViewAttempt={onViewBotConversationAttempt}
+      {APP_BUILD_PROFILE === 'moxbot' && <ProjectConversationDialog
+        open={newConversationOpen} spaces={projectCatalog.spaces}
+        workspaces={projects} agents={config.agents ?? []} request={projectConversationRequest}
+        onOpen={onStartProjectConversation ?? (async (target, message) => {
+          if (target.kind !== 'workspace') return { status: 'not-started' as const };
+          const workspace = projects.find(item => item.agentId === target.botId);
+          return workspace && onStartBotConversation ? onStartBotConversation(workspace, message) : { status: 'not-started' as const };
+        })}
+        onViewAttempt={tabId => onViewBotConversationAttempt?.(tabId)}
         onClose={() => setNewConversationOpen(false)}
         onCreateBot={() => { setNewConversationOpen(false); handleOpenNewAgentPanel(); }}
+        onCreateProject={() => { setNewConversationOpen(false); openNewProject(); }}
       />}
+      {newProjectOpen && <ProjectSpaceEditor bots={config.agents ?? []} onClose={() => setNewProjectOpen(false)} onSave={async draft => {
+        const saved = await mutateProjectSpace({ kind: 'create', id: newProjectId, draft, at: new Date().toISOString() });
+        // The write has committed. A later projection refresh cannot turn it into
+        // a failed save and invite a duplicate create.
+        await refreshConfig().catch(() => toastRef.current.warning(t('projectSpaces.refreshAfterSaveFailed')));
+        onOpenProjectSpace?.(saved);
+        return saved;
+      }} />}
       <aside
         aria-label={t('globalSidebar.navigation')}
         data-global-sidebar-mode={effectiveMode}
@@ -1775,6 +1801,9 @@ interface WorkspaceTreeProps {
   recentlyCreatedWorkspaceKey: string | null;
   onOpenWorkspace: (project: Project) => void;
   onOpenProjectBoard?: (project: Project) => void;
+  onOpenProjectSpace?: (project: ProjectSpace) => void;
+  projectConversationRequest?: ProjectConversationRequest | null;
+  onStartProjectConversation?: (target: ProjectConversationTarget, message?: InitialMessage) => Promise<SidebarConversationLaunchResult>;
   onOpenSession: (session: SessionMetadata, project: Project) => void;
   onContinueSession?: (session: SessionMetadata, project: Project) => Promise<boolean>;
   onTogglePin: (project: Project) => void;

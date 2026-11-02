@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFile
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { projectSpaceSnapshot } from '../__tests__/fixtures/project-space';
 import type { SessionMessage } from '../../shared/types/session-message';
 import { APP_DATA_DIR_NAME } from '../../shared/appProfile';
 import { createLegacySession, createPublishedSession } from '../__tests__/fixtures/session-store';
@@ -129,5 +130,148 @@ describe('project context through real persisted history and desktop query prepa
     vi.resetModules();
     const reloaded = await import('./project-context');
     expect((await reloaded.readProjectContext(request()))?.sources[0].messageId).toBe('one');
+  });
+});
+
+
+describe('logical project scope through real SessionStore persistence', () => {
+  function catalog(archived = false) {
+    writeFileSync(join(state.home, APP_DATA_DIR_NAME, 'config.json'), JSON.stringify({ projectSpaces: ['A', 'B'].map(id => ({
+      id, name: id, description: 'changed-current-description', instructions: 'changed-current-instructions',
+      memberBotIds: ['bot', 'other-bot'], materials: [], resources: [], revision: 2,
+      createdAt: '2026-11-02T00:00:00Z', updatedAt: '2026-11-02T00:00:00Z',
+      ...(archived ? { archivedAt: '2026-11-02T01:00:00Z' } : {}),
+    })) }));
+  }
+  it('isolates A/B and legacy in both directions while sharing across same-project Bots', async () => {
+    catalog();
+    await source([msg('a', 'user', 'A-history-secret')], true, projectPath, { projectSpace: projectSpaceSnapshot(projectPath) });
+    await source([msg('b', 'user', 'B-history-secret')], true, projectPath, { projectSpace: projectSpaceSnapshot(projectPath, 'B') });
+    const otherPath = join(state.home, 'other-bot-workspace');
+    await source([msg('cross', 'user', 'A-other-bot-history')], true, otherPath, { projectSpace: projectSpaceSnapshot(otherPath, 'A', 'other-bot') });
+    await source([msg('legacy', 'user', 'legacy-history-secret')]);
+    for (const id of ['A', 'B']) {
+      const target = await createPublishedSession(store, projectPath, { projectSpace: projectSpaceSnapshot(projectPath, id) });
+      const result = await prepare.prepareDesktopQuery({ ...request(), sessionId: target.id });
+      expect(result.request.text).toContain(`${id}-fixed-description`);
+      expect(result.request.text).toContain(`${id}-material-secret`);
+      expect(result.request.text).toContain(`${id}-history-secret`);
+      expect(result.request.text).not.toContain(`${id === 'A' ? 'B' : 'A'}-history-secret`);
+      expect(result.request.text).not.toContain('legacy-history-secret');
+      expect(result.request.text.includes('A-other-bot-history')).toBe(id === 'A');
+      expect(result.request.text).not.toContain('changed-current-description');
+      expect(result.request.desktopQuery?.visibleText).toBe('继续项目');
+    }
+    const legacy = (await prepare.prepareDesktopQuery(request())).request.text;
+    expect(legacy).toContain('legacy-history-secret');
+    expect(legacy).not.toMatch(/A-history-secret|B-history-secret|A-other-bot-history|fixed-description/);
+  });
+  it('retains fixed configuration without sources and stops dynamic aggregation after archive/deletion', async () => {
+    catalog();
+    await source([msg('a', 'user', 'A-history-secret')], true, projectPath, { projectSpace: projectSpaceSnapshot(projectPath) });
+    const target = await createPublishedSession(store, projectPath, { projectSpace: projectSpaceSnapshot(projectPath) });
+    for (const deleted of [false, true]) {
+      catalog(true);
+      if (deleted) writeFileSync(join(state.home, APP_DATA_DIR_NAME, 'config.json'), '{}');
+      const result = await prepare.prepareDesktopQuery({ ...request(), sessionId: target.id });
+      expect(result.request.text).toContain('A-fixed-instructions');
+      expect(result.request.text).not.toContain('A-history-secret');
+    }
+  });
+  it('flushes and cold-reloads the immutable snapshot; omission preserves it and reassignment fails', async () => {
+    catalog();
+    const fixed = projectSpaceSnapshot(projectPath);
+    const target = await createPublishedSession(store, projectPath, { projectSpace: fixed });
+    const { projectSpace: _scope, ...stale } = target;
+    await store.saveSessionMetadata({ ...stale, title: 'renamed' });
+    expect(store.getSessionMetadata(target.id)?.projectSpace).toEqual(fixed);
+    await expect(store.saveSessionMetadata({ ...target, projectSpace: projectSpaceSnapshot(projectPath, 'B') })).rejects.toThrow(/immutable/);
+    const legacy = await createPublishedSession(store, projectPath);
+    await expect(store.saveSessionMetadata({ ...legacy, projectSpace: fixed })).rejects.toThrow(/assigned/);
+    await expect(store.updateSessionMetadata(target.id, { projectSpace: projectSpaceSnapshot(projectPath, 'B') } as never)).rejects.toThrow(/immutable/);
+    await store.drainSessionTranscripts();
+    expect(JSON.parse(readFileSync(join(state.home, APP_DATA_DIR_NAME, 'sessions.json'), 'utf8')).find((row: { id: string }) => row.id === target.id).projectSpace).toEqual(fixed);
+    vi.resetModules();
+    store = await import('../SessionStore');
+    prepare = await import('./query-reminder');
+    expect((await store.getSessionData(target.id))?.projectSpace).toEqual(fixed);
+    const result = await prepare.prepareDesktopQuery({ ...request(), sessionId: target.id });
+    expect(result.request.text).toContain('A-fixed-description');
+    expect(result.request.text).not.toContain('changed-current-description');
+  });
+  it('persists forked project context independently while preserving the source snapshot', async () => {
+    catalog();
+    const fixed = projectSpaceSnapshot(projectPath);
+    const original = await source([msg('original', 'user', 'A-original-history')], true, projectPath, { projectSpace: fixed });
+    const { snapshotForForkedSession } = await import('../utils/session-snapshot');
+    const { createSessionMetadata } = await import('../types/session');
+    const fork = createSessionMetadata(projectPath, snapshotForForkedSession(original));
+    await store.publishForkSession(fork, (await store.getSessionData(original.id))!.messages, original.id);
+    expect((await store.getSessionData(fork.id))?.projectSpace).toEqual(fixed);
+    expect((await store.getSessionData(fork.id))?.messages[0].content).toBe('A-original-history');
+    expect((await store.getSessionData(original.id))?.projectSpace).toEqual(fixed);
+  });
+  it.each([false, true])('prevents assigning existing legacy sessions to projects (V2=%s)', async (v2) => {
+    const original = await source([], v2);
+    await expect(store.saveSessionMetadata({ ...original, projectSpace: projectSpaceSnapshot(projectPath) })).rejects.toThrow(/assigned/);
+    expect(store.getSessionMetadata(original.id)?.projectSpace).toBeUndefined();
+  });
+  it('never falls back from invalid persisted project scope to legacy workspace', async () => {
+    await source([msg('legacy', 'user', 'legacy-history-secret')]);
+    const target = await createPublishedSession(store, projectPath);
+    await store.drainSessionTranscripts();
+    const indexPath = join(state.home, APP_DATA_DIR_NAME, 'sessions.json');
+    const rows = JSON.parse(readFileSync(indexPath, 'utf8'));
+    rows.find((row: { id: string }) => row.id === target.id).projectSpace = { projectId: 'A' };
+    writeFileSync(indexPath, JSON.stringify(rows));
+    vi.resetModules();
+    store = await import('../SessionStore');
+    prepare = await import('./query-reminder');
+    expect((await prepare.prepareDesktopQuery({ ...request(), sessionId: target.id })).request.text).toBe('继续项目');
+  });
+});
+
+
+describe('project owner birth transactions', () => {
+  it('prepares and commits ordinary builtin project birth without providerExecutionIdentity and rejects a different repeated scope', async () => {
+    const binding = await import('./product-session-binding');
+    const { createSessionMetadata } = await import('../types/session');
+    await binding.resetProductSessionBinding({ sessionId: 'pending-project-test', workspacePath: projectPath, allowLazySessionMaterialization: true });
+    const fixed = projectSpaceSnapshot(projectPath);
+    let creations = 0;
+    const options = { hasActiveWork: false, createPreparedMetadata: () => {
+      creations += 1;
+      const metadata = createSessionMetadata(projectPath, { projectSpace: fixed, origin: { kind: 'desktop', surface: 'agent_card' } });
+      return { targetSessionId: metadata.id, metadata, reusingNativeSession: false, snapshotKind: 'owned' };
+    } };
+    const prepared = await binding.preparePendingProductSession({ birthSnapshot: { projectSpace: fixed } }, options);
+    expect(prepared.success).toBe(true);
+    if (!prepared.success) throw new Error(prepared.error);
+    expect(prepared.metadata?.providerExecutionIdentity).toBeUndefined();
+    expect(prepared.metadata?.materializationState).toBe('prepared');
+    const repeated = await binding.preparePendingProductSession({ birthSnapshot: { projectSpace: { ...fixed, capturedAt: '2026-11-02T01:00:00Z' } } }, options);
+    expect(repeated.success).toBe(true);
+    const conflict = await binding.preparePendingProductSession({ birthSnapshot: { projectSpace: projectSpaceSnapshot(projectPath, 'B') } }, options);
+    expect(conflict).toMatchObject({ success: false, status: 409 });
+    expect(creations).toBe(1);
+    expect(store.getSessionMetadata(prepared.sessionId!)?.projectSpace).toEqual(fixed);
+    const committed = await binding.commitPendingProductSession({ preparedSessionId: prepared.sessionId });
+    expect(committed.success).toBe(true);
+    expect(store.getSessionMetadata(prepared.sessionId!)?.materializationState).toBeUndefined();
+    expect(store.getSessionMetadata(prepared.sessionId!)?.projectSpace).toEqual(fixed);
+  });
+  it('rejects attaching scope to an already-materialized prewarm session without changing its binding or metadata', async () => {
+    const binding = await import('./product-session-binding');
+    const source = await createPublishedSession(store, projectPath);
+    await binding.resetProductSessionBinding({ sessionId: source.id, workspacePath: projectPath, allowLazySessionMaterialization: false });
+    const before = JSON.stringify(store.getSessionMetadata(source.id));
+    const create = vi.fn(() => { throw new Error('must not create'); });
+    const result = await binding.preparePendingProductSession({ birthSnapshot: { projectSpace: projectSpaceSnapshot(projectPath) } },
+      { hasActiveWork: false, createPreparedMetadata: create });
+    expect(result).toMatchObject({ success: false, status: 409 });
+    expect(create).not.toHaveBeenCalled();
+    expect(binding.currentProductSessionId).toBe(source.id);
+    expect(JSON.stringify(store.getSessionMetadata(source.id))).toBe(before);
+    expect(binding.getPendingProductSessionMaterialization()).toBeNull();
   });
 });
