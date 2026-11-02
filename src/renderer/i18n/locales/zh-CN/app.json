@@ -2065,7 +2065,8 @@
         "invalid_json": "识别模型返回的格式无法解析。",
         "invalid_schema": "识别结果不符合任务结构要求。",
         "missing_continuation": "识别结果没有说明是否接续原任务。",
-        "missing_steps": "识别结果缺少执行步骤。"
+        "missing_steps": "识别结果缺少执行步骤。",
+        "missing_execution_disposition": "识别结果没有说明是否保留原任务。"
       },
       "admissionHint": "当前请求没有得到可确认的执行意图，因此不会自动续跑。",
       "reasons": {

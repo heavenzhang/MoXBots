@@ -133,6 +133,11 @@ describe("session execution schema and policy", () => {
     ).toBe(false);
   });
 
+  it('does not let a temporary inspection also resume an existing task', () => {
+    expect(executionIntentSchema.safeParse({ ...intent, preserveExecution: true, continuationOf: 'old-task' }).success).toBe(false);
+    expect(executionIntentSchema.safeParse({ ...intent, preserveExecution: true, continuationOf: null }).success).toBe(true);
+  });
+
   it("creates only execute sessions with compatible records without enforcing a task deadline", () => {
     expect(initial()).toMatchObject({
       phase: "running",

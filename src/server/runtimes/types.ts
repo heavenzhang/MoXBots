@@ -516,6 +516,9 @@ export interface RuntimeTextUtilityTask {
   timeoutMs?: number;
   /** Requested output budget for direct builtin utility transports, including reasoning. */
   maxTokens?: number;
+  /** A tool-free structured result must pass this check before it is returned.
+   * Builtin may make one corrective attempt within the original deadline. */
+  validateResult?: (text: string) => import('../../shared/sessionExecution').ExecutionIntentFailure | undefined;
 }
 
 export interface AgentRuntime {

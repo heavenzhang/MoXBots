@@ -370,6 +370,143 @@ describe('first desktop execution intent utility', () => {
     } finally { vi.useRealTimers(); }
   });
 
+  it.each(['auto', 'manual', 'disabled-fallback', 'twice-invalid', 'cancelled', 'mode-changed', 'transport-fallback', 'output-fallback', 'manual-transport', 'deadline'] as const)(
+    'recovers malformed intent within the same utility budget (%s)', async mode => {
+      const workspace = join(state.home, 'intent-format');
+      await mkdir(workspace);
+      const meta = await store.createSession(workspace, { runtime: 'builtin', modelMode: mode === 'manual' || mode === 'manual-transport' ? 'manual' : 'auto' });
+      await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: true });
+      const config = await import('../builtin-session/config');
+      config.setModel('synthetic-current');
+      config.setProviderEnv({ providerId: 'synthetic-provider', baseUrl: 'https://provider.invalid', apiKey: 'synthetic-only' });
+      const router = await import('../auto-route/router');
+      const catalog = router.buildAutoRouteCatalog();
+      const current = { providerId: 'synthetic-provider', model: 'synthetic-current' };
+      const classifier = { providerId: 'synthetic-classifier-provider', model: 'synthetic-classifier' };
+      vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({ ...catalog, settings: { classifier, ...(mode === 'disabled-fallback' ? { pool: { 'synthetic-provider/synthetic-current': { enabled: false } } } : {}) },
+        entries: new Map([['synthetic-provider/synthetic-current', {
+          ...current, provider: { id: current.providerId, name: 'Synthetic', vendor: 'Synthetic', cloudProvider: 'Test',
+            type: 'api' as const, primaryModel: current.model, isBuiltin: false, config: {}, models: [] },
+        }]]) });
+      const valid = JSON.stringify({ kind: 'execute', objective: 'Verify artifact', scope: 'Local only',
+        acceptanceCriteria: ['Verified artifact'], steps: ['Read artifact'], continuationOf: null });
+      const controller = new AbortController();
+      const transport = vi.fn(async () => {
+        if (transport.mock.calls.length === 1) {
+          if (mode === 'cancelled') controller.abort();
+          if (mode === 'mode-changed') await store.updateSessionMetadata(meta.id, { modelMode: 'manual' });
+          if (mode === 'deadline') await new Promise(resolve => setTimeout(resolve, 59_000));
+          if (mode === 'transport-fallback' || mode === 'manual-transport') throw new Error('synthetic connection failure');
+          if (mode === 'output-fallback') {
+            const { ClassifierTransportError } = await import('../auto-route/classifier');
+            throw new ClassifierTransportError('synthetic exhausted output', 'output_limit');
+          }
+          return 'I will continue the task.';
+        }
+        if (mode === 'deadline') await new Promise(resolve => setTimeout(resolve, 5000));
+        return mode === 'twice-invalid' ? 'still not JSON' : valid;
+      });
+      vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(transport);
+      const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
+      const { classifySessionExecutionIntent } = await import('../session-engine/session-execution');
+      const failure = vi.fn();
+      vi.useFakeTimers();
+      try {
+        const pending = classifySessionExecutionIntent(engine, { sessionId: meta.id, workspacePath: workspace,
+          scenario: { type: 'desktop' }, text: 'Verify the local artifact' }, controller.signal, failure);
+        await vi.waitFor(() => expect(transport).toHaveBeenCalled());
+        if (mode === 'deadline') await vi.advanceTimersByTimeAsync(60_000);
+        const result = await pending;
+        if (['cancelled', 'mode-changed', 'deadline', 'twice-invalid', 'manual-transport'].includes(mode)) {
+          expect(result).toBeUndefined();
+          expect(failure).toHaveBeenCalledExactlyOnceWith((mode === 'cancelled' || mode === 'mode-changed') ? 'cancelled' : mode === 'deadline' ? 'timeout' : mode === 'manual-transport' ? 'transport' : 'invalid_json');
+        } else {
+          expect(result).toMatchObject({ kind: 'execute', continuationOf: null });
+          expect(failure).not.toHaveBeenCalled();
+        }
+        expect(transport).toHaveBeenCalledTimes((mode === 'cancelled' || mode === 'mode-changed' || mode === 'manual-transport') ? 1 : 2);
+        if (mode !== 'cancelled' && mode !== 'mode-changed' && mode !== 'manual-transport') expect(transport.mock.calls[1]).toEqual([expect.objectContaining({
+          classifier: mode === 'disabled-fallback' ? classifier : current,
+        })]);
+        expect(state.sdkInputs).toHaveLength(0);
+        expect(store.getSessionMetadata(meta.id)?.taskOrchestration?.execution).toBeUndefined();
+      } finally { vi.useRealTimers(); }
+    },
+  );
+
+  it('returns a failed intent admission before the native SDK or product turn starts', async () => {
+    const workspace = join(state.home, 'rejected-intent');
+    await mkdir(workspace);
+    const meta = await store.createSession(workspace, { runtime: 'builtin', modelMode: 'auto' });
+    await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: true });
+    const config = await import('../builtin-session/config');
+    config.setModel(undefined); config.setProviderEnv(undefined);
+    const router = await import('../auto-route/router');
+    const catalog = router.buildAutoRouteCatalog();
+    vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({ ...catalog,
+      settings: { classifier: { providerId: 'synthetic', model: 'classifier' } } });
+    const transport = vi.fn(async () => 'Not an intent object');
+    vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(transport);
+    const taskOwner = await import('../session-engine/task-orchestration');
+    await taskOwner.recordSessionPlanHumanInput(meta.id, 'failed-intent', 'Make the authorized change');
+    const engine = (await import('../session-engine/selector')).getSessionEngine();
+    const result = await engine.sendDesktopMessage({ sessionId: meta.id, workspacePath: workspace,
+      clientRequestId: 'failed-intent', text: 'Make the authorized change', scenario: { type: 'desktop' } });
+    expect(result).toMatchObject({ success: false, status: 503, error: expect.stringContaining('invalid_json') });
+    expect(transport).toHaveBeenCalledTimes(2);
+    expect(state.sdkInputs).toHaveLength(0);
+    expect(state.query).not.toHaveBeenCalled();
+    expect(agent.getMessages()).toHaveLength(0);
+    expect(store.getSessionMetadata(meta.id)?.taskOrchestration?.executionAdmission).toBeUndefined();
+    expect(agent.isSessionBusy()).toBe(false);
+  });
+
+  it('dispatches a temporary inspection through the real facade without replacing the paused execution', async () => {
+    const workspace = join(state.home, 'preserved-inspection');
+    await mkdir(workspace);
+    const meta = await store.createSession(workspace, { runtime: 'builtin', modelMode: 'auto' });
+    await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: true });
+    const config = await import('../builtin-session/config');
+    config.setModel(undefined); config.setProviderEnv(undefined);
+    const router = await import('../auto-route/router');
+    const catalog = router.buildAutoRouteCatalog();
+    vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({ ...catalog,
+      settings: { classifier: { providerId: 'synthetic', model: 'classifier' } } });
+    const intent = { kind: 'execute' as const, objective: 'Original deliverable', scope: 'Original scope',
+      acceptanceCriteria: ['Verified original'], steps: ['Write artifact', 'Verify artifact'], continuationOf: null };
+    vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(async () => JSON.stringify({ ...intent,
+      objective: 'Inspect only', preserveExecution: true }));
+    const taskOwner = await import('../session-engine/task-orchestration');
+    const { createSessionExecution } = await import('../../shared/sessionExecution');
+    await taskOwner.mutateSessionTaskLedger(meta.id, ledger => {
+      ledger.execution = { ...createSessionExecution({ id: 'original-paused', requestId: 'original-input',
+        originalInput: 'Original work', intent, queueId: 'old-queue', now: 1000 }),
+        phase: 'paused', reason: 'Business authorization missing', lastSettledQueueId: 'old-queue' };
+      ledger.executionAdmission = { requestId: 'original-input', queueId: 'old-queue', taskPlanId: 'original-paused', intent };
+      ledger.executionEvidence = [{ id: 'old-read', queueId: 'old-queue', name: 'Read', digest: 'original',
+        successful: true, pending: false, mutating: false, observationOrder: 1 }];
+      return ledger;
+    });
+    const previous = structuredClone(store.getSessionMetadata(meta.id)!.taskOrchestration!);
+    const text = 'Inspect the existing result without replacing or resuming the original work';
+    await taskOwner.recordSessionPlanHumanInput(meta.id, 'inspection-input', text);
+    const engine = (await import('../session-engine/selector')).getSessionEngine();
+    const result = await engine.sendDesktopMessage({ sessionId: meta.id, workspacePath: workspace,
+      clientRequestId: 'inspection-input', text, scenario: { type: 'desktop' } });
+    expect(result.success).toBe(true);
+    await vi.waitFor(() => expect(state.sdkInputs).toHaveLength(1));
+    await vi.waitFor(() => expect(agent.isSessionBusy()).toBe(false));
+    await store.getActiveSessionTranscript(meta.id)!.writer.flush();
+    const ledger = store.getSessionMetadata(meta.id)!.taskOrchestration!;
+    expect(ledger.execution).toEqual(previous.execution);
+    expect(ledger.executionEvidence).toEqual(previous.executionEvidence);
+    const persisted = JSON.parse(await readFile(join(state.home, '.myagents', 'sessions.json'), 'utf8')) as Array<{ id: string; taskOrchestration: typeof ledger }>;
+    expect(persisted.find(row => row.id === meta.id)?.taskOrchestration.execution).toEqual(previous.execution);
+    expect(ledger.executionAdmission).toMatchObject({ taskPlanId: 'original-paused', intent: { preserveExecution: true } });
+    expect(agent.getMessages().some(message => message.role === 'assistant')).toBe(true);
+    expect(JSON.stringify(state.sdkInputs[0])).not.toContain('To Do List 已在实际执行前保存');
+  });
+
   it.each([undefined, 'auto', 'manual'] as const)('honors the product default for modelMode=%s before the first turn', async modelMode => {
     const workspace = join(state.home, 'first-intent');
     await mkdir(workspace);
@@ -3375,7 +3512,7 @@ it.each((['interrupted', 'error'] as const).flatMap(status => ['success', 'late-
       settings: { classifier: { providerId: 'synthetic-provider', model: 'synthetic-classifier' } } });
     const classifier = vi.spyOn(router, 'getAutoRouteTransport');
     if (mode === 'unrelated-root') classifier.mockResolvedValue(async () => JSON.stringify({ ...intent,
-      objective: 'Different task selected by semantic classification', continuationOf: null }));
+      objective: 'Different task selected by semantic classification', continuationOf: null, preserveExecution: false }));
     else classifier.mockRejectedValue(new Error('Classifier unavailable during explicit continuation'));
   }
   const send = async () => {

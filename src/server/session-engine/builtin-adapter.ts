@@ -4,7 +4,7 @@ import { applySessionModelSelection } from '../agent-session';
 import { questionAnswersAsText } from '../../shared/types/askUserQuestion';
 import { retryDesktopRequest } from './retry';
 import { prepareDesktopQuery } from './query-reminder';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import {
   publishBuiltinTranscriptSaveStatus,
   cancelQueueItem,
@@ -120,7 +120,7 @@ import { buildAutoRouteCatalog, routeTurn,
 import { AutoRoutePoolUnavailableError } from '../auto-route/errors';
 import { trackServer } from '../analytics';
 import { modelSupportsModality } from '../utils/model-capabilities';
-import { findAutoTierEntry, isAutoRoutingEnabled,
+import { autoModelKey, findAutoTierEntry, isAutoPoolEnabled, isAutoRoutingEnabled,
   pickAutoClassifier,
   normalizeModelMode,
   type AutoRouteRecord,
@@ -333,9 +333,9 @@ export function createBuiltinSessionEngine(): SessionEngine {
         providerId = getSessionProviderId();
       const current = model && providerId ? { providerId, model } : undefined;
       const catalog = buildAutoRouteCatalog();
-      const classifier =
-        normalizeModelMode(getSessionMetadata(getSessionId())?.modelMode) === 'auto' &&
-        isAutoRoutingEnabled(catalog.settings)
+      const sessionId = getSessionId();
+      const mode = normalizeModelMode(getSessionMetadata(sessionId)?.modelMode);
+      let classifier = mode === 'auto' && isAutoRoutingEnabled(catalog.settings)
           ? pickAutoClassifier(catalog.table, catalog.settings, current)
           : current;
       if (!classifier) { task.onFailure?.('unavailable'); return null; }
@@ -349,23 +349,63 @@ export function createBuiltinSessionEngine(): SessionEngine {
       // gets the caller's bounded budget, including transport initialization.
       const timeoutMs = Number.isFinite(task.timeoutMs)
         ? Math.max(1, Math.min(task.timeoutMs!, 60_000)) : 8000;
+      const deadlineAt = Date.now() + timeoutMs;
       const timer = setTimeout(() => { timedOut = true; abort(); }, timeoutMs);
       const failed = () => task.onFailure?.(task.signal?.aborted ? 'cancelled' : timedOut ? 'timeout' : 'transport');
       try {
         if (task.signal?.aborted) abort();
         const transport = await Promise.race([getAutoRouteTransport(), aborted]);
         if (!transport || controller.signal.aborted) { failed(); return null; }
-        const text = await Promise.race([transport({
-          classifier,
-          system: task.systemPrompt,
-          prompt: task.prompt,
-          signal: controller.signal,
-          timeoutMs,
-          maxTokens: task.maxTokens ?? 1024,
-        }), aborted]);
-        if (controller.signal.aborted) { failed(); return null; }
-        if (!text?.trim()) task.onFailure?.('empty_response');
-        return text;
+        // Only structured, tool-free utilities get a corrective attempt. No
+        // Product input, SDK tool, execution budget or business action is replayed.
+        let invalid: import('../../shared/sessionExecution').ExecutionIntentFailure | undefined;
+        for (let attempt = 0; attempt < (task.validateResult ? 2 : 1); attempt++) {
+          if (controller.signal.aborted || Date.now() >= deadlineAt) { timedOut ||= !task.signal?.aborted; failed(); return null; }
+          let text: string | null = null;
+          let transportFailure = false;
+          try {
+            text = await Promise.race([transport({
+              classifier,
+              system: task.systemPrompt + (invalid
+                ? '\nThe previous tool-free classification failed validation (' + invalid + '). Return exactly the requested JSON object, with all required fields, no commentary or Markdown. Classify the original request; do not perform it.'
+                : ''),
+              prompt: task.prompt,
+              signal: controller.signal,
+              timeoutMs: Math.max(1, deadlineAt - Date.now()),
+              maxTokens: task.maxTokens ?? 1024,
+            }), aborted]);
+          } catch (error) {
+            if (!task.validateResult) throw error;
+            transportFailure = true;
+            invalid = error instanceof ClassifierTransportError && error.reason === 'output_limit' ? 'output_limit' : 'transport';
+          }
+          if (controller.signal.aborted) { failed(); return null; }
+          if (!transportFailure) invalid = !text?.trim() ? 'empty_response' : task.validateResult?.(text);
+          if (!invalid) return text;
+          if (!task.validateResult) { task.onFailure?.(invalid); return null; }
+          console.warn('[structured-utility] rejected result', JSON.stringify({
+            providerId: classifier.providerId, model: classifier.model, attempt: attempt + 1,
+            reason: invalid, chars: text?.length ?? 0,
+            sha256: createHash('sha256').update(text ?? '').digest('hex'),
+          }));
+          if (attempt === 1) break;
+          // Auto may use the already selected Session model, but only while it
+          // remains enabled in the actual pool. Manual stays on its chosen model.
+          // Fresh directory membership cannot be replaced by model-name inference.
+          const fresh = buildAutoRouteCatalog();
+          if (getSessionId() !== sessionId || getSessionModel() !== model || getSessionProviderId() !== providerId
+            || normalizeModelMode(getSessionMetadata(sessionId)?.modelMode) !== mode) {
+            task.onFailure?.('cancelled'); return null;
+          }
+          if (current && normalizeModelMode(getSessionMetadata(getSessionId())?.modelMode) === 'auto'
+            && isAutoRoutingEnabled(fresh.settings) && isAutoPoolEnabled(fresh.settings, current)
+            && fresh.entries.has(autoModelKey(current))
+            && autoModelKey(current) !== autoModelKey(classifier)) {
+            classifier = current;
+          } else if (transportFailure) break;
+        }
+        task.onFailure?.(invalid ?? 'empty_response');
+        return null;
       } catch (error) {
         if (!controller.signal.aborted && error instanceof ClassifierTransportError && error.reason === 'output_limit') {
           task.onFailure?.('output_limit');

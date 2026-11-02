@@ -2067,7 +2067,8 @@
         "invalid_json": "The classifier returned invalid JSON.",
         "invalid_schema": "The classifier returned an invalid task structure.",
         "missing_continuation": "The classifier did not specify task continuity.",
-        "missing_steps": "The classifier did not provide execution steps."
+        "missing_steps": "The classifier did not provide execution steps.",
+        "missing_execution_disposition": "The classifier did not specify whether to preserve the original task."
       },
       "admissionHint": "This request has no confirmed execution intent, so it will not continue automatically.",
       "reasons": {

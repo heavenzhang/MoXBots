@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /** Bounded utility diagnostics only; never execution or continuation authority. */
 export type ExecutionIntentFailure = 'timeout' | 'cancelled' | 'unavailable' | 'transport'
-  | 'empty_response' | 'output_limit' | 'invalid_json' | 'invalid_schema' | 'missing_continuation' | 'missing_steps';
+  | 'empty_response' | 'output_limit' | 'invalid_json' | 'invalid_schema' | 'missing_continuation' | 'missing_steps' | 'missing_execution_disposition';
 
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const idSchema = boundedText(256);
@@ -17,9 +17,15 @@ export const executionIntentSchema = z
     steps: z.array(boundedText(2000)).max(20).optional(),
     /** Exact current task, only for a trusted human request to continue its scope. */
     continuationOf: idSchema.nullish(),
+    /** A bounded inspection explicitly preserves the existing task. This only
+     * narrows this input to reads; it never grants execution or changes policy. */
+    preserveExecution: z.boolean().optional(),
   })
   .strict()
   .superRefine((intent, ctx) => {
+    if (intent.preserveExecution && intent.continuationOf)
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['preserveExecution'],
+        message: 'An inspection cannot also resume execution' });
     if (intent.continuationOf && intent.kind !== "execute")
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
