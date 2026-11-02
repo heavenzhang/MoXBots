@@ -41,7 +41,7 @@ import { resolveBridgeModel } from './translate/model';
 import { opencodeGoHeaders } from '../opencode-go-request';
 import { readBoundedErrorBody } from './read-error-body';
 import { composeAcceptedAttemptModelProgress } from './model-progress';
-import { withConnectionRetries } from './connection-retry';
+import { createDirectConnectionPool, hasInitialConnectionFailure, withConnectionRetries } from './connection-retry';
 
 const KNOWN_RESPONSES_EVENTS = new Set(['response.created', 'response.in_progress', 'response.completed', 'response.failed',
   'response.incomplete', 'error', 'response.output_item.added', 'response.output_item.done',
@@ -126,9 +126,10 @@ export function getProxyForUrl(url: string): string | undefined {
  * URL is always plain http://.
  */
 const proxyDispatchers = new ProxyPool();
+const directDispatcher = createDirectConnectionPool();
 
-function getDispatcherForProxy(proxyUrl: string, signal: AbortSignal, canRetryConnection?: () => boolean): Dispatcher {
-  const agent = proxyDispatchers.get(proxyUrl);
+function getConnectionDispatcher(proxyUrl: string | undefined, signal: AbortSignal, canRetryConnection?: () => boolean): Dispatcher {
+  const agent = proxyUrl ? proxyDispatchers.get(proxyUrl) : directDispatcher;
   return canRetryConnection ? withConnectionRetries(agent, signal, canRetryConnection) : agent;
 }
 
@@ -378,6 +379,7 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
   let bytesDelivered = 0;
   let consumerCancelled = false;
   let route: 'direct' | 'proxy' | 'unresolved' = 'unresolved';
+  let dispatcher: Dispatcher | undefined;
   const transport = createTransportObservation();
   const abort = () => controller.abort();
   if (request.signal.aborted) abort();
@@ -396,11 +398,12 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
     }
     const proxy = getProxyForProviderUrl(upstream.providerId, url);
     route = proxy ? 'proxy' : 'direct';
+    dispatcher = getConnectionDispatcher(proxy, controller.signal, upstream.canRetryConnection);
     const response = await transport.run(() => fetch(url, {
       method: 'POST', headers,
       body: JSON.stringify({ ...body, model: upstream.model ?? body.model }),
       signal: controller.signal, redirect: 'error',
-      ...(proxy ? { dispatcher: getDispatcherForProxy(proxy, controller.signal, upstream.canRetryConnection) } : {}),
+      dispatcher,
     }));
     clearTimeout(timer);
     if (!response.ok) upstream.onRejectedResponse?.(response.status);
@@ -452,6 +455,7 @@ async function forwardAnthropicRequest(request: Request, body: AnthropicRequest,
       ...(response.headers.has('retry-after') ? { 'retry-after': response.headers.get('retry-after')! } : {}),
     } });
   } catch (error) {
+    if (!controller.signal.aborted && hasInitialConnectionFailure(dispatcher, error)) upstream.onConnectionFailure?.(error);
     log(transportDiagnostic(upstream, { phase: 'response_headers', route, transport: transport.snapshot(), error, cancelled: request.signal.aborted,
       timedOut, bytesDelivered, mappedStatus: request.signal.aborted ? 499 : timedOut ? 408 : 502 }));
     cleanup();
@@ -715,6 +719,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       // to the Session turn watchdog, which has the turn/suspension context the
       // bridge does not.
       const controller = new AbortController();
+      let dispatcher: Dispatcher | undefined;
       let didHeadersTimeout = false;
       const headersTimer = setTimeout(
         () => {
@@ -756,9 +761,8 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
           body: requestBody,
           signal: controller.signal,
         };
-        if (proxyUrl) {
-          fetchInit.dispatcher = getDispatcherForProxy(proxyUrl, controller.signal, upstream.canRetryConnection);
-        }
+        dispatcher = getConnectionDispatcher(proxyUrl, controller.signal, upstream.canRetryConnection);
+        fetchInit.dispatcher = dispatcher;
         // Cast to global Response — undici.Response is structurally identical at
         // runtime; the type drift is only in @types/node vs undici/types Headers
         // iterators. Downstream handlers (handleStreamResponse etc.) treat the
@@ -770,6 +774,7 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
         return { ok: true, attempt: { upstreamResp, controller, onDownstreamAbort } };
       } catch (err) {
         clearTimeout(headersTimer);
+        if (!controller.signal.aborted && hasInitialConnectionFailure(dispatcher, err)) upstream.onConnectionFailure?.(err);
         if (request.signal) {
           request.signal.removeEventListener('abort', onDownstreamAbort);
         }
