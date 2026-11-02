@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=c0910bf8680d6a3cce2610f79b435cfa3abb6f1dd04886a3110a8aa33898a826 -->
+<!-- git-project-sync-task:source-digest=5b196e1b2906195389469b93dd82639ca562c44ea596402d7df050a47b6a51ef -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -16,7 +16,9 @@
 - [x] 第十五项真实 HTTP502 与旧未知动作耦合、已选备用下一轮409均复现并修复；294相关用例及实际SDK工具链通过。
 - [x] 第十四/十五项原owner独审、PR228/main185d5165、533.1签名公证和安装核实；原会话仍失败。
 - [x] 第十六项60秒冷却退出复现、同请求剩余预算内等待修复、333回归和原生60秒工具链验证。
-- [ ] 第十六项独审、主干/下一不可变包安装和五原会话实际稳定验收。
+- [x] 第十六项独审、PR229/main20abf332、双CI与534.1签名公证/安装，精确制品独立核实。
+- [ ] 第十七项备用30秒误截断修复、精确独审/交付与下一包原会话验收。
+- [ ] 五原会话整体稳定验收：行情和双滚动条原execution已completed；Max候选接续后408，Kevin与薪资仍未完成。
 
 - [x] 当前安装、main、部署 owner 和四会话只读证据核实。
 - [x] 重复横幅和并发拒绝分别失败复现、修复、回归；未知操作与真实流中断围栏保留。
@@ -70,6 +72,8 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `5b196e1b2906195389469b93dd82639ca562c44ea596402d7df050a47b6a51ef`; Phase17: 196 cases in five related unit/integration files PASS; six candidate-header scenarios exercise the real controller and bridge with isolated fake transport/clock. Four old premature aborts reproduced; slow initial election and later pinned response survive 30 seconds, permission changes are re-read, cancellation and the original five-minute bound remain, eligible fast retry still operates. Full TypeScript, scoped ESLint, test classification and diff checks PASS. Installed534.1 remains failed; independent review, main/next package and original-session acceptance pending.
 
 - Source digest: `c0910bf8680d6a3cce2610f79b435cfa3abb6f1dd04886a3110a8aa33898a826`; Phase16 watchdog supplement: real InactivityWatchdog plus 11-minute cooldown reproduces old premature termination. Final five-file 153 tests PASS, three-protocol HTTP 40 tests PASS, full tsc/scoped lint/diff PASS. Concurrent request cancellation preserves the other live wait; all revocations remove the read-only exemption, and genuine post-wait hangs still expire. Final actual SDK/native Bash 60012ms cooldown/history-gap PASS (one write, zero old unknown executions, unknown count one). No durable wait/checkpoint or retry authority added; next owner review/main/install/native acceptance pending.
 
@@ -127,12 +131,12 @@ Node24: context recovery 134 unit + 27 integration、22 DOM PASS；全量 tsc、
 
 ## Blockers and unknowns
 
-533.1 已正式安装且精确制品独立核验；原 Max 与双滚动条再次真实502，稳定验收FAIL。第十六项本地修复与回归完成，尚待原owner独审/主干/下一新包/原会话复验。供应商可用性不能用本地模型测试证明；原任务业务外部依赖与系统恢复分开。Kevin、行情及薪资最新实测由原owner记录；旧未知操作不清账本、不盲重放。用户持续授权更新和原生验证，并已允许替代系统控制工具，系统稳定优先；无需重复询问。公开stable保持0.5.27 HOLD。
+534.1 已安装并独立核实，原 Max 真实502后候选续接且完成工具操作，但候选首响应30秒超时使同一execution再次失败，不能宣布稳定。第十七项修复备用固定短超时；真实供应商仍可能故障，原未知操作不清除。行情与双滚动条原执行已completed/accept，不重跑已完成任务；Kevin534.1与薪资原execution恢复仍未通过。原owner同时协调另一桥接修复PR230，集成前需同步新main并复核组合结果，独立源码与已冻结制品分开。
 
 ## Deployment request
 
-desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。本开发线程不新增部署 owner、不触发共享 CI/PR/正式构建或安装；由原owner统一版本分配和发布，不能覆盖已冻结533.1。新的源码交付与候选安装/真实验收分开。
+desktop/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4`；沿用下一未冻结批。本开发线程不新增部署 owner、不触发共享 CI/PR/正式构建或安装；由原owner统一版本分配和发布，不能覆盖已冻结534.1。新的源码交付与候选安装/真实验收分开。
 
 ## Next step
 
-将第十六项精确提交与验证交原 desktop owner 01a12bc2-907a-7702-b6dd-788225c5dfe4 独审、合入实际 main 并统一下一不可变候选/CI/安装，之后复验五个原会话。533.1 已安装但原Max与双滚动条仍失败；保留所有原执行身份与未知操作保护，不能以本地测试代替原生验收。
+完成第十七项备用首响应计时的相关验证和精确提交，交原desktop owner01a12bc2-907a-7702-b6dd-788225c5dfe4独审、合入实际main、统一下一未冻结批与原会话复验。原owner另有桥接PR230正在CI，按其串行集成安排，不另触发共享CI或安装；当前534.1仍未通过整体验收。
