@@ -85,6 +85,7 @@ function queryFacade(engine: SessionEngine): SessionEngine {
         const execution = await prepareSessionExecution(engine, request, undefined,
           continuation?.accepted ? continuation.executionIntent : undefined);
         if (execution.duplicate) return execution.duplicate;
+        if (execution.rejected) return execution.rejected;
         try {
           const prepared = await prepareDesktopQuery(request);
           prepared.request = {

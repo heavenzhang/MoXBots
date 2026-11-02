@@ -2317,29 +2317,91 @@ describe("durable Session execution owner", () => {
   });
 });
 
+describe('temporary inspection preserves the original execution', () => {
+  it('keeps the paused task, completed steps, native facts and review while a bounded inspection replies', async () => {
+    const first = await prepare(input, 'original-work', { ...executeIntent, steps: ['Write artifact', 'Verify artifact'] });
+    const originalQueue = first.request.queueId!;
+    await tool(originalQueue, { id: 'original-result', name: 'Read', stage: 'success', output: 'Existing progress' });
+    await submitReview(originalQueue, { decision: 'needs_user', summary: 'Business identity still required', checks: [] });
+    await first.request.onTerminal?.({ status: 'complete', text: 'Waiting for business identity', assistantMessagePresent: true });
+    const old = structuredClone(store.getSessionMetadata(id)!.taskOrchestration!);
+    expect(old.execution?.phase).toBe('paused');
+    const inspection = await prepare('Inspect the prior result without resuming or replacing the task', 'human-inspection', {
+      ...executeIntent, objective: 'Inspect existing result', steps: ['Read the existing result', 'Report findings'],
+      continuationOf: null, preserveExecution: true,
+    });
+    const queueId = inspection.request.queueId!;
+    expect(currentExecution()).toEqual(old.execution);
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionEvidence).toEqual(old.executionEvidence);
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionReview).toEqual(old.executionReview);
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.tasks).toEqual(old.tasks);
+    expect(inspection.request.runtimeReminder).toContain('不创建替代执行');
+    expect(inspection.request.runtimeReminder).not.toContain('To Do List 已在实际执行前保存');
+    for (const name of ['Write', 'Edit', 'Bash', 'Agent'])
+      expect(executionOwner.sessionExecutionToolDenial(id, queueId, name, {})).toBeDefined();
+    expect(executionOwner.sessionExecutionToolDenial(id, queueId, 'Read', {})).toBeUndefined();
+    await tool(queueId, { id: 'temporary-read', name: 'Read', stage: 'success', output: 'Verified existing result' });
+    await inspection.request.onTerminal?.({ status: 'complete', text: 'Inspection only', assistantMessagePresent: true });
+    expect(currentExecution()).toEqual(old.execution);
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionEvidence).toEqual(old.executionEvidence);
+    expect(continuationRequests).toHaveLength(0);
+    // The original business pause is still effective, and never becomes a new
+    // read-only policy or an implicit grant to resume it.
+    const resume = await prepareUnpromoted('Continue original work', 'human-resume-original', {
+      ...executeIntent, continuationOf: old.execution!.id, preserveExecution: false,
+    });
+    expect(await resume.request.beforeDispatch!()).toMatchObject({ accepted: false, error: 'Business identity still required' });
+    expect(currentExecution()).toEqual(old.execution);
+  });
+});
+
+describe('inspection is not a persistent permission change', () => {
+  it('continues the original task with normal authorized writes after temporary inspection', async () => {
+    const first = await prepare(input, 'failed-work', { ...executeIntent, steps: ['Write artifact', 'Verify artifact'] });
+    await first.request.onTerminal?.({ status: 'error', text: 'Transient failure', assistantMessagePresent: true });
+    const original = structuredClone(currentExecution()!);
+    const inspection = await prepare('Read the existing result without starting work', 'temporary-inspection', {
+      ...executeIntent, continuationOf: null, preserveExecution: true,
+    });
+    await inspection.request.onTerminal?.({ status: 'complete', text: 'Inspected', assistantMessagePresent: true });
+    const continuation = await prepare('Continue the original authorized work', 'resume-work', {
+      ...executeIntent, continuationOf: original.id, preserveExecution: false,
+    });
+    expect(currentExecution()).toMatchObject({ id: original.id, phase: 'running', turns: original.turns + 1,
+      intent: original.intent, originalInput: original.originalInput });
+    expect(executionOwner.sessionExecutionToolDenial(id, continuation.request.queueId!, 'Write', {})).toBeUndefined();
+    expect(continuation.request.runtimeReminder).not.toContain('本轮只读核对');
+  });
+});
+
 describe("unconfirmed execution supervision", () => {
-  it('keeps an unclassified request read-only instead of launching children without a parent execution', async () => {
-    await proveHumanInput('unconfirmed-supervision', input);
-    const prepared = await executionOwner.prepareSessionExecution(engine, {
-      text: input, clientRequestId: 'unconfirmed-supervision', sessionId: id,
-      workspacePath: '/synthetic-workspace', scenario: { type: 'desktop', surface: 'chat' },
-    }, async () => undefined);
-    const decision = await prepared.request.beforeDispatch!();
+  it('rejects unclassified work before native dispatch and permits a fresh attempt of the same input', async () => {
+    const original = await prepare();
+    await original.request.onTerminal?.({ status: 'error', text: 'upstream failure', assistantMessagePresent: true });
+    const previous = structuredClone(store.getSessionMetadata(id)?.taskOrchestration);
+    const text = 'Continue the existing deliverable';
+    await proveHumanInput('unconfirmed-supervision', text);
+    const request: DesktopMessageRequest = { text, clientRequestId: 'unconfirmed-supervision', sessionId: id,
+      workspacePath: '/synthetic-workspace', scenario: { type: 'desktop', surface: 'chat' } };
+    const prepared = await executionOwner.prepareSessionExecution(engine, request, async () => undefined);
+    expect(prepared.rejected).toMatchObject({ success: false, status: 503, error: expect.stringContaining('INTENT_UNCONFIRMED') });
+    expect(prepared.request.queueId).toBeUndefined();
+    expect(prepared.request.beforeDispatch).toBeUndefined();
+    const ledger = store.getSessionMetadata(id)?.taskOrchestration;
+    expect(ledger?.execution).toEqual(previous?.execution);
+    expect(ledger?.executionAdmission).toEqual(previous?.executionAdmission);
+    expect(ledger?.executionEvidence).toEqual(previous?.executionEvidence);
+    expect(ledger?.executionInputs?.find(input => input.requestId === request.clientRequestId)?.acceptedQueueId).toBeUndefined();
+    const retried = await executionOwner.prepareSessionExecution(engine, request, async () => ({
+      ...executeIntent, continuationOf: previous!.execution!.id,
+    }));
+    expect(retried.duplicate).toBeUndefined();
+    expect(retried.rejected).toBeUndefined();
+    const decision = await retried.request.beforeDispatch!();
     expect(decision.accepted).toBe(true);
     expect(decision.validateAtCommit?.().accepted).toBe(true);
-    const queueId = prepared.request.queueId!;
-    expect(currentExecution()).toBeUndefined();
-    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionAdmission?.error).toBe('INTENT_UNCONFIRMED');
-    for (const name of ['Agent', 'Task', 'Write', 'Edit', 'Bash']) {
-      expect(executionOwner.sessionExecutionToolDenial(id, queueId, name, {})).toContain('INTENT_UNCONFIRMED');
-    }
-    for (const name of ['Read', 'Grep', 'Glob']) {
-      expect(executionOwner.sessionExecutionToolDenial(id, queueId, name, {})).toBeUndefined();
-    }
-    // This gate is scoped to the exact admitted input; legacy/native owners retain their policy.
-    expect(executionOwner.sessionExecutionToolDenial(id, 'different-queue', 'Agent', {})).toBeUndefined();
-    await prepared.request.onTerminal?.({ status: 'complete', text: 'Read-only diagnosis', assistantMessagePresent: true });
-    expect(currentExecution()).toBeUndefined();
+    expect(currentExecution()?.id).toBe(previous?.execution?.id);
+    expect(executionOwner.sessionExecutionToolDenial(id, retried.request.queueId!, 'Write', {})).toBeUndefined();
     expect(continuationRequests).toHaveLength(0);
   });
 });
@@ -2361,21 +2423,28 @@ describe('bounded intent failure evidence', () => {
     expect(currentExecution()).toBeUndefined();
   });
 
-  it.each(['timeout', 'output_limit'] as const)('persists exact %s but keeps the unconfirmed write guard', async reason => {
+  it('does not replace an existing task when a fresh classification omits its execution disposition', async () => {
+    await prepare(input, 'original-task');
+    const old = structuredClone(currentExecution()!);
+    engine.runTextUtility = vi.fn(async () => JSON.stringify({ ...executeIntent, steps: ['Inspect'], continuationOf: null }));
+    const failure = vi.fn();
+    expect(await executionOwner.classifySessionExecutionIntent(engine, { sessionId: id, text: 'Inspect without replacing the task',
+      workspacePath: '/synthetic-workspace', scenario: { type: 'desktop' } }, new AbortController().signal, failure)).toBeUndefined();
+    expect(failure).toHaveBeenCalledExactlyOnceWith('missing_execution_disposition');
+    expect(currentExecution()).toEqual(old);
+  });
+
+  it.each(['timeout', 'output_limit'] as const)('returns exact %s without creating a read-only business turn', async reason => {
     await proveHumanInput('timeout-diagnostic', input);
     engine.runTextUtility = vi.fn(async task => { task.onFailure?.(reason); return null; });
     const prepared = await executionOwner.prepareSessionExecution(engine, {
       sessionId: id, clientRequestId: 'timeout-diagnostic', text: input, workspacePath: '/synthetic-workspace',
       scenario: { type: 'desktop', surface: 'chat' },
     });
-    const admission = await prepared.request.beforeDispatch!();
-    expect(admission.accepted).toBe(true);
-    expect(admission.validateAtCommit?.().accepted).toBe(true);
-    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionAdmission).toMatchObject({
-      error: 'INTENT_UNCONFIRMED', failureReason: reason, queueId: prepared.request.queueId,
-    });
-    expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Bash', {})).toContain('INTENT_UNCONFIRMED');
-    expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Read', {})).toBeUndefined();
+    expect(prepared.rejected).toMatchObject({ success: false, status: 503,
+      error: expect.stringContaining(reason) });
+    expect(prepared.request.queueId).toBeUndefined();
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionAdmission).toBeUndefined();
     expect(currentExecution()).toBeUndefined();
   });
 });
@@ -2392,7 +2461,7 @@ describe("intent classifier execution continuity contract", () => {
       return JSON.stringify({
         ...executeIntent,
         steps: ["Create artifact", "Verify artifact"],
-        continuationOf: execution.id,
+        continuationOf: execution.id, preserveExecution: false,
       });
     });
     const request: DesktopMessageRequest = {

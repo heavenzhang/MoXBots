@@ -915,6 +915,22 @@ describe('TabProvider session activity ownership', () => {
     expect(screen.getByTestId('agent-error')).toHaveTextContent(failure === 'rejected' ? 'send rejected' : 'connection closed');
   });
 
+  it.each([true, false])('keeps intent rejection retryable only with its structured pre-dispatch code (%s)', async proven => {
+    const message = 'INTENT_UNCONFIRMED: task has not started';
+    tauriHarness.proxyFetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: false, error: message,
+      ...(proven ? { code: 'EXECUTION_INTENT_UNCONFIRMED' } : {}) }), { status: 503 }));
+    render(<TabProvider tabId="intent-rejection" agentDir="/tmp/workspace" sessionId="pending-intent-rejection" claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'send message' }));
+    await waitFor(() => expect(screen.getByTestId('send-receipt')).toHaveTextContent('false'));
+    expect(readActivity()).toMatchObject({ isLoading: false, historyCount: 1 });
+    expect(JSON.parse(screen.getByTestId('history-content').textContent!)).toEqual(['hello']);
+    expect(JSON.parse(screen.getByTestId('history-delivery').textContent!)).toEqual(['failed']);
+    expect(JSON.parse(screen.getByTestId('history-unconfirmed').textContent!)).toEqual([!proven]);
+    if (proven) expect(screen.getByTestId('agent-error').textContent).toBe(message);
+    else expect(screen.getByTestId('agent-error').textContent).not.toBe(message);
+  });
+
   it('resends a local failure through ordinary send and replaces its failed bubble', async () => {
     const sessionId = 'pending-resend-failure';
     let respond!: (response: Response) => void;

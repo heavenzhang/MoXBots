@@ -85,7 +85,7 @@ export type DesktopMessageRequest = {
 export type DesktopRetryOptions = Pick<DesktopMessageRequest, 'model' | 'reasoningEffort'>;
 
 export type DesktopAdmissionResult = {
-  code?: 'SESSION_CONTINUATION_STALE' | 'SESSION_CONTINUATION_BUSY';
+  code?: 'SESSION_CONTINUATION_STALE' | 'SESSION_CONTINUATION_BUSY' | 'EXECUTION_INTENT_UNCONFIRMED';
   agentMentionsNeedReselect?: boolean;
   success: boolean;
   queued?: boolean;

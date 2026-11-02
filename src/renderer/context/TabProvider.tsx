@@ -741,6 +741,7 @@ export async function handleApiResponse<T>(response: Response): Promise<T> {
     const errorData = (await response.json().catch(() => ({}))) as {
       error?: unknown;
       errorCode?: unknown;
+      code?: unknown;
     };
     const error = new Error(
       typeof errorData.error === 'string'
@@ -750,6 +751,7 @@ export async function handleApiResponse<T>(response: Response): Promise<T> {
     error.status = response.status;
     if (typeof errorData.errorCode === 'string')
       error.errorCode = errorData.errorCode;
+    else if (typeof errorData.code === 'string') error.errorCode = errorData.code;
     throw error;
   }
   return (await response.json()) as T;
@@ -6235,13 +6237,19 @@ export default function TabProvider({
           // A canonical replay can resolve a response loss. Otherwise even a
           // busy send needs an identity-bearing failed row after its pill retires.
           if (hasCanonicalRow()) return true;
-          retainFailedSend(true);
+          // Only this structured pre-dispatch rejection proves no Product turn
+          // or native work started. Text resembling it or other HTTP failures
+          // retain the original uncertain-delivery protection.
+          const notStarted = error instanceof Error
+            && (error as Error & { status?: number }).status === 503
+            && (error as Error & { errorCode?: string }).errorCode === 'EXECUTION_INTENT_UNCONFIRMED';
+          retainFailedSend(!notStarted);
           console.error(`[TabProvider ${tabId}] Send message failed:`, error);
           const msg =
             error instanceof Error
               ? error.message
               : appText('tabProvider.networkError');
-          setAgentError(`${appText('tabProvider.sendUnconfirmed')} ${msg === 'Failed to fetch' ? appText('tabProvider.networkDisconnected') : msg}`);
+          setAgentError(notStarted ? msg : `${appText('tabProvider.sendUnconfirmed')} ${msg === 'Failed to fetch' ? appText('tabProvider.networkDisconnected') : msg}`);
           pendingAttachmentsRef.current = null;
           if (!isSessionActiveRef.current && !isStreamingRef.current) {
             setIsLoading(false);

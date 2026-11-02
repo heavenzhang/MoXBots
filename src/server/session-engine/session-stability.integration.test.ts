@@ -114,7 +114,7 @@ it.each(["cancel", "reject", "lost-ack"] as const)(
   async (reason) => {
     const a = await prepare("A", executeIntent);
     await promote(a);
-    const b = await prepare("B", undefined);
+    const b = await prepare("B", { kind: "answer", objective: "Read status", scope: "No changes", acceptanceCriteria: [] });
     if (reason === "cancel") await b.request.beforeDispatch?.cancel?.();
     else if (reason === "reject")
       await b.admitted({
