@@ -9,3 +9,15 @@ New projectworkspace/reusableBot/projectbackgroundsnapshot notes are scopedtoiso
 23website policy/render tests pass. Current36staticfiles/pointer reread; preserveactualbuiltassetsfromlivebaseline rather than replacingthewholewebtreewithincompleteGitprojection. OnlyHTML,newhashedJSON andnewnotes differ, immutableoldmanifest/notes/artifacts preserved. Nonblocking3existinglocks,fullwebsitebackup,ownershipcheckedpointerCAS/rollback; no nginx/updater/trust/Hostchanges.
 
 At contentcheckpoint: production/browser/mainclosurespending. Finalreceipts appendedafteractualexecution; privateevidence output/website-download-0536-20261102.
+
+## Production and actual UI result
+
+Website https://101.42.11.29/moxbots/download/ nowserves0.5.36/build536.1 from /srv/moxbots-cloud101/releases/20261102-web0536-e6fbdf880317/website. Threeaggregate staticchanges:download/index.html,download/releases.bf4498a1839e.json,download/notes/0.5.36.html. All35otheroriginalfiles retained byte-for-byte; oldmanifest/notes/archive stillavailable. Sourcecontentcheckpoint233810d14, narrow-note wraprepair0887362cd; finalreceiptcommitdoesnotchangedeployedbytes.
+
+Backup oforiginal0.5.27: /var/backups/moxbots-cloud101/website0536-20261102-04e19d336adf (archiveSHAaceb703b4ee553d43b8f36e0ab799cf4108b00b75b89fb0441e73b06960906c0). Initial536releasebackupbeforewraprepair: /var/backups/moxbots-cloud101/website0536-20261102-e6fbdf880317. Complete-taskrollbackrequirescurrentpointerstillownedby/srv/moxbots-cloud101/releases/20261102-web0536-e6fbdf880317/website, thenswitchonlywebsiteto/srv/moxbots-cloud101/releases/20261030-web0527-1479be25f4ce/website underoriginal3nonblockinglocks. No force, no sharedconfig edit. Automaticpublicationrollbacknotneeded.
+
+13normalTLSchecksPASSforhome/download/index/newmanifest/newnotes/oldnotes/oldmanifest/renderer/icon/stable/newarchiveHEAD/1024BexactRange/oldarchiveHEAD. Existingcomplete302230704Bpublicarchive rehashed bywebsiteowner; no thirdfullGET. RootM2independent publicproofincludes73exact206ranges/sameETag/productionminisign.
+
+PrimaryactualIAB1440x960/390x844 checksPASS:version0.5.36/build536.1/302.2MB/TAR.GZ/DeveloperID公证/source137fd178/SHA06bbca4f/downloadhrefequalsverifiedarchive/Windowsdisabled. Realnotesbuttonopensnew0.5.36pageandreturnworks. Onefoundmobile-noteSHAoverflowfixedwithscopedoverflow-wrap:anywhere; recheckscrollWidth375<=390. Noconsoleerrorlogs. OriginalRootindependentlivepageIABalsoPASS. Screenshotsandfullpublic/backupreceiptsinprivateoutput/website-download-0536-20261102. Runtime/business502repair/paidmodels/productionApp launch/mobile/TestFlight remainoutsidewebsiteacceptance.
+
+SharedCI/main delivery remains originalRoot01a12bc2; finaltaskbranchhandoffwillcarryexactSHA. No competingCI/PR/publisher, no clientinstall/updater/Nginx/TLS/cloud/Hostidentity mutation.
