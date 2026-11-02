@@ -1,6 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ProviderEnv } from '../provider-types';
 import { createBridgeHandler } from '../openai-bridge/handler';
+import { applyAutoRouteAdmission } from '../auto-route/admission';
+import { getAutoRouteCandidates, setAutoRouteSessionState } from '../auto-route/session-state';
+import type { SessionMetadata } from '../types/session';
 
 const fixture = vi.hoisted(() => ({ config: {} as Record<string, unknown>,
   providers: {} as Record<string, unknown>, envs: {} as Record<string, unknown>, fetch: vi.fn() }));
@@ -32,6 +35,47 @@ describe('Session API failover authority', () => {
   });
   const request = () => new Request('http://127.0.0.1/bridge/test/v1/messages', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'synthetic text' }], max_tokens: 10 }) });
   afterEach(() => { vi.useRealTimers(); fixture.fetch.mockReset(); });
+  it.each([true, false])('retains the hidden execution continuation plan but rechecks enabled candidates=%s', async enabled => {
+    const sessionId = 'hidden-continuation-fixture';
+    const primaryRef = { providerId: 'primary', model: 'a' };
+    setAutoRouteSessionState(sessionId, { tier: 'balanced', primary: primaryRef,
+      candidates: [{ providerId: 'backup', modelId: 'b' }] });
+    fixture.config = { modelFailover: { mode: 'auto' }, autoRouting: { pool: {
+      'primary/a': { enabled: true }, 'backup/b': { enabled: true },
+    } } };
+    let queueId = 'original-turn';
+    const switched = vi.fn();
+    const controller = createSessionModelFailover({ retryDelaysMs: [0, 0, 0],
+      current: () => ({ env: primary, model: 'a', turnId: queueId }), isLive: () => true,
+      autoCandidates: () => getAutoRouteCandidates(sessionId, primaryRef),
+      canRetry: () => false, canRetryRejectedResponse: () => true, canUsePinnedRoute: () => true,
+      onSwitch: switched });
+    const execute = vi.fn(async target => {
+      if (target.providerId === 'primary') {
+        target.onRejectedResponse?.(502);
+        return new Response('{}', { status: 502 });
+      }
+      return new Response('{"continued":true}');
+    });
+    const route = { ...primaryRef, baseUrl: primary.baseUrl! };
+    expect((await controller.run(request(), route, execute)).status).toBe(200);
+    controller.endTurn();
+    queueId = 'hidden-acceptance-continuation';
+    const classify = vi.fn();
+    await applyAutoRouteAdmission({}, { sessionId, text: '', source: 'desktop' }, {
+      getSessionMetadata: () => ({ runtime: 'builtin', modelMode: 'auto', ...primaryRef }) as SessionMetadata,
+      isSessionBusy: () => false, getMessages: () => [], current: () => ({ ...primaryRef, env: primary }),
+      route: classify, updateSessionMetadata: vi.fn(), broadcast: vi.fn(), trackDecision: vi.fn(), supportsImages: () => false,
+    });
+    fixture.config.autoRouting = { pool: { 'primary/a': { enabled: true }, 'backup/b': { enabled } } };
+    execute.mockClear();
+    expect((await controller.run(request(), route, execute)).status).toBe(enabled ? 200 : 502);
+    expect(execute.mock.calls.map(([target]) => target.providerId)).toEqual(enabled
+      ? ['primary', 'primary', 'primary', 'primary', 'backup'] : ['primary', 'primary', 'primary', 'primary']);
+    expect(switched).toHaveBeenCalledTimes(enabled ? 2 : 1);
+    expect(classify).not.toHaveBeenCalled();
+    setAutoRouteSessionState(sessionId, undefined);
+  });
   it.each(['already-unknown', 'unknown-after-election', 'slow-election', 'normal-bound', 'cancel', 'fast-retry'])('uses the live recovery authority for elected backup headers: %s', async scenario => {
     vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     let retryAllowed = scenario === 'unknown-after-election';

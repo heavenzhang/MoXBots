@@ -6,7 +6,7 @@ import type { SessionMetadata } from '../types/session';
 import { applyAutoRouteAdmission, autoRouteMessageText, previousTurn, type AutoRouteAdmissionDeps } from './admission';
 import { AutoRoutePoolUnavailableError } from './errors';
 import type { RouteTurnInput, RouteTurnResult } from './router';
-import { getAutoRouteBackup, setAutoRouteSessionState } from './session-state';
+import { getAutoRouteBackup, getAutoRouteCandidates, setAutoRouteSessionState } from './session-state';
 
 const table = buildAutoTierTable([
   { providerId: 'p', model: 'claude-haiku-5-5' },
@@ -237,6 +237,48 @@ describe('applyAutoRouteAdmission', () => {
     const d = deps();
     expect(await applyAutoRouteAdmission({}, { ...input, text: '<system-reminder>goal</system-reminder>\n' }, d)).toBeUndefined();
     expect(d.route).not.toHaveBeenCalled();
+  });
+
+  it.each(['', '<system-reminder>continue original execution</system-reminder>'])('preserves the admitted candidates for a hidden continuation: %s', async text => {
+    const backup = { providerId: 'q', modelId: 'grok-4.7' };
+    setAutoRouteSessionState('s1', {
+      tier: 'strong', primary: { providerId: 'p', model: 'claude-sonnet-5-5' }, backup,
+      candidates: [backup],
+    });
+    const d = deps();
+    expect(await applyAutoRouteAdmission({}, { ...input, text }, d)).toBeUndefined();
+    expect(getAutoRouteBackup('s1', { providerId: 'p', model: 'claude-sonnet-5-5' })).toEqual(backup);
+    expect(getAutoRouteCandidates('s1', { providerId: 'p', model: 'claude-sonnet-5-5' })).toEqual([backup]);
+    expect(d.route).not.toHaveBeenCalled();
+    expect(d.updateSessionMetadata).not.toHaveBeenCalled();
+  });
+
+  it.each(['manual', 'changed-primary', 'missing-primary'])('revokes a stale plan on a hidden continuation: %s', async reason => {
+    setAutoRouteSessionState('s1', {
+      tier: 'strong',
+      ...(reason !== 'missing-primary' ? { primary: { providerId: 'p', model: reason === 'changed-primary' ? 'old-model' : 'claude-sonnet-5-5' } } : {}),
+      backup: { providerId: 'q', modelId: 'grok-4.7' },
+    });
+    const d = deps(reason === 'manual' ? { sessionMeta: meta({ modelMode: 'manual' }) } : {});
+    await applyAutoRouteAdmission({}, { ...input, text: '' }, d);
+    expect(getAutoRouteBackup('s1')).toBeUndefined();
+    expect(d.route).not.toHaveBeenCalled();
+  });
+
+  it.each(['model', 'route', 'credentials', 'image'])('does not retain the old plan for an empty input with a new %s override', async reason => {
+    setAutoRouteSessionState('s1', { primary: { providerId: 'p', model: 'claude-sonnet-5-5' }, backup: { providerId: 'q', modelId: 'grok-4.7' } });
+    const request = reason === 'model' ? { model: 'new-model' }
+      : reason === 'route' ? { providerRoute: { kind: 'provider' as const, providerId: 'q', model: 'new-model' } }
+      : reason === 'credentials' ? { providerEnv: 'subscription' as const } : {};
+    await applyAutoRouteAdmission(request, { ...input, text: '', hasImages: reason === 'image' }, deps());
+    expect(getAutoRouteCandidates('s1')).toEqual([]);
+  });
+
+  it('rechecks current pool membership before retaining a hidden continuation plan', async () => {
+    setAutoRouteSessionState('s1', { primary: { providerId: 'p', model: 'claude-sonnet-5-5' }, backup: { providerId: 'q', modelId: 'grok-4.7' } });
+    const assertFallbackAllowed = vi.fn(() => { throw new AutoRoutePoolUnavailableError(); });
+    await expect(applyAutoRouteAdmission({}, { ...input, text: '' }, deps({ assertFallbackAllowed }))).rejects.toBeInstanceOf(AutoRoutePoolUnavailableError);
+    expect(assertFallbackAllowed).toHaveBeenCalledOnce();
   });
 });
 
