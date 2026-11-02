@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import type { RecoveryActionSnapshot, RecoveryActionRequest, RecoveryReviewAction } from '../../shared/recoveryReconciliation';
+import type { RecoveryActionSnapshot, RecoveryMutationRequest, RecoveryReviewAction } from '../../shared/recoveryReconciliation';
+import { useSessionTaskOrchestrationContext } from './agent-status/useSessionTaskOrchestration';
 import { RecoveryActionDetails } from './RecoveryActionDetails';
 
 export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, inspectRevision, interrupted = false, continuation, onPrepareCheck }: {
   inspect: () => Promise<RecoveryActionSnapshot>;
-  reconcile: (request: RecoveryActionRequest) => Promise<RecoveryActionSnapshot>;
+  reconcile: (request: RecoveryMutationRequest) => Promise<RecoveryActionSnapshot>;
   disabled: boolean;
   sessionId: string;
   /** Each settled revision is inspected once, including after a busy transition. */
@@ -15,6 +16,9 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
   onPrepareCheck?: (action: RecoveryReviewAction) => void;
 }) {
   const { t } = useTranslation('chat');
+  const taskContext = useSessionTaskOrchestrationContext();
+  const publishRecovery = taskContext?.publishRecoveryReview;
+  const openDetails = useCallback(() => setDetails(true), []);
   const [snapshot, setSnapshot] = useState<RecoveryActionSnapshot>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
@@ -80,6 +84,13 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
         setSnapshot(latest);
         if (latest.actions.some(item => item.actionHash === action.actionHash)) throw new Error('recovery_review_unresolved');
       }
+      if (latest.investigationAvailable && latest.actions.length) {
+        assertCurrent();
+        latest = await current.current.reconcile({ reviewAuthority: latest.reviewAuthority, sessionId: latest.sessionId,
+          sdkSessionId: latest.sdkSessionId, epoch: latest.epoch, ledgerDigest: latest.ledgerDigest,
+          actionHash: latest.actions[0].actionHash, kind: 'investigate' });
+        assertCurrent(); setSnapshot(latest);
+      }
     } catch {
       if (epoch === generation.current.epoch) setError(true);
     } finally {
@@ -95,7 +106,33 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
     void run();
   }, [busy, disabled, inspectRevision, sessionId, run]);
 
+  const saveFollowup = useCallback(async (action: RecoveryReviewAction, kind: 'note' | 'defer', text: string, requestId: string) => {
+    if (pending.current || current.current.disabled || !snapshot) return false;
+    pending.current = true; setBusy(true); setError(false);
+    const epoch = generation.current.epoch;
+    try {
+      let result: RecoveryActionSnapshot;
+      try {
+        result = await current.current.reconcile({ reviewAuthority: snapshot.reviewAuthority, sessionId: snapshot.sessionId,
+          sdkSessionId: snapshot.sdkSessionId, epoch: snapshot.epoch, ledgerDigest: snapshot.ledgerDigest,
+          actionHash: action.actionHash, kind, text, requestId });
+      } catch {
+        if (epoch !== generation.current.epoch) return false;
+        result = await current.current.inspect();
+        if (!result.actions.some(item => item.followups?.some(note => note.requestId === requestId && note.text === text.trim() && note.kind === kind))) throw new Error('not_saved');
+      }
+      if (epoch !== generation.current.epoch || result.sessionId !== current.current.sessionId
+        || result.sdkSessionId !== snapshot.sdkSessionId || result.epoch !== snapshot.epoch || result.reviewAuthority !== snapshot.reviewAuthority) return false;
+      setSnapshot(result); return true;
+    } catch { if (epoch === generation.current.epoch) setError(true); return false; }
+    finally { if (epoch === generation.current.epoch) { pending.current = false; setBusy(false); } }
+  }, [snapshot]);
+
   const pendingCount = snapshot?.actions.length ?? 0;
+  useEffect(() => {
+    if (publishRecovery) publishRecovery({ sessionId, count: pendingCount, checking: busy, failed: error, open: openDetails });
+    return () => publishRecovery?.(undefined);
+  }, [publishRecovery, sessionId, pendingCount, busy, error, openDetails]);
   const visible = hadActions || interrupted || details;
   // Ordinary conversations have no recovery banner. Explicit continuation keeps
   // its existing admission; inspecting evidence cannot claim task completion.
@@ -111,8 +148,9 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
         <div className="min-w-0 flex-1">
           <p role="status" className="font-medium text-[var(--ink)]">{t(`recoveryReview.states.${state}`, { count: pendingCount })}</p>
           <p className="mt-1">{t(`recoveryReview.descriptions.${state}`)}</p>
+          {!!snapshot?.resolvedCount && <p className="mt-1">{t('recoveryReview.confirmedCount', { count: snapshot.resolvedCount })}</p>}
         </div>
-        <button type="button" className={buttonClass} aria-haspopup="dialog" onClick={() => setDetails(true)}>{t('recoveryReview.details')}</button>
+        <button type="button" className={buttonClass} aria-haspopup="dialog" onClick={openDetails}>{t('recoveryReview.details')}</button>
       </div>
       {error && <p role="alert" className="mt-2">{t('recoveryReview.changed')}</p>}
       {!checking && <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -122,7 +160,8 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
       {/* Keep the continuation owner mounted through check/busy transitions. */}
       <div hidden={showCard && checking} className={showCard ? 'mt-2' : ''}>{continuation}</div>
     </section>
-    {showCard && details && <RecoveryActionDetails actions={snapshot?.actions ?? []} busy={checking} error={error}
-      onClose={() => setDetails(false)} onPrepareCheck={onPrepareCheck} />}
+    {showCard && details && <RecoveryActionDetails actions={snapshot?.actions ?? []} completed={snapshot?.completed ?? []} reviewed={snapshot?.reviewed ?? []}
+      independentTasks={snapshot?.independentTasks ?? []} busy={checking} error={error}
+      onClose={() => setDetails(false)} onPrepareCheck={onPrepareCheck} onSave={saveFollowup} />}
   </div>;
 }

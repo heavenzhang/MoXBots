@@ -2093,7 +2093,8 @@
         "continuationCancelledBeforeDispatch": "Continuation was cancelled before dispatch",
         "admissionCancelled": "The continuation request was cancelled",
         "dispatchUnconfirmed": "Continuation dispatch has not been confirmed",
-        "unconfirmed": "Execution encountered a blocker whose details are not confirmed"
+        "unconfirmed": "Execution encountered a blocker whose details are not confirmed",
+        "recoveryChecking": "Checking operation results before the interruption"
       }
     }
   },
@@ -2470,5 +2471,10 @@
     "confirmDraft": "Keep draft and continue from latest version",
     "birthFailed": "Conversation creation is incomplete. Check this attempt in New.",
     "refreshAfterSaveFailed": "Project saved. Reopen it to refresh the view."
+  },
+  "recoveryReview": {
+    "checking": "Checking interrupted operations",
+    "unavailable": "Recovery check needs attention",
+    "pending": "{{count}} results unconfirmed"
   }
 }

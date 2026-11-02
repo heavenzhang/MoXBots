@@ -2,14 +2,14 @@ import { StrictMode } from 'react';
 import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { expect, it, vi } from 'vitest';
 import { RecoveryActionReview } from './RecoveryActionReview';
-import type { RecoveryActionSnapshot, RecoveryActionRequest } from '../../shared/recoveryReconciliation';
+import type { RecoveryActionSnapshot, RecoveryMutationRequest } from '../../shared/recoveryReconciliation';
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ t: (key: string) => key }) }));
 const snapshot: RecoveryActionSnapshot = { sessionId: 's', sdkSessionId: 'n', epoch: 1, reviewAuthority: 'a', ledgerDigest: 'd', resolvedCount: 0,
   actions: [{ actionHash: 'query', tool: 'TaskGet', eligible: true, reason: 'builtin_task_query' },
     { actionHash: 'mutating', tool: 'Other', eligible: false, reason: 'external_receipt_required', presentation: { kind: 'write_file', target: '方案.docx' } }] };
 const props = () => ({ sessionId: 's', inspectRevision: 'idle:1', disabled: false,
   inspect: vi.fn(async () => snapshot),
-  reconcile: vi.fn(async (_request: RecoveryActionRequest) => ({ ...snapshot, ledgerDigest: 'd2', resolvedCount: 1, actions: snapshot.actions.slice(1) })) });
+  reconcile: vi.fn(async (_request: RecoveryMutationRequest) => ({ ...snapshot, ledgerDigest: 'd2', resolvedCount: 1, actions: snapshot.actions.slice(1) })) });
 
 it('automatically saves only eligible proof and leaves unknown operations protected behind compact details', async () => {
   const p = props(); render(<RecoveryActionReview {...p} />);
@@ -131,4 +131,51 @@ it('closing details leaves automatic proof collection running', async () => {
   fireEvent.click(screen.getByText('recoveryReview.close'));
   await act(async () => finish({ ...snapshot, actions: [], resolvedCount: 1 }));
   expect(await screen.findByText('recoveryReview.states.ready')).toBeVisible();
+});
+
+
+it('saves user evidence durably through the original endpoint and keeps unknown operations protected', async () => {
+  let latest: RecoveryActionSnapshot = { ...snapshot, actions: snapshot.actions.slice(1) };
+  const p = props(); p.inspect.mockImplementation(async () => latest);
+  p.reconcile.mockImplementation(async request => {
+    if (!('kind' in request) || request.kind === 'investigate') throw new Error('unexpected operation');
+    latest = { ...latest, actions: latest.actions.map(action => ({ ...action, followups: [...(action.followups ?? []), {
+      actionHash: request.actionHash, sdkSessionId: request.sdkSessionId, kind: request.kind, text: request.text.trim(), requestId: request.requestId, createdAt: 'now',
+    }] })) };
+    return latest;
+  });
+  render(<RecoveryActionReview {...p} />);
+  fireEvent.click(await screen.findByText('recoveryReview.details'));
+  fireEvent.click(screen.getByText('recoveryReview.addNote'));
+  fireEvent.change(screen.getByRole('textbox'), {target: {value: '记录 ABC，需核实'}});
+  fireEvent.click(screen.getByText('recoveryReview.saveNote'));
+  expect(await screen.findByText('recoveryReview.saved')).toBeVisible();
+  expect(screen.getByText('记录 ABC，需核实')).toBeVisible();
+  expect(latest.actions[0].eligible).toBe(false);
+  fireEvent.click(screen.getByText('recoveryReview.defer'));
+  await waitFor(() => expect(latest.actions[0].followups?.map(note => note.kind)).toEqual(['note','defer']));
+  fireEvent.click(screen.getByText('recoveryReview.close'));
+  fireEvent.click(screen.getByText('recoveryReview.details'));
+  expect(screen.getByText('记录 ABC，需核实')).toBeVisible();
+});
+it('prepares one original-owner investigation after automatic checks when the server grants it', async () => {
+  const p = props();
+  const initial = { ...snapshot, actions: snapshot.actions.slice(1), investigationAvailable: true };
+  p.inspect.mockResolvedValue(initial);
+  p.reconcile.mockResolvedValue({ ...initial, investigationAvailable: false });
+  render(<RecoveryActionReview {...p} />);
+  await waitFor(() => expect(p.reconcile).toHaveBeenCalledTimes(1));
+  expect(p.reconcile.mock.calls[0][0]).toMatchObject({kind:'investigate',actionHash:'mutating'});
+});
+it('preserves a note draft on storage failure without reporting it saved', async () => {
+  const p = props(); p.inspect.mockResolvedValue({...snapshot,actions:snapshot.actions.slice(1)});
+  p.reconcile.mockRejectedValue(new Error('disk full'));
+  render(<RecoveryActionReview {...p} />);
+  fireEvent.click(await screen.findByText('recoveryReview.details'));
+  fireEvent.click(screen.getByText('recoveryReview.addNote'));
+  fireEvent.change(screen.getByRole('textbox'), {target:{value:'keep my draft'}});
+  fireEvent.click(screen.getByText('recoveryReview.saveNote'));
+  await waitFor(() => expect(p.reconcile).toHaveBeenCalledTimes(1));
+  expect(screen.getByRole('textbox')).toHaveValue('keep my draft');
+  expect(screen.queryByText('recoveryReview.saved')).not.toBeInTheDocument();
 });

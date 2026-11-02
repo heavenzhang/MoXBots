@@ -20,7 +20,7 @@ function fixture(name = 'TaskGet', input: Record<string, unknown> = { taskId: '1
     }),
   };
   return { deps, hash, rows, adopt, setCurrent: (v: boolean) => { current = v; }, setLedger: (v: unknown) => { ledger = v; },
-    request: async () => { const snapshot = await inspectRecoveryActions(deps); const { actions: _actions, resolvedCount: _count, ...identity } = snapshot; return { ...identity, actionHash: hash }; } };
+    request: async () => { const snapshot = await inspectRecoveryActions(deps); return { sessionId:snapshot.sessionId, sdkSessionId:snapshot.sdkSessionId, epoch:snapshot.epoch, reviewAuthority:snapshot.reviewAuthority, ledgerDigest:snapshot.ledgerDigest, actionHash:hash }; } };
 }
 
 describe('native query outcome review', () => {
@@ -90,6 +90,7 @@ describe('native query outcome review', () => {
       scope: () => 'turn', isActive: () => false, backup: async () => '' });
     f.deps.adopt = receipt => {
       if (receipt.kind === 'builtin-task-query-reviewed') context.adoptReadonlyTaskResolution(receipt);
+      else if (receipt.kind === 'native-completion-reviewed') context.adoptNativeCompletion(receipt);
       else context.adoptPreToolDenialResolution(receipt);
     };
     await reconcileRecoveryAction(await f.request(), f.deps);

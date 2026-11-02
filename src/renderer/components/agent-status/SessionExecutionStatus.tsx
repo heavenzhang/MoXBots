@@ -32,6 +32,7 @@ const reasonKeys: Record<string, string> = {
   turn_error: "turnError",
   user_stopped: "userStopped",
   new_user_input: "newUserInput",
+  RECOVERY_CHECKING: "recoveryChecking",
   TOOL_OUTCOME_UNKNOWN: "toolOutcomeUnknown",
   WAITING_FOR_USER: "waitingForUser",
   BACKGROUND_WORK_ACTIVE: "backgroundWorkActive",

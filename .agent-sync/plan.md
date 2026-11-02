@@ -1174,7 +1174,7 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 
 第十二项（MB-RECOVERY-INCIDENT-20261101）：532.1无效accept证据纠错19轮但reworks=0，修正为沿既有返工计数和同一证明规则有界纠错，给出具体criterion/失效证据反馈，保留真实进度、原ID及人工补证。代理ConnectTimeoutError只在精确当前attempt/原生连接建立前、同fetch取消与预算内最多2次重连；HTTP429/5xx、已发送/部分流和旧unknown不获重放权。冷恢复和原生loopback回归后由同owner独审、集成、分配新不可变包、安装并复验四原会话；不增加部署负责人，不独立触发共享CI，不宣称限流或旧业务验收已闭合。证据见 recovery-incident-20261101/acceptance.md 最新章节。
 
-第十三项：已原生returned的精确tool-use在SDK历史短暂缺result时不再被prearm新降级为legacy unknown；只过滤本次分析候选，不清旧不确定集合，不赋予新的推理/工具权限。live/cold旧失败复现，四负例保持保护，141项相关回归/tsc/lint通过；等待同desktop owner独审和下一未冻结批。第十二项已独立冻结532.2/PR226/CI41325876238，不能覆盖或复用其制品与检查。
+第十三项：已原生returned的精确tool-use在SDK历史短暂缺result时不再被prearm新降级为legacy unknown；只过滤本次分析候选，不清旧不确定集合，不赋予新的推理/工具权限。live/cold旧失败复现，四负例保持保护，141项相关回归/tsc/lint通过；等待同desktop owner独审和下一未冻结批。第十二项已独立冻结532.2/PR226/CI41325876248，不能覆盖或复用其制品与检查。
 
 第十三项审查补证：原owner精确7c3fe1f09静态/58项定向通过并独立补失败Bash live/cold围栏验证；源分支吸收该测试与未完成peer/退休身份反例，最终74项及tsc/lint/diff通过。产品逻辑不变，保持既有unknown，不覆盖532.2冻结批；真实原生验收仍待下一批安装。
 
@@ -1227,3 +1227,6 @@ WEB-DOWNLOAD-0536-20261102 production/UIclosure:0.5.36(536.1) live at20261102-we
 原R3计划已校正：R1/M1/M2实际已主干/发行，M2隔离原生与下载链通过；M3真实群组与任务交接尚未实现。先完成P0导航可用性，再P1群组单一收件Bot、一次真实交接/成果/review，后续跨端。29定向/tsc/lint/分类/本地renderer build、Root实际组件深浅/390px/过滤/原ID/错误恢复/键盘通过；独立源码/静态视觉无P1/P2，其live浏览器不可用不标通过，真实原生留待新包。
 
 本轮新安装授权已由原desktop owner完成0.5.37/537.1本机替换、备份与重启，Root版本/进程/摘要/签名复核通过；不含本轮NAV。0.5.37原会话502/unknown和stable晋级另追踪，stable仍0.5.36。唯一desktop/macOS-arm64/updater/sharedCI/main/安装owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发仅提交精确源/本地证据，请原owner下一未冻结UI候选统一CI/main/包/安装，不另分配版本、不覆盖冻结包。不涉及mobile/cloud/Host/website发布，也不混入dirty cross-end/group工作树。
+
+
+MB-RECOVERY-UX-20261102完整续接：用户要求补齐整个方案。原分支保留main82dffd887，沿原ContextRecovery/native journal/SessionTaskLedger/SessionExecution实现真实成功回执、目标字节检查、持久补充/延后、一次性受限核查和原owner续接。依赖/规范化资源确定独立任务包，未知根操作继续保留reservation；无通用重试或用户说明直接解锁。底部与状态卡同源。624本地回归及真实SDK隔离Write/历史/冷恢复通过，新增真实浏览器被Work设置禁用；主干/组合CI/制品/安装/原会话验收继续由唯一desktop/sharedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4组织。未完成发布不标全交付；任务详见原record和acceptance新增章节。

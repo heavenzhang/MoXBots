@@ -1544,7 +1544,7 @@
     "target": "Affected item: ",
     "targetUnavailable": "The available record does not identify a displayable item. Check the tool records in the original conversation.",
     "tool": "Tool category: ",
-    "prepareCheck": "Add context or ask the Bot to check",
+    "prepareCheck": "Ask the Bot to check actual results",
     "laterHint": "Close to handle this later. Records are preserved; closing does not skip task steps.",
     "states": {
       "checking": "Checking operations before the interruption",
@@ -1571,14 +1571,42 @@
       "builtin_task_query": "Execution records identify a task query. This does not prove the query succeeded.",
       "native_hook_denied": "Execution records show this call was refused before it started.",
       "external_receipt_required": "The operation request was found, but this check cannot establish completion.",
-      "native_evidence_missing": "No complete execution record matching this operation was found."
+      "native_evidence_missing": "No complete execution record matching this operation was found.",
+      "native_success": "An exact successful execution receipt was found. This does not establish acceptance of the entire business task."
     },
     "nextSteps": {
       "builtin_task_query": "The system will save this finding automatically. The original task flow decides subsequent queries.",
       "native_hook_denied": "The system will automatically save proof of non-execution. Later execution still requires the original authorization.",
       "external_receipt_required": "Check the actual file, execution system, or business record. Add what you have seen, or ask the Bot to query results first.",
-      "native_evidence_missing": "Investigate using the original conversation and actual results. Missing records are not treated as proof of non-execution."
+      "native_evidence_missing": "Investigate using the original conversation and actual results. Missing records are not treated as proof of non-execution.",
+      "native_success": "Preserve the result without repeating the operation. The original task flow checks remaining work."
     },
-    "checkDraft": "Please investigate this operation with an unknown result: {{operation}}\nAffected item: {{target}}\nOperation identifier: {{hash}}\nUse the original conversation and read-only checks to establish the actual result. Explain findings and remaining gaps, and proceed with unaffected work. Do not repeat an uncertain operation or mark it successful based solely on my description.\nAdditional context from me: "
+    "checkDraft": "Please investigate this operation with an unknown result: {{operation}}\nAffected item: {{target}}\nOperation identifier: {{hash}}\nUse the original conversation and read-only checks to establish the actual result. Explain findings and remaining gaps, and proceed with unaffected work. Do not repeat an uncertain operation or mark it successful based solely on my description.\nAdditional context from me: ",
+    "confirmedCount": "The system confirmed {{count}} records",
+    "completedCount": "View confirmed successful calls ({{count}})",
+    "completed": "Call returned successfully",
+    "addNote": "Add what I observed",
+    "saveNote": "Save note",
+    "cancel": "Cancel",
+    "defer": "Handle later",
+    "deferred": "Deferred for later: ",
+    "userNote": "User note (not yet verified): ",
+    "saved": "Saved. Operation protection and task state are preserved.",
+    "noteLabel": "Observed result, record ID, or lookup link",
+    "noteBoundary": "This is saved in the conversation. Verification is still required; saving does not complete the task.",
+    "independent": "Tasks known to be independent of these operations",
+    "affected": "This step and {{count}} downstream dependencies await verification.",
+    "checks": {
+      "native_success": "Execution record: the original call returned successfully.",
+      "native_failure": "Execution record: the call returned an error. Partial effects still need checking.",
+      "file_matches": "The current file exactly matches the intended content. The artifact exists; the original execution outcome still needs verification.",
+      "file_differs": "The file differs from the intended content, possibly due to later edits. It will not be overwritten.",
+      "file_missing": "The target file was not found. This does not prove the operation never ran.",
+      "file_changed": "The file changed during the check. No conclusion was drawn.",
+      "file_unavailable": "The target could not be read. The original record is preserved.",
+      "file_outside_workspace": "The target is outside the original workspace and was not read automatically. Ask the Bot to check within existing authorization.",
+      "external_check_required": "Check the original business system or execution service. Add context or ask the Bot to use an authorized query tool."
+    },
+    "reviewedCount": "View reviewed records ({{count}})"
   }
 }

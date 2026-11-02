@@ -2091,7 +2091,8 @@
         "continuationCancelledBeforeDispatch": "续跑在派发前已取消",
         "admissionCancelled": "续跑请求已取消",
         "dispatchUnconfirmed": "续跑派发尚未确认",
-        "unconfirmed": "当前执行遇到阻碍，详情尚未确认"
+        "unconfirmed": "当前执行遇到阻碍，详情尚未确认",
+        "recoveryChecking": "正在核查中断前的操作结果"
       }
     }
   },
@@ -2468,5 +2469,10 @@
     "confirmDraft": "保留草稿，以最新版本为基准继续",
     "birthFailed": "会话创建未完成，请在新建入口查看本次结果。",
     "refreshAfterSaveFailed": "项目已保存，界面暂未刷新，请重新打开项目。"
+  },
+  "recoveryReview": {
+    "checking": "正在检查中断结果",
+    "unavailable": "恢复检查待处理",
+    "pending": "{{count}} 条结果待确认"
   }
 }

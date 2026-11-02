@@ -2767,3 +2767,70 @@ describe("native background inference execution budget", () => {
     },
   );
 });
+
+describe('bounded recovery investigation by the original execution owner',()=>{
+ it('performs one read-only pass, keeps unknown writes fenced, and stops without looping',async()=>{
+  const first=await prepare(); const queue=first.request.queueId!;
+  await tool(queue,{id:'recovery-write',name:'Write',stage:'start'});
+  await first.request.onTerminal?.({status:'complete',text:'Interrupted',assistantMessagePresent:true});
+  expect(executionOwner.canInvestigateSessionRecovery(id)).toBe(true);
+  await executionOwner.prepareSessionRecoveryInvestigation(id);
+  await executionOwner.continueSessionExecution(engine,id);
+  expect(continuationRequests).toHaveLength(1);
+  const probe=continuationRequests[0]; const probeQueue=currentExecution()!.currentQueueId;
+  expect(executionOwner.sessionExecutionToolDenial(id,probeQueue,'Write',{file_path:'/synthetic/file',content:'overwrite'})).toContain('RECOVERY_VERIFICATION_ONLY');
+  expect(executionOwner.sessionExecutionToolDenial(id,probeQueue,'Bash',{command:'ssh server mutate'})).toContain('RECOVERY_VERIFICATION_ONLY');
+  expect(executionOwner.sessionExecutionToolDenial(id,probeQueue,'Read',{file_path:'/synthetic/file'})).toBeUndefined();
+  expect(probe.text).toContain('中断恢复检查');
+  await probe.onTerminal?.({status:'complete',text:'Still missing a receipt',assistantMessagePresent:true});
+  expect(currentExecution()).toMatchObject({phase:'paused',reason:'TOOL_OUTCOME_UNKNOWN'});
+  expect(executionOwner.canInvestigateSessionRecovery(id)).toBe(false);
+  await executionOwner.prepareSessionRecoveryInvestigation(id);await executionOwner.continueSessionExecution(engine,id);
+  expect(continuationRequests).toHaveLength(1);
+ });
+ it('never converts Stop or unknown delegation into automatic investigation',async()=>{
+  const first=await prepare();const queue=first.request.queueId!;
+  await tool(queue,{id:'unknown',name:'Write',stage:'start'});
+  await first.request.onTerminal?.({status:'stopped',text:'Stopped',assistantMessagePresent:true});
+  expect(executionOwner.canInvestigateSessionRecovery(id)).toBe(false);
+  await executionOwner.prepareSessionRecoveryInvestigation(id);expect(continuationRequests).toHaveLength(0);
+ });
+ it('resumes only after native completion proof clears all pending mutations and preserves original task identity',async()=>{
+  const first=await prepare();const queue=first.request.queueId!;const original=currentExecution()!.id;
+  await tool(queue,{id:'proven',name:'Write',stage:'start'});
+  await first.request.onTerminal?.({status:'complete',text:'Lost receipt',assistantMessagePresent:true});
+  await taskOwner.mutateSessionTaskLedger(id,ledger=>{const fact=ledger.executionEvidence!.find(f=>f.id==='proven')!;fact.pending=false;fact.successful=true;fact.recovered='native-completion';return ledger;});
+  await executionOwner.reconcileSessionExecution(engine,id);
+  expect(currentExecution()!.id).toBe(original);expect(continuationRequests).toHaveLength(1);
+ });
+});
+
+it('continues only predeclared independent task packages while reserving uncertain root resources',async()=>{
+ const {mkdir,symlink}=await import('node:fs/promises');
+ const workspace=join(state.home,'work');await mkdir(workspace);await mkdir(join(workspace,'affected'));await mkdir(join(workspace,'independent'));
+ await symlink(join(workspace,'affected'),join(workspace,'alias'));
+ const first=await prepare();const queue=first.request.queueId!;const executionId=currentExecution()!.id;
+ await taskOwner.mutateSessionTaskLedger(id,ledger=>({...ledger,
+  tasks:[{id:'affected',title:'Unknown write',blockedBy:[]},{id:'dependent',title:'Needs write',blockedBy:['affected']},
+    {id:'independent',title:'Independent artifact',blockedBy:[]},{id:'alias',title:'Aliased target',blockedBy:[]}],
+  bindings:{'pending-root':'affected'},
+  taskPackages:['affected','dependent','independent','alias'].map(taskId=>({taskId,executionId,assignee:'native',reason:'original declared scope',resources:[{path:taskId==='dependent'?'independent/':`${taskId}/`,access:'write' as const}]})),
+ }));
+ await tool(queue,{id:'pending-root',name:'Write',stage:'start'});
+ await first.request.onTerminal?.({status:'complete',text:'Unknown result',assistantMessagePresent:true});
+ await executionOwner.prepareSessionRecoveryInvestigation(id);await executionOwner.continueSessionExecution(engine,id);
+ const recoveryQueue=currentExecution()!.currentQueueId;
+ const launch=(taskId:string,toolId:string)=>taskDispatch.authorizeSessionTaskTool({sessionId:id,queueId:recoveryQueue,
+  toolUseId:toolId,name:'Agent',input:{description:`[task:${taskId}] continue declared work`,run_in_background:true},
+  workspacePath:workspace,isCurrent:()=>true});
+ expect(await launch('dependent','dependent-launch')).toContain('TASK_DISPATCH_DEPENDENCIES_INCOMPLETE');
+ expect(await launch('alias','alias-launch')).toContain('SESSION_TASK_RESOURCE_CONFLICT');
+ expect(await launch('independent','independent-launch')).toBeUndefined();
+ expect(executionOwner.sessionExecutionToolDenial(id,recoveryQueue,'Write',{file_path:'independent/out'},'independent-launch')).toBeUndefined();
+ expect(await taskDispatch.authorizeSessionTaskTool({sessionId:id,queueId:recoveryQueue,toolUseId:'child-write',name:'Write',
+  input:{file_path:join(workspace,'independent','out')},agentId:'native-child',nativeLaunchToolUseId:'independent-launch',workspacePath:workspace,isCurrent:()=>true})).toBeUndefined();
+ expect(await taskDispatch.authorizeSessionTaskTool({sessionId:id,queueId:recoveryQueue,toolUseId:'child-overreach',name:'Write',
+  input:{file_path:join(workspace,'affected','out')},agentId:'native-child',nativeLaunchToolUseId:'independent-launch',workspacePath:workspace,isCurrent:()=>true})).toContain('SESSION_TASK_RESOURCE_OUT_OF_PACKAGE');
+ await taskOwner.mutateSessionTaskLedger(id,ledger=>({...ledger,bindings:{...ledger.bindings,'pending-root':''}}));
+ expect(await launch('independent','unbound-launch')).toContain('SESSION_TASK_RESOURCE_CONFLICT');
+});

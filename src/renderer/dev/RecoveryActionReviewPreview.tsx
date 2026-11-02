@@ -15,7 +15,7 @@ const initialSnapshot: RecoveryActionSnapshot = {
   actions: [
     { actionHash: 'hook-denied-demo', tool: 'Bash', presentation: { kind: 'command' }, eligible: true, reason: 'native_hook_denied' },
     { actionHash: 'task-query-demo', tool: 'TaskGet', eligible: true, reason: 'builtin_task_query' },
-    { actionHash: 'other-demo', tool: 'Other', presentation: { kind: 'write_file', target: '考勤统计与薪资方案.docx' }, eligible: false, reason: 'external_receipt_required' },
+    { actionHash: 'other-demo', tool: 'Other', presentation: { kind: 'write_file', target: '考勤统计与薪资方案.docx' }, check: {kind:'file_matches'}, association: {taskId:'save-plan',title:'保存考勤方案',blockedTaskIds:['verify-plan']}, eligible: false, reason: 'external_receipt_required' },
     { actionHash: 'missing-demo', tool: 'Other', eligible: false, reason: 'native_evidence_missing' },
   ],
 };
@@ -67,6 +67,13 @@ function Preview() {
         inspectRevision={`preview:${scenario}:${scenarioRevision}`}
         inspect={inspect}
         reconcile={async request => {
+          if ('kind' in request) {
+            if (request.kind === 'investigate') return {...latest.current, investigationAvailable:false};
+            const next = {...latest.current, actions: latest.current.actions.map(action => action.actionHash === request.actionHash
+              ? {...action,followups:[...(action.followups ?? []),{actionHash:request.actionHash,sdkSessionId:request.sdkSessionId,
+                kind:request.kind,text:request.text,requestId:request.requestId,createdAt:new Date().toISOString()}]} : action)};
+            latest.current=next;setSnapshot(next);return next;
+          }
           const next = { ...latest.current, resolvedCount: latest.current.resolvedCount + 1,
             actions: latest.current.actions.filter(action => action.actionHash !== request.actionHash),
             ledgerDigest: `${scenarioSnapshot.ledgerDigest}-next` };

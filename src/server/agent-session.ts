@@ -1,6 +1,8 @@
 import { projectOrchestrationProgress } from '../shared/sessionTaskOrchestration';
 import { canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground, mutateSessionTaskLedger } from './session-engine/task-orchestration';
 import {
+  canInvestigateSessionRecovery,
+  prepareSessionRecoveryInvestigation,
   observeSessionExecutionTool,
   executionToolObservationDigest,
   sessionExecutionToolDenial,
@@ -20,10 +22,11 @@ import { buildTurnProviderAnalytics } from './session-core/turn-analytics';
 import { selectBuiltinRewindBoundary } from './session-core/builtin-rewind-boundary';
 import { createBuiltinInterruptController } from './builtin-session/interrupt';
 import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session/context-recovery-config';
-import type { RecoveryActionRequest, RecoveryActionSnapshot } from '../shared/recoveryReconciliation';
+import type { RecoveryMutationRequest, RecoveryActionSnapshot } from '../shared/recoveryReconciliation';
+import { checkRecoveryFile } from './builtin-session/recovery-file-check';
 import { inspectRecoveryActions, reconcileRecoveryAction, type RecoveryReviewDependencies } from './builtin-session/recovery-reconciliation';
 import { readNativeRecoveryRecords } from './builtin-session/native-denial-review';
-import { reconcileKnownExecutionFailures } from './builtin-session/execution-failure-reconciliation';
+import { reconcileKnownExecutionFailures, reconcileKnownExecutionCompletions } from './builtin-session/execution-failure-reconciliation';
 import { repairReviewedToolErrors } from './builtin-session/recovery-tool-errors';
 import { ContextRecoveryController, LiveQueryToolUseTracker } from './openai-bridge/context-recovery';
 import { SessionModelRecovery, settledStreamFailureMessage } from './builtin-session/model-recovery';
@@ -10708,6 +10711,11 @@ async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies>
     catch { return false; }
   };
   return { owner, isCurrent,
+    canInvestigate: () => canInvestigateSessionRecovery(owner.sessionId),
+    startInvestigation: async () => { await prepareSessionRecoveryInvestigation(owner.sessionId); queueMicrotask(() => wakeSessionExecution(owner.sessionId)); },
+    checkFile: (name, input) => checkRecoveryFile(captured.dir, name, input),
+    taskLedger: () => getCurrentProductSessionMetadata()?.taskOrchestration,
+    mutateTaskLedger: async (mutation, current) => { await mutateSessionTaskLedger(owner.sessionId, mutation, current); },
     load: () => loadBuiltinContextLedger(owner.sessionId, owner.sdkSessionId),
     readNative: async () => {
       let timer: ReturnType<typeof setTimeout> | undefined;
@@ -10729,14 +10737,14 @@ async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies>
       return saveBuiltinContextLedger(owner.sessionId, owner.sdkSessionId, ledger, isCurrent,
         () => {
           if (!current() || !controller) return current();
-          const next = ledger as { readonlyTasks?: import('./openai-bridge/context-recovery').ReadonlyTaskResolution[];
+          const next = ledger as { nativeCompletions?: import('./openai-bridge/context-recovery').NativeCompletionResolution[]; readonlyTasks?: import('./openai-bridge/context-recovery').ReadonlyTaskResolution[];
             preToolDenials?: import('./openai-bridge/context-recovery').PreToolDenialResolution[] };
-          return [...(next.readonlyTasks ?? []), ...(next.preToolDenials ?? [])].some(receipt =>
-            receipt.kind === 'native-pre-tool-denied-reviewed' ? controller.canAdoptPreToolDenialResolution(receipt)
+          return [...(next.readonlyTasks ?? []), ...(next.preToolDenials ?? []), ...(next.nativeCompletions ?? [])].some(receipt =>
+            receipt.kind === 'native-completion-reviewed' ? controller.canAdoptNativeCompletion(receipt) : receipt.kind === 'native-pre-tool-denied-reviewed' ? controller.canAdoptPreToolDenialResolution(receipt)
               : controller.canAdoptReadonlyTaskResolution(receipt));
         }, digest);
     },
-    adopt: receipt => receipt.kind === 'native-pre-tool-denied-reviewed'
+    adopt: receipt => receipt.kind === 'native-completion-reviewed' ? activeSessionContextRecovery?.adoptNativeCompletion(receipt) : receipt.kind === 'native-pre-tool-denied-reviewed'
       ? activeSessionContextRecovery?.adoptPreToolDenialResolution(receipt)
       : activeSessionContextRecovery?.adoptReadonlyTaskResolution(receipt),
     repairToolErrors: async evidence => {
@@ -10749,17 +10757,22 @@ async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies>
   };
 }
 export function reconcileBuiltinExecutionEvidence(): Promise<void> {
-  return runSerializedSessionMutation(async () => reconcileKnownExecutionFailures({
-    ...await recoveryReviewDependencies(),
-    observationDigest: executionToolObservationDigest,
-    mutateLedger: mutateSessionTaskLedger,
-  }));
+  return runSerializedSessionMutation(async () => {
+    const deps = { ...await recoveryReviewDependencies(), observationDigest: executionToolObservationDigest, mutateLedger: mutateSessionTaskLedger };
+    await reconcileKnownExecutionFailures(deps);
+    await reconcileKnownExecutionCompletions(deps);
+  });
 }
 export function inspectBuiltinRecoveryActions(): Promise<RecoveryActionSnapshot> {
   return runSerializedSessionMutation(async () => inspectRecoveryActions(await recoveryReviewDependencies()));
 }
-export function reconcileBuiltinRecoveryAction(request: RecoveryActionRequest): Promise<RecoveryActionSnapshot> {
-  return runSerializedSessionMutation(async () => reconcileRecoveryAction(request, await recoveryReviewDependencies()));
+export function reconcileBuiltinRecoveryAction(request: RecoveryMutationRequest): Promise<RecoveryActionSnapshot> {
+  return runSerializedSessionMutation(async () => {
+    const deps = await recoveryReviewDependencies();
+    const result = await reconcileRecoveryAction(request, deps);
+    await reconcileKnownExecutionCompletions({ ...deps, observationDigest: executionToolObservationDigest, mutateLedger: mutateSessionTaskLedger });
+    return result;
+  });
 }
 
 /**
@@ -12843,6 +12856,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                     taskQueueId,
                     pre.tool_name,
                     pre.tool_input,
+                    nativeLaunchToolUseId,
                   );
                 const staleToolDenial = () => ({
                   hookSpecificOutput: {
@@ -12857,6 +12871,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                   taskQueueId,
                   pre.tool_name,
                   pre.tool_input,
+                  nativeLaunchToolUseId,
                 );
                 if (executionDenial) {
                   await queryContextRecovery?.commitPreToolDenial(pre.tool_name, pre.tool_input, pre.tool_use_id).catch(() => false);
@@ -12926,6 +12941,7 @@ async function startStreamingSession(preWarm = false): Promise<void> {
                   taskQueueId,
                   pre.tool_name,
                   pre.tool_input,
+                  nativeLaunchToolUseId,
                 );
                 if (evidenceBudgetDenial)
                   return {

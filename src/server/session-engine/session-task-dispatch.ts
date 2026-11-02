@@ -91,6 +91,8 @@ export async function registerSessionTaskPackage(
   ) {
     throw new Error(SESSION_TASK_DISPATCH_ERRORS.executionRequired);
   }
+  if (execution.recoveryPassDigest && metadata?.taskOrchestration?.executionEvidence?.some(fact => fact.pending && fact.mutating))
+    throw new Error('SESSION_TASK_RECOVERY_PACKAGE_FROZEN');
   const queueId = runtimeQueueId(engine);
   if (!queueId || queueId !== execution.currentQueueId)
     throw new Error(SESSION_TASK_DISPATCH_ERRORS.queueMismatch);
@@ -324,9 +326,13 @@ function packageFor(
 }
 
 function claims(ledger: DispatchLedger): DispatchClaim[] {
-  return (ledger.delegationClaims ?? []).filter((claim) =>
-    activeClaimStates.has(claim.state),
-  );
+  const active = (ledger.delegationClaims ?? []).filter(claim => activeClaimStates.has(claim.state));
+  // Read-only reservations for unresolved root effects. They use the original
+  // package/resource authority and are never persisted as new execution claims.
+  const pending = ledger.execution?.recoveryPassDigest
+    ? ledger.executionEvidence?.filter(fact => fact.pending && fact.mutating) ?? [] : [];
+  return [...active, ...pending.map(fact => ({ toolUseId: `recovery-pending:${fact.id}`,
+    taskId: ledger.bindings[fact.id] ?? '', executionId: ledger.execution!.id, state: 'unknown' as const }))];
 }
 
 async function rejectResourceConflicts(
@@ -586,6 +592,15 @@ export async function authorizeSessionTaskTool(input: {
         SESSION_TASK_DISPATCH_ERRORS.taskMarker,
         "Agent/Task 描述必须以 [task:id] 开头",
       );
+    if (execution.recoveryPassDigest && ledger.executionEvidence?.some(fact => fact.pending && fact.mutating)) {
+      const pkg = packageFor(ledger, taskId, execution.id);
+      if (!pkg) return message(SESSION_TASK_DISPATCH_ERRORS.resourceConflict, '恢复期间只能继续已有明确范围的独立任务包');
+      let resources: TaskResource[];
+      try { resources = await Promise.all(pkg.resources.map(resource => canonicalResource(input.workspacePath, resource.path, resource.access, false))); }
+      catch { return message(SESSION_TASK_DISPATCH_ERRORS.pathInvalid, '无法核实独立任务包的实际资源范围'); }
+      const conflict = await rejectResourceConflicts(ledger, input.workspacePath, resources);
+      if (conflict) return conflict;
+    }
     const value = object(input.input);
     const assignee =
       typeof value?.subagent_type === "string" && value.subagent_type.trim()

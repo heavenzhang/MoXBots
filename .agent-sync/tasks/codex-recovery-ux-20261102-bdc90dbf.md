@@ -34,3 +34,10 @@ desktop builtin client / macOS-arm64 / updater / shared CI / main 唯一负责�
 ## Next step
 
 原桌面 owner 审阅精确源码提交及 187 项验证，统一安排下一未冻结候选 CI/main；安装需沿其现有安全维护窗口与原会话核查。源码、main、制品、安装、真实业务结果分阶段回执。
+
+
+## 完整恢复流程续接
+
+用户明确要求“把它做完”。基线更新到main82dffd887并保留导航，详见dev-docs/recovery-ux-20261102/PLAN.md与acceptance.md新增完整流程章节。完成：真实原生成功证明、Write目标字节核查、一次性原owner核查、持久补充/延后、精确任务/依赖归组、独立任务资源保护、底部共享摘要、原execution精确同步和安全续接。未知、Stop、资源、最终验证不绕过。
+
+本轮218unit/dom+106integration+285原保护/adapter+15dispatch通过，共624项；另真实SDK原生Write/历史/冷恢复loopback通过（合成模型，零付费）。本地类型/lint/分类/依赖/构建通过需以最后日志复核；新增真实浏览器被Work设置禁用，不能冒充验收。原owner已恢复活动，最终精确源交其独审/统一CI/main/下一未冻结版本/安全安装与原会话验收，不另建发布owner。旧985e7a1a仅第一阶段，已通知不作为完整候选。
