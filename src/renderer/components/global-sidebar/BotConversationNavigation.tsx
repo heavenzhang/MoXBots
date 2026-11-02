@@ -1,4 +1,4 @@
-import type { ProjectSpace } from '../../../shared/projectSpaces';
+import type { ProjectSpace } from "../../../shared/projectSpaces";
 import { normalizeWorkspacePathIdentity } from "../../../shared/workspacePath";
 import CustomSelect from "@/components/CustomSelect";
 import { useMemo, useState } from "react";
@@ -16,7 +16,10 @@ import {
   RefreshIcon,
 } from "@/components/icons";
 import { formatTime } from "@/utils/taskCenterUtils";
-import { projectBotConversations } from "./botConversationProjection";
+import {
+  groupBotConversations,
+  projectBotConversations,
+} from "./botConversationProjection";
 export type BotNavigationView = "conversations" | "projects" | "history";
 export default function BotConversationNavigation({
   view,
@@ -62,10 +65,7 @@ export default function BotConversationNavigation({
 }) {
   const { t } = useTranslation("app");
   const [filter, setFilter] = useState("");
-  const activeFilter = spaces.some((project) => project.id === filter)
-    ? filter
-    : "";
-  const conversations = useMemo(
+  const allConversations = useMemo(
     () =>
       projectBotConversations({
         projects,
@@ -73,13 +73,44 @@ export default function BotConversationNavigation({
         sessions: data.sessions,
         tabs,
         badges,
-        projectSpaceId: activeFilter,
       }),
-    [projects, agents, data.sessions, tabs, badges, activeFilter],
+    [projects, agents, data.sessions, tabs, badges],
   );
+  const bots = useMemo(() => {
+    const catalog = new Map(
+      agents.map((bot) => [bot.id, { id: bot.id, name: bot.name }]),
+    );
+    for (const item of allConversations)
+      if (!catalog.has(item.bot.id)) catalog.set(item.bot.id, item.bot);
+    return [...catalog.values()];
+  }, [agents, allConversations]);
+  const activeFilter =
+    bots.some((bot) => `bot/${bot.id}` === filter) ||
+    spaces.some((space) => `project/${space.id}` === filter)
+      ? filter
+      : "";
+  const selectedBotId = activeFilter.startsWith("bot/")
+    ? activeFilter.slice(4)
+    : "";
+  const selectedSpaceId = activeFilter.startsWith("project/")
+    ? activeFilter.slice(8)
+    : "";
+  const conversations = allConversations.filter(
+    (item) =>
+      (!selectedBotId || item.bot.id === selectedBotId) &&
+      (!selectedSpaceId || item.projectSpaceId === selectedSpaceId),
+  );
+  const groups = groupBotConversations(conversations);
   const currentId = activeTab?.view === "chat" ? activeTab.sessionId : null;
   const states = projects
-    .filter((project) => !activeFilter || spaces.find(space => space.id === activeFilter)?.memberBotIds.includes(project.agentId ?? ''))
+    .filter(
+      (project) =>
+        (!selectedBotId || project.agentId === selectedBotId) &&
+        (!selectedSpaceId ||
+          spaces
+            .find((space) => space.id === selectedSpaceId)
+            ?.memberBotIds.includes(project.agentId ?? "")),
+    )
     .flatMap((project) => {
       const value = data.workspaceSessionStates.get(
         normalizeWorkspacePathIdentity(project.path),
@@ -97,27 +128,40 @@ export default function BotConversationNavigation({
       <button
         key={item.session.id}
         type="button"
+        data-conversation-id={item.session.id}
+        title={[
+          item.session.title,
+          item.bot.name,
+          item.projectLabel,
+          item.session.lastMessagePreview,
+        ]
+          .filter(Boolean)
+          .join("\n")}
         onClick={() => onOpenSession(item.session, item.project)}
         aria-current={currentId === item.session.id ? "page" : undefined}
-        className={`mb-1 flex w-full min-w-0 items-start gap-2.5 rounded-lg px-2.5 py-3 text-left hover:bg-[var(--hover-bg)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] ${currentId === item.session.id ? "bg-[var(--paper-inset)]" : ""}`}
+        className={`mb-0.5 flex w-full min-w-0 items-center gap-2 rounded-lg px-2.5 py-2 text-left hover:bg-[var(--hover-bg)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] ${currentId === item.session.id ? "bg-[var(--paper-inset)]" : ""}`}
       >
-        <WorkspaceIcon
-          icon={item.bot.icon}
-          size={32}
-          className="mt-0.5 shrink-0"
-        />
+        <WorkspaceIcon icon={item.bot.icon} size={24} className="shrink-0" />
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-2">
             <strong className="min-w-0 flex-1 truncate text-sm font-medium">
-              {item.bot.name}
+              {item.session.title.trim() || t("botExperience.newConversation")}
             </strong>
-            <time className="shrink-0 text-xs text-[var(--ink-muted)]">
-              {formatTime(item.session.lastActiveAt)}
-            </time>
+            {item.unread > 0 && (
+              <span
+                className="shrink-0 rounded bg-[var(--accent)] px-1 text-xs text-[var(--button-primary-text)]"
+                aria-label={t("botExperience.unread", { count: item.unread })}
+              >
+                {item.unread}
+              </span>
+            )}
           </span>
           <span className="mt-0.5 flex items-center gap-2">
             <span className="min-w-0 flex-1 truncate text-xs text-[var(--ink-secondary)]">
-              {item.session.lastMessagePreview || item.session.title}
+              {item.bot.name}
+              {(item.projectSpaceId || item.projectLabel !== item.bot.name) && (
+                <> · {item.projectLabel}</>
+              )}
             </span>
             {item.working ? (
               <span
@@ -126,21 +170,10 @@ export default function BotConversationNavigation({
               >
                 {t("botExperience.working")}
               </span>
-            ) : item.unread > 0 ? (
-              <span
-                className="rounded bg-[var(--accent)] px-1 text-xs text-[var(--button-primary-text)]"
-                aria-label={t("botExperience.unread", { count: item.unread })}
-              >
-                {item.unread}
-              </span>
             ) : null}
-          </span>
-          <span className="mt-1 flex min-w-0 items-center gap-1 text-xs text-[var(--ink-muted)]">
-            <FolderIcon className="h-3 w-3 shrink-0" />
-            <span className="truncate">
-              {item.projectLabel} ·{" "}
-              {item.session.title}
-            </span>
+            <time className="shrink-0 text-xs text-[var(--ink-muted)]">
+              {formatTime(item.session.lastActiveAt)}
+            </time>
           </span>
         </span>
       </button>
@@ -154,71 +187,135 @@ export default function BotConversationNavigation({
         <label className="mb-1 flex items-center gap-2 px-2 text-xs text-[var(--ink-muted)]">
           <FolderIcon className="h-3.5 w-3.5" />
           <CustomSelect
-            ariaLabel={t("botExperience.filterProject")}
+            ariaLabel={t("botExperience.filterConversations")}
             value={activeFilter}
             onChange={setFilter}
             className="min-w-0 flex-1"
             options={[
-              { value: "", label: t("botExperience.allProjects") },
+              { value: "", label: t("botExperience.allConversations") },
+              {
+                value: "bots-heading",
+                label: t("botExperience.myBots"),
+                isSeparator: true,
+              },
+              ...bots.map((bot) => ({
+                value: `bot/${bot.id}`,
+                label: t("botExperience.botFilterOption", { name: bot.name }),
+              })),
+              ...(spaces.length
+                ? [
+                    {
+                      value: "projects-heading",
+                      label: t("projectSpaces.projects"),
+                      isSeparator: true,
+                    },
+                  ]
+                : []),
               ...spaces.map((project) => ({
-                value: project.id,
-                label: project.name,
+                value: `project/${project.id}`,
+                label: t("botExperience.projectFilterOption", {
+                  name: project.name,
+                }),
               })),
             ]}
           />
         </label>
       )}
       <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
-        {catalogError && <p role="alert" className="p-3 text-xs text-[var(--warning)]">{t('projectSpaces.readFailed')}</p>}
-        {view === "projects" ? (<>
-          <div className="flex items-center justify-between px-2 py-2 text-xs text-[var(--ink-muted)]"><span>{t('projectSpaces.projects')}</span><button type="button" onClick={onCreateProject} aria-label={t('projectSpaces.newProject')} className="rounded p-1 hover:bg-[var(--hover-bg)]"><PlusIcon className="h-3.5 w-3.5" /></button></div>
-          {spaces.map(space => <button type="button" key={space.id} onClick={() => onOpenProjectSpace?.(space)} className="mb-1 flex w-full items-start gap-2.5 rounded-lg px-2.5 py-3 text-left hover:bg-[var(--hover-bg)]"><FolderIcon className="mt-1 h-5 w-5 shrink-0 text-[var(--accent)]" /><span className="min-w-0 flex-1"><span className="block truncate text-sm font-medium">{space.name}</span><span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">{space.archivedAt ? t('projectSpaces.archived') : space.description || t('projectSpaces.noDescription')}</span></span><ChevronRightIcon className="mt-2 h-3.5 w-3.5 shrink-0 text-[var(--ink-muted)]" /></button>)}
-          {!spaces.length && !catalogError && <button type="button" onClick={onCreateProject} className="m-3 text-xs text-[var(--accent)]">{t('projectSpaces.newProject')}</button>}
-          {projects.length > 0 && <p className="border-t border-[var(--line-subtle)] px-2 pb-2 pt-4 text-xs text-[var(--ink-muted)]">{t('projectSpaces.legacyWorkspaces')}</p>}
-          {projects.map((project) => {
-            const agent = agents.find((a) => a.id === project.agentId);
-            return (
+        {catalogError && (
+          <p role="alert" className="p-3 text-xs text-[var(--warning)]">
+            {t("projectSpaces.readFailed")}
+          </p>
+        )}
+        {view === "projects" ? (
+          <>
+            <div className="flex items-center justify-between px-2 py-2 text-xs text-[var(--ink-muted)]">
+              <span>{t("projectSpaces.projects")}</span>
               <button
-                key={project.id}
                 type="button"
-                onClick={() => onOpenProject(project)}
-                className="mb-1 flex w-full items-start gap-2.5 rounded-lg px-2.5 py-3 text-left hover:bg-[var(--hover-bg)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]"
+                onClick={onCreateProject}
+                aria-label={t("projectSpaces.newProject")}
+                className="rounded p-1 hover:bg-[var(--hover-bg)]"
+              >
+                <PlusIcon className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {spaces.map((space) => (
+              <button
+                type="button"
+                key={space.id}
+                onClick={() => onOpenProjectSpace?.(space)}
+                className="mb-1 flex w-full items-start gap-2.5 rounded-lg px-2.5 py-3 text-left hover:bg-[var(--hover-bg)]"
               >
                 <FolderIcon className="mt-1 h-5 w-5 shrink-0 text-[var(--accent)]" />
                 <span className="min-w-0 flex-1">
-                  <strong className="block truncate text-sm font-medium">
-                    {project.displayName || project.name}
-                  </strong>
-                  <span className="mt-1 flex items-center gap-1.5 text-xs text-[var(--ink-secondary)]">
-                    {agent && <WorkspaceIcon icon={agent.icon} size={18} />}
-                    {agent?.name || t("botExperience.noBot")}
+                  <span className="block truncate text-sm font-medium">
+                    {space.name}
                   </span>
                   <span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">
-                    {project.path}
+                    {space.archivedAt
+                      ? t("projectSpaces.archived")
+                      : space.description || t("projectSpaces.noDescription")}
                   </span>
                 </span>
                 <ChevronRightIcon className="mt-2 h-3.5 w-3.5 shrink-0 text-[var(--ink-muted)]" />
               </button>
-            );
-          })}</>
+            ))}
+            {!spaces.length && !catalogError && (
+              <p className="px-2 py-3 text-xs text-[var(--ink-muted)]">
+                {t("botExperience.emptyProjects")}
+              </p>
+            )}
+            {projects.length > 0 && (
+              <p className="border-t border-[var(--line-subtle)] px-2 pb-2 pt-4 text-xs text-[var(--ink-muted)]">
+                {t("projectSpaces.legacyWorkspaces")}
+              </p>
+            )}
+            {projects.map((project) => {
+              const agent = agents.find((a) => a.id === project.agentId);
+              return (
+                <button
+                  key={project.id}
+                  type="button"
+                  onClick={() => onOpenProject(project)}
+                  className="mb-1 flex w-full items-start gap-2.5 rounded-lg px-2.5 py-3 text-left hover:bg-[var(--hover-bg)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]"
+                >
+                  <FolderIcon className="mt-1 h-5 w-5 shrink-0 text-[var(--accent)]" />
+                  <span className="min-w-0 flex-1">
+                    <strong className="block truncate text-sm font-medium">
+                      {project.displayName || project.name}
+                    </strong>
+                    <span className="mt-1 flex items-center gap-1.5 text-xs text-[var(--ink-secondary)]">
+                      {agent && <WorkspaceIcon icon={agent.icon} size={18} />}
+                      {agent?.name || t("botExperience.noBot")}
+                    </span>
+                    <span className="mt-1 block truncate text-xs text-[var(--ink-muted)]">
+                      {project.path}
+                    </span>
+                  </span>
+                  <ChevronRightIcon className="mt-2 h-3.5 w-3.5 shrink-0 text-[var(--ink-muted)]" />
+                </button>
+              );
+            })}
+          </>
         ) : (
           <>
-            {conversations.some((item) => item.unread > 0) && (
-              <>
-                <p className="px-2 py-2 text-xs text-[var(--ink-muted)]">
-                  {t("botExperience.unreadSection")}
-                </p>
-                {list(conversations.filter((item) => item.unread > 0))}
-              </>
-            )}
-            {conversations.some((item) => item.unread === 0) && (
-              <>
-                <p className="px-2 py-2 text-xs text-[var(--ink-muted)]">
-                  {t("botExperience.recent")}
-                </p>
-                {list(conversations.filter((item) => item.unread === 0))}
-              </>
-            )}
+            {(["pinned", "unread", "recent"] as const).map((group) => {
+              const label = t(
+                `botExperience.${group === "unread" ? "unreadSection" : group}`,
+              );
+              return (
+                groups[group].length > 0 && (
+                  <section key={group} aria-label={label}>
+                    <h3 className="flex items-center gap-2 px-2 py-2 text-xs font-normal text-[var(--ink-muted)]">
+                      {label}
+                      <span>{groups[group].length}</span>
+                    </h3>
+                    {list(groups[group])}
+                  </section>
+                )
+              );
+            })}
           </>
         )}
         {loading && (
@@ -230,11 +327,11 @@ export default function BotConversationNavigation({
           </p>
         )}
         {!loading &&
-          view === "conversations" && !error && !conversations.length && (
+          view === "conversations" &&
+          !error &&
+          !conversations.length && (
             <div className="px-3 py-8 text-center text-xs text-[var(--ink-muted)]">
-              <p>
-                {t("botExperience.noConversations")}
-              </p>
+              <p>{t("botExperience.noConversations")}</p>
               <button
                 type="button"
                 onClick={onNewConversation}
@@ -263,9 +360,9 @@ export default function BotConversationNavigation({
         <button
           type="button"
           className="compact-action text-xs text-[var(--ink-muted)]"
-          onClick={view === "projects" ? onCreateProject : onCreateBot}
+          onClick={onCreateBot}
         >
-          {t(view === "projects" ? "projectSpaces.newProject" : "botExperience.newBot")}
+          {t("botExperience.newBot")}
         </button>
         <span className="flex-1" />
         <button
