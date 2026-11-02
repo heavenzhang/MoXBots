@@ -18,6 +18,14 @@
 ## Scope and authority
 沿用 TaskStore/Session 数据及现有恢复保护。概览仅统计未归档工作台；不声称项目里程碑、依赖顺序或交付完成率。执行顺序继续由已有任务执行机制决定，本次未新增自动调度器。
 
+## Completed
+
+上述实现已提交至本任务分支并同步远端；未修改 Task/Session 状态权威。
+
+## Blockers and unknowns
+
+等待既有桌面 owner 主干集成、统一 CI、版本、构建与发布；真实安装验收尚未完成，无本任务正式版本或制品摘要。
+
 ## Verification
 43 unit/DOM/i18n tests passed. TypeScript noEmit passed. Targeted ESLint passed after replacing native select with CustomSelect. Browser synthetic journeys passed: 1440/1024/768/540, overview stable under search, more-actions disclosure. Screenshots reviewed at 1440; evidence `/tmp/moxbots-project-overview-evidence/overview-results.json`.
 
