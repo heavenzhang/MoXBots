@@ -26,6 +26,10 @@ Continue MB-RECOVERY-INCIDENT-20261101 after installed 0.5.39/539.1 failed origi
 
 Root 01a182ef-86eb-76b2-a2ee-2eae68ea7339 owns source diagnosis and this branch. Desktop/shared CI/main/version/build/install/native validation remain exclusively 01a12bc2-907a-7702-b6dd-788225c5dfe4. No cloud, website or Host deployment. No production ledger edits, session recreation or replay of unknown business operations. No version allocation or CI dispatch from this branch.
 
+## Completed
+
+Implemented and locally verified bounded intent recovery, pre-dispatch failure handling, and explicit temporary-inspection preservation. Source and tests are committed on this task branch. Main integration, the new artifact and actual native acceptance remain with the original release owner.
+
 ## Verification
 
 Node24 start/task-init PASS at base c79dd55dd2d7feb55bf1590f41194917fff05d71. Six related unit/integration files: 520 PASS. After final read-only bookkeeping gate, execution integration 100 PASS and full TabProvider activity DOM 138 PASS. Added actual facade/SDK synthetic inspection path: 1 PASS, including durable original execution readback. Distinct covered tests: 659. Intent utility focused set 21 PASS includes auto/manual, disabled pool, transport/output fallback, cancellation, model-mode change and common 60s deadline. Typecheck, scoped lint, test classification and diff checks PASS. No real paid provider calls or production data writes.
