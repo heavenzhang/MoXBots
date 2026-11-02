@@ -1195,3 +1195,6 @@ User approved R3 prototype for development. Isolated codex/bot-experience-r3-202
 Sole desktop/macOS/updater/shared CI/main owner remains01a12bc2-907a-7702-b6dd-788225c5dfe4; development submits exact source/evidence to next unfrozen feature intake, does not interrupt recovery/replace daily App or allocate version. 107 targeted tests/local tsc/lint/Vite build pass; one independently found rail P2 fixed and regressed. Independent source/static-visual review passed; independent IAB interaction unavailable, native/persistence/production gates remain open. Local browser fixture is synthetic, not runtime acceptance.
 
 M1合并前回执修正（2026-11-02）：实际App启动失败传播、not-started/uncertain与首消息交接边界已修；未知只保护原操作，保留记录后可发独立空白意图。210相关测试/tsc/lint/classification/本地renderer build通过，独立P2复审通过。用户明确要求本批合入main，不安装/不改变冻结532.1；原desktop共享CI/main owner继续推进依赖PR221与M1。详情acceptance.md。
+
+## MB-BRIDGE-STABILITY-20261102
+修复桥接取消、代理池有界排空及原生流闲置保护。记录 `.agent-sync/tasks/codex-bridge-stability-20261102-32b795b2.md`。桌面 builtin client 的共享 CI/main/版本/发布继续由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 唯一负责；本开发分支只执行隔离测试。下一未冻结批候选，未发布、未做真实供应商验收。

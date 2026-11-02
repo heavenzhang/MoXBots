@@ -19,6 +19,9 @@ export interface BridgeConfig {
    */
   upstreamHeadersTimeoutMs?: number;
 
+  /** Native forwarding idle budget; model heartbeats do not renew it. Default 5 minutes. */
+  upstreamBodyIdleTimeoutMs?: number;
+
   /** Logger function. null to disable. Default console.log */
   logger?: ((msg: string) => void) | null;
 
