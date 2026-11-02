@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=c814b13970efa69c59d3eab9d240e67885c9d4c15fcaf99dc1f785e987c13e1b -->
+<!-- git-project-sync-task:source-digest=c0910bf8680d6a3cce2610f79b435cfa3abb6f1dd04886a3110a8aa33898a826 -->
 <!-- git-project-sync-task:id=6003f676-f42f-4c63-ba54-799bac465a23 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/recovery-incident-20261101 -->
@@ -41,6 +41,8 @@
 
 ## Completed
 
+第十六项打包前补证：11分钟合法冷却触发旧10分钟闲置watchdog已实际组合复现；现由原controller只读活跃等待状态沿原watchdog豁免，Stop/owner/route/策略/时限即时撤销，等待结束后真实卡死仍受检测。153项补充回归、三协议真实HTTP40项及tsc/lint通过；最终原生工具链实际等待60.012秒后写1次/旧unknown执行0/unknown1，仍不代表实装验收。
+
 第十六项：533.1原Max真实HTTP502+60秒冷却结束原执行，已保留原失败；新实现沿当前请求lease等待冷却，只消费最后目标剩余有限尝试，候选链优先、手动路由不变。333相关回归、原生SDK60.012秒后独立写入一次且旧未知不执行、tsc/lint/分类/diff通过，安装验收仍待原owner。
 
 第十三项：prearm分析暂缺tool_result时不再把已有精确原生returned工具新升级为legacy unknown；只删本次候选，不修改任何持久unknown/legacy/成功防重放。不同ID/输入、错误矛盾及已有legacy保持；生产5b原新增unknown的具体时序尚未证明，不能自动核销。两项live/cold旧失败复现，141回归/tsc/lint通过，下一批独审/安装验收待完成；532.2已冻结不覆盖。
@@ -68,6 +70,8 @@
 四会话只读快照已保存任务相邻私有 evidence。第一提交两处源码修复及5项新增测试完成；第二批补Responses合法推理事件/进展和有界意图失败证据，原保护状态未修改；完整范围和失败证据见 acceptance.md。
 
 ## Verification
+
+- Source digest: `c0910bf8680d6a3cce2610f79b435cfa3abb6f1dd04886a3110a8aa33898a826`; Phase16 watchdog supplement: real InactivityWatchdog plus 11-minute cooldown reproduces old premature termination. Final five-file 153 tests PASS, three-protocol HTTP 40 tests PASS, full tsc/scoped lint/diff PASS. Concurrent request cancellation preserves the other live wait; all revocations remove the read-only exemption, and genuine post-wait hangs still expire. Final actual SDK/native Bash 60012ms cooldown/history-gap PASS (one write, zero old unknown executions, unknown count one). No durable wait/checkpoint or retry authority added; next owner review/main/install/native acceptance pending.
 
 - Source digest: `c814b13970efa69c59d3eab9d240e67885c9d4c15fcaf99dc1f785e987c13e1b`; Phase16: 333 related unit/integration cases in nine files PASS, full TypeScript/scoped ESLint/classification/diff PASS. Baseline reproduces 11 failures. Actual SDK/native Bash with a real 60-second HTTP cooldown and returned-history gap PASS (60012ms, 1 rejection, 0 switches, 5 model calls, new write 1, old unknown execution 0, uncertain count 1, cold journal reload). Three protocols use real loopback HTTP. Stop/owner/route/background/policy/deadline/end-turn revoke within a controlled 50ms tick; asynchronous validation and unfit cooldown cannot dispatch. Installed533.1 remains failed; next owner release and original-session acceptance pending.
 

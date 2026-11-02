@@ -2,10 +2,56 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { ModelFailoverController } from './model-failover';
 import type { RecoveryCausalDiagnostic } from './recovery-causal-diagnostics';
 import type { UpstreamConfig } from './types/bridge';
+import { InactivityWatchdog } from '../utils/inactivity-watchdog';
 const primary = { providerId: 'fixture', model: 'fixture', baseUrl: 'http://fixture.invalid' };
 const request = (signal?: AbortSignal) => new Request('http://localhost/fixture', { signal });
 const response = (status: number, value: string) => Response.json({ error: { message: 'fixture unavailable' } }, { status, headers: { 'retry-after': value } });
 afterEach(() => vi.useRealTimers());
+
+it('keeps another live cooldown observable when one admitted request is cancelled', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(0);
+  const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+    canRetryRejectedResponse: () => true, resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
+  const execute = vi.fn(async (target: UpstreamConfig) => { target.onRejectedResponse?.(502); return response(502, '60'); });
+  const a = new AbortController(), b = new AbortController();
+  const first = controller.run(request(a.signal), primary, execute, 'first');
+  const second = controller.run(request(b.signal), primary, execute, 'second');
+  await vi.advanceTimersByTimeAsync(0);
+  expect(controller.isWaitingForRetry()).toBe(true);
+  a.abort(); await first;
+  expect(controller.isWaitingForRetry()).toBe(true);
+  b.abort(); await second;
+  expect(controller.isWaitingForRetry()).toBe(false);
+  expect(execute).toHaveBeenCalledTimes(2);
+});
+
+it('keeps a valid long provider cooldown out of the ordinary inactivity watchdog', async () => {
+  vi.useFakeTimers(); vi.setSystemTime(0);
+  const watchdog = new InactivityWatchdog({ timeoutMs: 600_000, intervalMs: 30_000 });
+  const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+    canRetryRejectedResponse: () => true, resolveBackup: () => undefined, onSwitch: () => {}, retryDelaysMs: [0, 0, 0] });
+  const execute = vi.fn(async (target: UpstreamConfig) => {
+    if (execute.mock.calls.length > 1) return Response.json({ ok: true });
+    target.onRejectedResponse?.(502); return response(502, '660');
+  });
+  const pending = controller.run(request(), primary, execute, 'exact');
+  for (let tick = 0; tick < 22; tick++) {
+    await vi.advanceTimersByTimeAsync(30_000);
+    const { fire } = watchdog.evaluateTick();
+    if (controller.isWaitingForRetry()) watchdog.markActivity();
+    else expect(fire).toBe(false);
+  }
+  expect((await pending).status).toBe(200);
+  expect(controller.isWaitingForRetry()).toBe(false);
+  expect(execute).toHaveBeenCalledTimes(2);
+  // A later real model hang still receives the ordinary watchdog budget.
+  let fired = false;
+  for (let tick = 0; tick < 22; tick++) {
+    await vi.advanceTimersByTimeAsync(30_000);
+    fired ||= watchdog.evaluateTick().fire;
+  }
+  expect(fired).toBe(true);
+});
 
 it('waits out a proven rejection cooldown within the admitted request while old operations remain fenced', async () => {
   vi.useFakeTimers(); vi.setSystemTime(0);
@@ -79,6 +125,7 @@ it.each(['abort', 'owner', 'route', 'background', 'policy', 'deadline', 'end-tur
     let settled = false;
     const pending = controller.run(request(abort.signal), primary, execute, 'exact').then(r => { settled = true; return r; });
     await vi.advanceTimersByTimeAsync(0); expect(settled).toBe(false);
+    expect(controller.isWaitingForRetry()).toBe(true);
     if (change === 'abort') abort.abort();
     if (change === 'owner') active = false;
     if (change === 'route') identity = 'replaced';
@@ -86,7 +133,9 @@ it.each(['abort', 'owner', 'route', 'background', 'policy', 'deadline', 'end-tur
     if (change === 'policy') allowed = false;
     if (change === 'deadline') deadline = 25;
     if (change === 'end-turn') controller.endTurn();
+    if (change !== 'deadline') expect(controller.isWaitingForRetry()).toBe(false);
     await vi.advanceTimersByTimeAsync(50);
+    expect(controller.isWaitingForRetry()).toBe(false);
     expect(settled).toBe(true);
     expect((await pending).ok).toBe(false); expect(execute).toHaveBeenCalledTimes(1);
   });

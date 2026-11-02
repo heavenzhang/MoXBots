@@ -40,6 +40,7 @@ export class ModelFailoverController implements BridgeModelFailover {
     { event: 'inference_admission_rejected', owner: 'model_failover', reason }, this.options.onDiagnostic));
   private retiredScope: string | undefined;
   private sequence = 0;
+  private readonly retryWaits = new Set<() => boolean>();
 
   constructor(private readonly options: {
     /** Internal diagnostic observer only; never an admission or retry capability. */
@@ -92,6 +93,11 @@ export class ModelFailoverController implements BridgeModelFailover {
       !!scope && scope !== this.retiredScope && this.options.isActive?.() !== false
       && this.options.canRetry?.() !== false
     );
+  }
+
+  /** Read-only watchdog exemption for a currently authorized request timer. */
+  isWaitingForRetry(): boolean {
+    return Array.from(this.retryWaits).some(isWaiting => isWaiting());
   }
 
   endTurn(): void {
@@ -402,7 +408,13 @@ export class ModelFailoverController implements BridgeModelFailover {
           if (Date.now() + delay >= requestDeadline) break;
           observeRecoveryDiagnostic({ event: 'inference_retry_waiting', reason: 'provider_cooldown',
             status: response.status, attempt, delayMs: delay, usingBackup }, this.options.onDiagnostic);
-          if (!(await waitForRequestRetry(delay, request.signal, cooldownLive))) {
+          const retryAt = Date.now() + delay;
+          const waiting = () => Date.now() < retryAt && cooldownLive();
+          this.retryWaits.add(waiting);
+          let allowed: boolean;
+          try { allowed = await waitForRequestRetry(delay, request.signal, cooldownLive); }
+          finally { this.retryWaits.delete(waiting); }
+          if (!allowed) {
             if (!live()) { cancelResponse(response); return cancelled(); }
             break;
           }
