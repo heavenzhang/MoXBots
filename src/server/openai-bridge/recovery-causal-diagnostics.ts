@@ -7,6 +7,8 @@ export type NativeActionPhase = 'reserve_enter' | 'reserve_complete' | 'reserve_
 export type RecoveryCausalDiagnostic =
   | { event: 'inference_retry_deferred'; reason: 'provider_cooldown'; status: number; attempt: number;
       retryAfterMs: number; usingBackup: boolean; durableOwnerAvailable: boolean }
+  | { event: 'inference_retry_waiting'; reason: 'provider_cooldown'; status: number; attempt: number;
+      delayMs: number; usingBackup: boolean }
   | { event: 'inference_admission_rejected'; owner: 'context' | 'model_failover'; reason: AdmissionRejectionReason }
   | { event: 'native_action_gate_rejected'; reason: 'state_blocked' | 'ledger_blocked' | 'request_guard_blocked' }
   | { event: 'native_action'; phase: NativeActionPhase; toolIdDigest: string; actionDigest: string;

@@ -79,7 +79,7 @@ function request(text: string, options: { stream?: boolean; signal?: AbortSignal
 }
 
 /** Real handler nests context recovery outside model failover, as production does. */
-function harness(primary: Fixture, backup: Fixture, options: {
+function harness(primary: Fixture, backup: Fixture | undefined, options: {
   rejectedResponseRecovery?: boolean; primaryRoute?: Partial<UpstreamConfig>; initialLedger?: unknown;
 } = {}) {
   const owner = { scope: 'foreground-1' as string | undefined, queryActive: true, recoveryAllowed: true,
@@ -90,7 +90,7 @@ function harness(primary: Fixture, backup: Fixture, options: {
   const ledgers: Array<{ completed: unknown[]; uncertain: string[]; denied: string[]; blocked: boolean }> = [];
   const failover = new ModelFailoverController({ scope: () => owner.scope, isActive,
     requestIdentity: () => owner.route,
-    canSwitch: () => owner.recoveryAllowed, resolveBackup: () => upstream(backup, 'backup'),
+    canSwitch: () => owner.recoveryAllowed, resolveBackup: () => backup ? upstream(backup, 'backup') : undefined,
     canRetry: () => context.canRetryInference(),
     canRetryRejectedResponse: options.rejectedResponseRecovery ? () => context.canRetryRejectedInference() : undefined,
     canUsePinnedRoute: options.rejectedResponseRecovery ? () => owner.recoveryAllowed : undefined,
@@ -141,6 +141,46 @@ const unknownLedger = () => ({ version: 1, completed: [],
   projectionActive: true, streamArmedOnly: false });
 
 describe('Query-owned background inference through both recovery controllers', () => {
+  it.each([
+    { apiProtocol: 'anthropic' as const, path: '/v1/messages' },
+    { apiProtocol: 'openai' as const, upstreamFormat: 'chat_completions' as const, path: '/chat/completions' },
+    { apiProtocol: 'openai' as const, upstreamFormat: 'responses' as const, path: '/responses' },
+  ])('honors a real $apiProtocol $path cooldown on a manual route while preserving old unknown actions', async route => {
+    const receivedAt: number[] = [];
+    const text = 'same model recovered after cooldown';
+    const primary = await fixture((_request, response) => {
+      receivedAt.push(Date.now());
+      if (receivedAt.length === 1) {
+        response.setHeader('retry-after', '1');
+        json(response, { error: { message: 'temporary upstream gateway failure' } }, 502);
+        return;
+      }
+      json(response, route.apiProtocol === 'anthropic' ? message(text)
+        : route.upstreamFormat === 'chat_completions'
+          ? { id: 'fixture-chat', object: 'chat.completion', model: 'fixture-model',
+            choices: [{ index: 0, message: { role: 'assistant', content: text }, finish_reason: 'stop' }],
+            usage: { prompt_tokens: 3, completion_tokens: 2, total_tokens: 5 } }
+          : { id: 'fixture-response', object: 'response', status: 'completed', model: 'fixture-model',
+            output: [{ id: 'fixture-output', type: 'message', role: 'assistant', status: 'completed',
+              content: [{ type: 'output_text', text, annotations: [] }] }],
+            usage: { input_tokens: 3, output_tokens: 2, total_tokens: 5 } });
+    });
+    const h = harness(primary, undefined, { rejectedResponseRecovery: true, primaryRoute: route, initialLedger: unknownLedger() });
+    expect(h.context.canRetryInference()).toBe(false);
+    const response = await h.handler(request('fresh manual-route inference'));
+    expect(response.status).toBe(200);
+    expect(await response.text()).toContain(text);
+    expect(receivedAt).toHaveLength(2);
+    expect(receivedAt[1] - receivedAt[0]).toBeGreaterThanOrEqual(1_000);
+    expect(primary.requests.every(row => row.path.endsWith(route.path))).toBe(true);
+    expect(h.switches).toEqual([]);
+    expect(h.context.inspectActionLedger().uncertainCount).toBe(1);
+    expect(h.context.beforeTool('increment_counter', { id: 'old' })).toContain('uncertain outcome');
+    expect(h.context.beforeTool('Write', { file_path: '/fixture/new.txt', content: 'authorized follow-up' })).toBeUndefined();
+    expect((await h.handler(request('fresh manual-route inference'))).status).toBe(409);
+    expect(primary.requests).toHaveLength(2);
+  });
+
   it.each([
     { apiProtocol: 'anthropic' as const, path: '/v1/messages' },
     { apiProtocol: 'openai' as const, upstreamFormat: 'chat_completions' as const, path: '/chat/completions' },
