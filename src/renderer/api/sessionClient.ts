@@ -1,3 +1,4 @@
+import { parseProjectSpaceSelection, type ProjectSpaceSelection } from '../../shared/projectSpaces';
 /**
  * Frontend API client for Session management
  */
@@ -12,7 +13,7 @@ import {
     isTauri,
     type SessionDeleteResult,
 } from './tauriClient';
-import { materializePendingSessionConfig, type MaterializePostBody, type MaterializeResponse } from './sessionMaterialize';
+import { MaterializeRequestError, SessionMaterializationError, materializePendingSessionConfig, type MaterializePostBody, type MaterializeResponse } from './sessionMaterialize';
 import type { ContextUsage } from '../../shared/types/context-usage';
 import type { ProviderRoute } from '../../shared/providerRoute';
 import type { ModelMode } from '../../shared/autoRoute';
@@ -54,6 +55,7 @@ export interface MessageUsage {
 }
 
 export interface SessionMetadata {
+    projectSpace?: import('../../shared/projectSpaces').ProjectSpaceSessionSnapshot;
     /** Derived by the transcript owner; never an execution/auto-resume command. */
     continuation?: import('../../shared/sessionContinuation').SessionContinuation;
     transcriptFormat?: 2;
@@ -220,6 +222,7 @@ export async function createSession(
     agentDir: string,
     runtime?: string,
     opts?: {
+        projectSpaceSelection?: ProjectSpaceSelection;
         seedMaxPermission?: boolean;
         runtimeSource?: RuntimeSource;
         providerExecutionIdentity?: RuntimeBackedProviderIdentity;
@@ -238,8 +241,13 @@ export async function createSession(
     },
     owner?: { type: 'tab' | 'companion'; id: string; pendingSessionId?: string },
 ): Promise<SessionMetadata> {
+    if (opts?.projectSpaceSelection && !owner) throw new Error('Project conversations require a Session owner');
+    // Freeze IDs before awaiting Sidecar startup; no mutable UI state or client
+    // project description is authoritative for the birth snapshot.
+    const projectSpaceSelection = opts?.projectSpaceSelection === undefined ? undefined : parseProjectSpaceSelection(opts.projectSpaceSelection);
     const payload = {
             agentDir,
+            ...(projectSpaceSelection ? { projectSpaceSelection } : {}),
             ...(runtime ? { runtime } : {}),
             ...(opts?.runtimeSource ? { runtimeSource: opts.runtimeSource } : {}),
             ...(opts?.providerExecutionIdentity ? { providerExecutionIdentity: opts.providerExecutionIdentity } : {}),
@@ -272,14 +280,14 @@ export async function createSession(
                 });
             if (!response.ok) {
                 const error = await response.json().catch(() => null) as { error?: string } | null;
-                throw new Error(error?.error ?? `Session creation failed (HTTP ${response.status}).`);
+                throw new MaterializeRequestError(error?.error ?? `Session creation failed (HTTP ${response.status}).`, response.status < 500);
             }
             const result = await response.json() as MaterializeResponse & { session?: SessionMetadata };
             return preparing ? { ...result, sessionId: result.session?.id, metadata: result.session } : result;
         };
         try {
             const created = await materializePendingSessionConfig({
-                pendingSessionId, tabId: owner.id, workspacePath: agentDir, snapshotPatch: {},
+                pendingSessionId, tabId: owner.id, workspacePath: agentDir, snapshotPatch: {}, projectSpaceSelection,
                 transport: {
                     postCurrent: body => post(pendingSessionId, body),
                     postForSession: post,
@@ -292,7 +300,9 @@ export async function createSession(
             });
             return created.metadata;
         } catch (error) {
-            await releaseSessionSidecar(ownedSessionId, owner.type, owner.id).catch(() => false);
+            if (!(error instanceof SessionMaterializationError) || error.outcome !== 'unknown') {
+                await releaseSessionSidecar(ownedSessionId, owner.type, owner.id).catch(() => false);
+            }
             throw error;
         }
     }

@@ -1,3 +1,4 @@
+import type { ProjectSpaceTab } from '@/features/project-spaces/tabContract';
 import type { RemoteSessionTab } from '@/features/remote-session/tabContract';
 import type { ProjectBoardTab } from '@/features/project-board/tabContract';
 import type { AgentNetworkTab } from '@/features/agent-network/tabContract';
@@ -35,7 +36,7 @@ export type { RecordTab } from '@/features/record/tabContract';
  * their own closed union and composition explicitly. */
 export type { ProjectBoardTab } from '@/features/project-board/tabContract';
 
-export type Tab = RemoteSessionTab | ProjectBoardTab | LauncherTab | ChatTab | SettingsTab | CapabilitiesTab | TaskCenterTab | SpaceTab | RecordTab | AgentNetworkTab;
+export type Tab = ProjectSpaceTab | RemoteSessionTab | ProjectBoardTab | LauncherTab | ChatTab | SettingsTab | CapabilitiesTab | TaskCenterTab | SpaceTab | RecordTab | AgentNetworkTab;
 
 export type TabKind = Tab['view'];
 export type TabOf<K extends TabKind> = Extract<Tab, { view: K }>;

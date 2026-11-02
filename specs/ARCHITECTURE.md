@@ -138,6 +138,8 @@ Node → Rust 的反向调用只经过 localhost Management API。应用级资�
 | 工作区文件 | Tauri `cmd_workspace_*` 与 `useWorkspaceFileService()`；[Markdown 编辑器与文件生命周期](tech_docs/workspace_markdown_editor.md) |
 | Cloud 登录与 Registered Agent 本地状态 | Rust Space connector |
 
+MoXBots 的逻辑项目 `ProjectSpace` 存在 `config.json.projectSpaces`，用稳定 Bot ID 组织成员与资料；旧 `Project` 继续代表 Bot 原工作目录，原 workspace/Agent 唯一关系保持。项目页是展示 Tab，没有执行 owner。项目会话沿原出生事务由服务端冻结 `metadata.projectSpace`，之后保存、重开与 fork 保持该身份；自动历史只按同一逻辑项目汇聚，并与旧目录会话双向排除。资料引用不改变执行 cwd 或文件权限；共享 Bot 自动记忆任务排除项目会话，避免把项目原文写入公共 Bot 记忆。字段、边界与验收见 [项目上下文契约](../dev-docs/bot-project-context-m2/CONTRACT.md)。
+
 兼容旧格式的读取或迁移不构成第二个 writer。具体数据格式、锁序与恢复协议由各模块技术文档维护。
 
 ## 主数据流

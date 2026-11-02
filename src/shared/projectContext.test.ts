@@ -1,3 +1,4 @@
+import { normalizeProjectSpaceSessionSnapshot } from './projectSpaces';
 import { describe, expect, it } from 'vitest';
 import { composeQueryReminder } from './agentMentions';
 import { parseLeadingSystemReminder } from './systemReminder';
@@ -104,4 +105,44 @@ describe('bounded, attributed project background', () => {
     expect(text).toContain('确定采用方案B，仅原型生效。');
     expect(new TextEncoder().encode(text).byteLength).toBeLessThanOrEqual(PROJECT_CONTEXT_MAX_BYTES);
   });
+});
+
+
+it('renders fixed project configuration without history and bounds oversized materials and directory references', () => {
+  const projectSpace = { schemaVersion: 1 as const, projectId: 'A', projectName: 'Project A', projectRevision: 1,
+    botId: 'bot', botName: 'Bot', workspacePath: '/workspace', capturedAt: '2026-11-02T00:00:00Z',
+    description: 'fixed-description', instructions: 'project instructions',
+    materials: Array.from({ length: 8 }, (_, i) => ({ id: String(i), title: '资料'.repeat(40), content: '详细资料'.repeat(900) })),
+    resources: Array.from({ length: 4 }, (_, i) => ({ id: String(i), label: '资源', path: '/' + '目录'.repeat(1500) })),
+  };
+  const context: ProjectContextSnapshot = { projectId: 'A', projectSpace, sources: [], totalSessions: 0, scannedSessions: 0, unavailableSessions: 0 };
+  const text = renderProjectContext(context);
+  expect(text).toContain('<project_configuration>');
+  expect(text).toContain('fixed-description');
+  expect(text).toContain('truncated');
+  expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(PROJECT_CONTEXT_MAX_BYTES);
+  const message = composeQueryReminder({ visibleText: 'visible request', projectContext: context });
+  expect(parseLeadingSystemReminder(message).visibleText).toBe('visible request');
+});
+
+
+it.each(['😀', '&', '"', '\u0001'])('bounds legal maximal fixed project configuration after UTF8 and JSON/XML expansion (%s)', character => {
+  const projectSpace = normalizeProjectSpaceSessionSnapshot({ schemaVersion: 1, projectId: character.repeat(160 / character.length),
+    projectName: character.repeat(100 / character.length), projectRevision: Number.MAX_SAFE_INTEGER,
+    botId: character.repeat(160 / character.length), botName: character.repeat(200 / character.length),
+    workspacePath: '/workspace', capturedAt: '2026-11-02T00:00:00Z',
+    description: character.repeat((character === '\u0001' ? 1000 : 2000) / character.length), instructions: character.repeat((character === '\u0001' ? 2000 : 4000) / character.length), materials: [], resources: [] });
+  const context: ProjectContextSnapshot = { projectId: projectSpace.projectId, projectSpace, sources: [], totalSessions: 0, scannedSessions: 0, unavailableSessions: 0 };
+  const text = renderProjectContext(context);
+  expect(new TextEncoder().encode(text).length).toBeLessThanOrEqual(PROJECT_CONTEXT_MAX_BYTES);
+  expect(text.endsWith('</PROJECT_CONTEXT>')).toBe(true);
+  const serialized = text.match(/<project_configuration>([\s\S]*?)<\/project_configuration>/)?.[1];
+  expect(serialized).toBeDefined();
+  const decode = (value: string) => value.replace(/&quot;/g, '"').replace(/&apos;/g, "'").replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+  const config = JSON.parse(decode(serialized!));
+  expect(config.projectId).toBe(projectSpace.projectId);
+  expect(config.botId).toBe(projectSpace.botId);
+  expect(config.truncated || config.description.truncated || config.instructions.truncated).toBe(true);
+  const composed = composeQueryReminder({ visibleText: 'original request', projectContext: context });
+  expect(parseLeadingSystemReminder(composed).visibleText).toBe('original request');
 });

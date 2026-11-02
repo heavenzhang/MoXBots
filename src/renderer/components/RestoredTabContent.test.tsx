@@ -125,6 +125,7 @@ function bindings(overrides: Partial<BuiltinTabBindings> = {}): BuiltinTabBindin
     agentnetwork: { onOpenRemoteSession: vi.fn() },
     'remote-session': { onOpen: vi.fn(), onBound: vi.fn() },
     projectboard: null,
+    projectspace: { onNewConversation: vi.fn(), onOpenConversation: vi.fn(), onCreateBot: vi.fn() },
     record: {
       onRecordingSnapshotChange: vi.fn(),
       onTitleChange: vi.fn(),

@@ -1,3 +1,4 @@
+import { projectSpaceSnapshot } from '../__tests__/fixtures/project-space';
 import { TASK_ALIGNMENT_SKILL_REQUIREMENT } from "../../shared/systemSkills";
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseLeadingSystemReminder } from '../../shared/systemReminder';
@@ -660,7 +661,7 @@ describe('session-engine selector and adapters', () => {
     mocks.getActiveRuntimeType.mockReturnValue(runtime);
     const previous = process.env.MYAGENTS_RUNTIME;
     process.env.MYAGENTS_RUNTIME = runtime;
-    projectBackground.mockResolvedValueOnce({ projectId: 'p', totalSessions: 1, scannedSessions: 1,
+    projectBackground.mockResolvedValueOnce({ projectId: 'p', projectSpace: projectSpaceSnapshot('/workspace'), totalSessions: 1, scannedSessions: 1,
       unavailableSessions: 0, sources: [{ sessionId: 'other', messageId: 'decision', role: 'user',
         timestamp: '2026-10-16T01:00:00Z', text: '确定采用方案B', state: 'reported' }] });
     try {
@@ -670,9 +671,11 @@ describe('session-engine selector and adapters', () => {
       const received = runtime === 'builtin' ? mocks.enqueueUserMessage.mock.calls.at(-1)?.[0]
         : (mocks.enqueueExternalSendForDesktop.mock.calls.at(-1) as unknown[] | undefined)?.[0];
       expect(received).toContain('<PROJECT_CONTEXT>');
+      expect(received).toContain('<project_configuration>');
+      expect(received).toContain('A-material-secret');
       expect(received).toContain('确定采用方案B');
       expect(parseLeadingSystemReminder(String(received)).visibleText).toBe('继续项目');
-      projectBackground.mockResolvedValueOnce({ projectId: 'p', totalSessions: 1, scannedSessions: 1,
+      projectBackground.mockResolvedValueOnce({ projectId: 'p', projectSpace: projectSpaceSnapshot('/workspace'), totalSessions: 1, scannedSessions: 1,
         unavailableSessions: 0, sources: [{ sessionId: 'other', messageId: 'revised', role: 'user',
           timestamp: '2026-10-16T02:00:00Z', text: '取消B，改用方案C', state: 'reported' }] });
       const retry = await getSessionEngine().retryUserMessage('first-message');
@@ -680,6 +683,7 @@ describe('session-engine selector and adapters', () => {
       const replayed = runtime === 'builtin' ? mocks.enqueueUserMessage.mock.calls.at(-1)?.[0]
         : (mocks.enqueueExternalSendForDesktop.mock.calls.at(-1) as unknown[] | undefined)?.[0];
       expect(replayed).toContain('取消B，改用方案C');
+      expect(replayed).toContain('A-fixed-instructions');
       expect(parseLeadingSystemReminder(String(replayed)).visibleText).toBe('retry');
     } finally {
       if (previous === undefined) delete process.env.MYAGENTS_RUNTIME;
@@ -3602,4 +3606,16 @@ describe('user-confirmed updater admission through the SessionEngine owner', () 
     await expect(pending).rejects.toThrow('UPDATE_ACTIVITY_UNKNOWN');
     await expect(engine.compactContext()).resolves.toMatchObject({ success: true });
   });
+});
+
+
+it('refuses project desktop reset before stopping the external runtime or changing identity', async () => {
+  mocks.state.useExternal = true;
+  await resetProductSessionBinding({ sessionId: 'project-source', allowLazySessionMaterialization: false });
+  mocks.state.sessionMetadata.set('project-source', { id: 'project-source', projectSpace: projectSpaceSnapshot('/workspace') });
+  mocks.state.externalProcessAlive = true;
+  const result = await getSessionEngine().transitionDesktopSession('/workspace', { sourceSessionId: 'project-source', targetSessionId: 'new-target', channelBound: false });
+  expect(result).toMatchObject({ success: false, sourceUnchanged: true });
+  expect(mocks.stopExternalSession).not.toHaveBeenCalled();
+  expect(mocks.state.sessionMetadata.get('project-source')?.projectSpace).toEqual(projectSpaceSnapshot('/workspace'));
 });

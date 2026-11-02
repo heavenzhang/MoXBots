@@ -1,3 +1,4 @@
+import ProjectContextBadge from '@/features/project-spaces/ProjectContextBadge';
 import { SessionRecoveryPanels } from '../components/SessionRecoveryPanels';
 import { RECOVERY_REVIEW_ACTIONS_PATH, RECOVERY_RECONCILE_PATH, type RecoveryActionSnapshot } from '../../shared/recoveryReconciliation';
 import { SessionTaskOrchestrationProvider, useSessionTaskOrchestrationContext } from '@/components/agent-status/useSessionTaskOrchestration';
@@ -6393,8 +6394,8 @@ function ChatContent({
   // Channel discovery and idle/reset admission belong to Rust. A display
   // snapshot may lag migration or startup and cannot select a mutation path.
   const handleNewSession = useCallback(
-    () => resetSession({ onNewSidecar: onNewSession }),
-    [onNewSession, resetSession],
+    () => sessionMeta?.projectSpace && sessionId && onNewSession ? onNewSession(sessionId) : resetSession({ onNewSidecar: onNewSession }),
+    [onNewSession, resetSession, sessionMeta?.projectSpace, sessionId],
   );
 
   return (
@@ -6456,6 +6457,7 @@ function ChatContent({
                   onOpen={handleOpenAgentSettings}
                 />
               )}
+              {sessionMeta?.projectSpace && <ProjectContextBadge snapshot={sessionMeta.projectSpace} />}
               {/* Session title — click to rename */}
               {sessionTitle &&
                 sessionTitle !== 'New Tab' &&

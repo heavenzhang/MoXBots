@@ -1179,6 +1179,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
         if (isSessionBusy()) {
           return { success: false, sourceUnchanged: true as const, errorCode: 'session_busy' as const };
         }
+        if (getSessionMetadata(options.sourceSessionId)?.projectSpace !== undefined) return { success: false, sourceUnchanged: true as const, error: 'Project conversations require a new project birth' };
         if (options.channelBound) {
           const freeze = await freezeCurrentSessionMetadataForImDetach(undefined, {
             allowMissingMetadata: options.metadataBirthPending === true || options.metadataIndexed === false,

@@ -1,3 +1,4 @@
+import { normalizeProjectSpaceSessionSnapshot } from '../../shared/projectSpaces';
 import type { AgentConfig } from '../../shared/types/agent';
 import {
   buildRuntimeChangePatch,
@@ -41,6 +42,7 @@ export type OwnedSessionSnapshot = Pick<
   | 'providerExecutionIdentity'
   | 'providerEnvJson'
   | 'modelMode'
+  | 'projectSpace'
 >;
 
 /** Clone the frozen execution identity owned by an existing Session branch source. */
@@ -59,6 +61,7 @@ export function snapshotForForkedSession(
           ? { runtimeBindingCompatibility: fallback.runtimeBindingCompatibility }
           : {};
   return {
+    ...(source.projectSpace !== undefined ? { projectSpace: normalizeProjectSpaceSessionSnapshot(source.projectSpace) } : {}),
     runtime: source.runtime ?? fallback?.runtime ?? 'builtin',
     runtimeSource: source.runtimeSource ?? fallback?.runtimeSource,
     ...runtimeIdentity,

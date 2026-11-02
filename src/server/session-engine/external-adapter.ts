@@ -1,4 +1,5 @@
 import { updateExternalRuntimeConfig } from '../runtimes/external-session';
+import { getCurrentProductSessionMetadata } from './product-session-binding';
 import { retryDesktopRequest } from './retry';
 import { prepareDesktopQuery } from './query-reminder';
 import { randomUUID } from 'node:crypto';
@@ -988,7 +989,7 @@ export function createExternalSessionEngine(): SessionEngine {
       }
       if (phase === 'prepare') {
         return preparePendingProductSession(
-          { snapshotPatch: request.snapshotPatch, origin: request.origin },
+          { snapshotPatch: request.snapshotPatch, origin: request.origin, birthSnapshot: request.birthSnapshot },
           {
             hasActiveWork: isExternalSessionBusy() || getExternalQueueStatus().length > 0,
             createPreparedMetadata() {
@@ -1130,6 +1131,7 @@ export function createExternalSessionEngine(): SessionEngine {
         if (getCurrentProductSessionId() !== options.sourceSessionId) {
           return { success: false, sourceUnchanged: true, error: 'Session identity changed before new conversation' };
         }
+        if (getCurrentProductSessionMetadata()?.projectSpace !== undefined) return { success: false, sourceUnchanged: true, error: 'Project conversations require a new project birth' };
         if (options.channelBound) {
           const freeze = await freezeCurrentProductSessionMetadata({
             workspacePath,

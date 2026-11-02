@@ -1,3 +1,4 @@
+import { projectSpaceSnapshot } from './fixtures/project-space';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const sdkMocks = vi.hoisted(() => ({
@@ -37,10 +38,11 @@ import { NO_CHANNEL_DELIVERY } from '../session-core/channel-delivery';
 import { setQuerySession, setQuerySessionWithAuthority } from '../builtin-session/lifecycle';
 import type { Query } from '@anthropic-ai/claude-agent-sdk';
 import {
+  resetProductSessionBinding,
   resetProductSessionMaterializationState as resetSessionMaterializationState,
   setPendingProductSessionMaterialization as setPendingDesktopMaterialization,
 } from '../session-engine/product-session-binding';
-import { claimPreparedMaterializationForTurnAdmission, enqueueUserMessage, ensureSessionMetadataForSdkSystemInit, getSessionId, initializeAgent, materializePendingDesktopSession, rewindSession, waitForSessionIdle } from '../agent-session';
+import { claimPreparedMaterializationForTurnAdmission, enqueueUserMessage, ensureSessionMetadataForSdkSystemInit, getSessionId, initializeAgent, resetSession, materializePendingDesktopSession, rewindSession, waitForSessionIdle } from '../agent-session';
 import type { SessionMetadata } from '../types/session';
 
 const mockedDeleteSession = vi.mocked(deleteSession);
@@ -76,6 +78,17 @@ describe('materializePendingDesktopSession rollback guard', () => {
 
   afterEach(() => {
     resetSessionMaterializationState();
+  });
+
+  it('refuses project reset before changing identity, clearing transcript or issuing SDK work', async () => {
+    const source = { id: 'project-reset-source', agentDir: '/tmp/workspace', title: 'Project',
+      createdAt: '2026-11-02T00:00:00Z', lastActiveAt: '2026-11-02T00:00:00Z', projectSpace: projectSpaceSnapshot('/tmp/workspace') };
+    mockedGetSessionMetadata.mockReturnValue(source);
+    await resetProductSessionBinding({ sessionId: source.id, workspacePath: source.agentDir, allowLazySessionMaterialization: false });
+    await expect(resetSession({ sessionId: 'new-unscoped' })).rejects.toThrow(/project birth/);
+    expect(getSessionId()).toBe(source.id);
+    expect(mockedSaveSessionMetadata).not.toHaveBeenCalled();
+    expect(sdkMocks.query).not.toHaveBeenCalled();
   });
 
   it('refuses caller-supplied rollback ids when no pending materialization exists', async () => {

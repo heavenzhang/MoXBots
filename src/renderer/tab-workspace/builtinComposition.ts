@@ -1,3 +1,4 @@
+import { projectSpaceTabModule } from '@/features/project-spaces/tabModule';
 import { remoteSessionTabModule } from '@/features/remote-session/tabModule';
 import { projectBoardTabModule } from '@/features/project-board/tabModule';
 import { agentNetworkTabModule } from '@/features/agent-network/tabModule';
@@ -22,6 +23,7 @@ export const builtinTabModules = defineTabModules<Tab>()({
   capabilities: capabilitiesTabModule,
   taskcenter: taskCenterTabModule,
   projectboard: projectBoardTabModule,
+  projectspace: projectSpaceTabModule,
   space: spaceTabModule,
   agentnetwork: agentNetworkTabModule,
   'remote-session': remoteSessionTabModule,

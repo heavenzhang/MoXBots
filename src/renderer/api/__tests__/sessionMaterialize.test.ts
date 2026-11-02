@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { materializePendingSessionConfig, type MaterializePostBody } from '../sessionMaterialize';
+import { SessionMaterializationError, materializePendingSessionConfig, type MaterializePostBody } from '../sessionMaterialize';
 
 const metadata = {
   id: 'real-session',
@@ -72,6 +72,26 @@ describe('materializePendingSessionConfig', () => {
       phase: 'commit',
       preparedSessionId: 'real-session',
     });
+  });
+
+  it('carries project selection only in prepare, outside the mutable snapshot patch', async () => {
+    const transport = makeTransport();
+    const projectSpaceSelection = { projectId: 'A', botId: 'bot', projectRevision: 3 };
+    await materializePendingSessionConfig({ pendingSessionId: 'pending-A', tabId: 'tab-A', workspacePath: '/tmp/workspace',
+      snapshotPatch: {}, projectSpaceSelection, transport });
+    expect(transport.postCurrent).toHaveBeenCalledWith({ workspacePath: '/tmp/workspace', phase: 'prepare', snapshotPatch: {}, projectSpaceSelection });
+    expect(transport.postForSession).toHaveBeenCalledWith('real-session', { workspacePath: '/tmp/workspace', phase: 'commit', preparedSessionId: 'real-session' });
+  });
+
+  it('retains both IDs and avoids rollback after an unknown Rust upgrade', async () => {
+    const transport = makeTransport();
+    transport.upgradeSessionId.mockRejectedValueOnce(new Error('rekey acknowledgement lost'));
+    const error = await materializePendingSessionConfig({ pendingSessionId: 'pending-A', tabId: 'tab-A', workspacePath: '/tmp/workspace',
+      snapshotPatch: {}, transport }).catch(error => error);
+    expect(error).toBeInstanceOf(SessionMaterializationError);
+    expect(error).toMatchObject({ outcome: 'unknown', pendingSessionId: 'pending-A', preparedSessionId: 'real-session', ownerSessionId: 'pending-A' });
+    expect(transport.postCurrent).toHaveBeenCalledTimes(1);
+    expect(transport.postForSession).not.toHaveBeenCalled();
   });
 
   it('rolls back prepared metadata and stops before commit when Rust upgrade fails', async () => {

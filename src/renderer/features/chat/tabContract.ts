@@ -42,6 +42,7 @@ export interface InitialMessage {
 
 /** Execution identity carried into Session birth even without a first message. */
 export interface LaunchSessionBirthHint {
+  projectSpaceSelection?: import("../../../shared/projectSpaces").ProjectSpaceSelection;
   permissionMode?: PermissionMode;
   mcpEnabledServers?: string[];
   enabledPluginIds?: string[];
