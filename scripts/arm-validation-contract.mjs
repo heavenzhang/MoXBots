@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { lstatSync, readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { pathToFileURL } from 'node:url';
 
@@ -28,6 +28,14 @@ export function validate(profile, observed) {
   return true;
 }
 function read(command, args) { return execFileSync(command, args, { encoding: 'utf8' }).trim(); }
+export function cleanStatus(status, { allowLocalPlaceholder = false, placeholder = 'src-tauri/resources/cli/.ci-placeholder' } = {}) {
+  if (status === '') return true;
+  if (!allowLocalPlaceholder || status !== '?? src-tauri/resources/cli/.ci-placeholder') return false;
+  try {
+    const stat = lstatSync(placeholder);
+    return stat.isFile() && !stat.isSymbolicLink() && stat.size === 0;
+  } catch { return false; }
+}
 export function observe(profile, { allowLocalPlaceholder = false } = {}) {
   const source = read('git', ['rev-parse', 'HEAD']);
   const tree = read('git', ['rev-parse', 'HEAD^{tree}']);
@@ -36,7 +44,7 @@ export function observe(profile, { allowLocalPlaceholder = false } = {}) {
   const locksMatch = locks.every(p => read('git', ['hash-object', p]) === read('git', ['rev-parse', `HEAD:${p}`]));
   const lockfiles = Object.fromEntries(locks.map(p => [p, createHash('sha256').update(readFileSync(p)).digest('hex')]));
   const status = read('git', ['status', '--porcelain']);
-  const clean = status === '' || (allowLocalPlaceholder && status === '?? src-tauri/resources/cli/.ci-placeholder');
+  const clean = cleanStatus(status, { allowLocalPlaceholder });
   const observed = { source, tree, lockfiles, arch: read('uname', ['-m']), xcode: read('xcodebuild', ['-version']), nodeMajor: process.versions.node.split('.')[0],
     sdk: ['macosx', 'iphoneos', 'iphonesimulator'].map(s => read('xcrun', ['--sdk', s, '--show-sdk-version'])),
     rustRelease: rust.match(/^release: (.+)$/m)?.[1], rustHost: rust.match(/^host: (.+)$/m)?.[1],
