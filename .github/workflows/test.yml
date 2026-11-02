@@ -620,6 +620,11 @@ jobs:
         run: |
           rustc -vV
           test "$(rustc -vV | sed -n 's/^host: //p')" = "$MACOS_EXPECTED_RUST_HOST"
+      - name: Validate explicit ARM evidence contract
+        if: env.MACOS_EXPECTED_ARCH == 'arm64'
+        run: |
+          node --test scripts/arm-validation-contract.test.mjs
+          node scripts/arm-validation-contract.mjs hosted-macos15-arm
       - name: Record actual lifecycle validation environment
         run: |
           node - <<'NODE'
