@@ -2288,6 +2288,12 @@
     "startUncertain": "启动状态尚不能确认。请先核对会话和已有结果，再在原会话继续；不会自动重播。"
   },
   "botExperience": {
+    "botFilterOption": "Bot · {{name}}",
+    "projectFilterOption": "项目 · {{name}}",
+    "filterConversations": "按 Bot 或项目筛选对话",
+    "allConversations": "全部对话",
+    "pinned": "已置顶",
+    "emptyProjects": "还没有项目。点击上方 ＋ 创建。",
     "new": "新建",
     "newConversation": "新对话",
     "newBot": "新 Bot",

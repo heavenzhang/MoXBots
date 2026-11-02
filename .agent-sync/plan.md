@@ -1220,3 +1220,10 @@ WEB-DOWNLOAD-0536-20261102 production/UIclosure:0.5.36(536.1) live at20261102-we
 用户批准以自动检查和任务语言替换“核对操作结果”展开列表。隔离 codex/recovery-ux-20261102 基于 main589351245；复用原签名入口、Session mutation owner及操作账本，仅增加可选展示投影和系统自动保存已有证明。未知/Stop/身份/摘要/CAS/原继续动作保护保留；用户补充进入原会话草稿，不直接认定业务成功。任务 `.agent-sync/tasks/codex-recovery-ux-20261102-bdc90dbf.md`，验收 `dev-docs/recovery-ux-20261102/acceptance.md`。159定向+28integration、tsc/lint/分类/renderer build及IAB实际组件合成场景通过；原生/业务未验收。
 
 仅 desktop builtin client/macOS-arm64/updater，共享CI/main/版本/构建/安装/回滚仍由原唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4负责下一未冻结批。本开发会话提交/推送和请求集成，不创建PR或触发共享CI，不改变已有冻结制品或日常客户端。无cloud/mobile/Host/website部署。
+## MB-BOT-NAV-20261102 — M2.1 会话导航紧急整理与原规划校正
+
+用户要求替换本机最新包、复核最初规划，并立即解决左侧会话难以辨认。隔离codex/bot-nav-cleanup-20261102基于main589351245610910476fb4f1328b7c8d4f83da203；两行主题优先、Bot/项目归属、置顶/未读/最近互斥分组、Bot/项目筛选、单一新项目入口。保持原Session打开owner与冻结项目快照，无历史迁移/删除、模型调用或新存储。任务`.agent-sync/tasks/codex-bot-nav-cleanup-20261102-79bcc06a.md`，验收`dev-docs/bot-navigation-20261102/ACCEPTANCE.md`。
+
+原R3计划已校正：R1/M1/M2实际已主干/发行，M2隔离原生与下载链通过；M3真实群组与任务交接尚未实现。先完成P0导航可用性，再P1群组单一收件Bot、一次真实交接/成果/review，后续跨端。29定向/tsc/lint/分类/本地renderer build、Root实际组件深浅/390px/过滤/原ID/错误恢复/键盘通过；独立源码/静态视觉无P1/P2，其live浏览器不可用不标通过，真实原生留待新包。
+
+本轮新安装授权已由原desktop owner完成0.5.37/537.1本机替换、备份与重启，Root版本/进程/摘要/签名复核通过；不含本轮NAV。0.5.37原会话502/unknown和stable晋级另追踪，stable仍0.5.36。唯一desktop/macOS-arm64/updater/sharedCI/main/安装owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发仅提交精确源/本地证据，请原owner下一未冻结UI候选统一CI/main/包/安装，不另分配版本、不覆盖冻结包。不涉及mobile/cloud/Host/website发布，也不混入dirty cross-end/group工作树。

@@ -8,11 +8,25 @@ import { isSystemMaintenanceSession } from "../../../shared/managedScheduledJob"
 export interface BotConversation {
   session: SessionMetadata;
   project: Project;
-  bot: Pick<AgentConfig, 'id' | 'name' | 'icon'>;
+  bot: Pick<AgentConfig, "id" | "name" | "icon">;
   projectLabel: string;
   projectSpaceId?: string;
   working: boolean;
   unread: number;
+}
+/** A pinned unread chat has one home, while retaining its unread badge. */
+export function groupBotConversations(items: readonly BotConversation[]) {
+  const groups: {
+    pinned: BotConversation[];
+    unread: BotConversation[];
+    recent: BotConversation[];
+  } = { pinned: [], unread: [], recent: [] };
+  for (const item of items) {
+    if (item.session.pinnedAt) groups.pinned.push(item);
+    else if (item.unread > 0) groups.unread.push(item);
+    else groups.recent.push(item);
+  }
+  return groups;
 }
 /** Projection only; App/Session owners retain navigation and execution. */
 export function projectBotConversations(input: {
@@ -39,9 +53,20 @@ export function projectBotConversations(input: {
       if (matches.length !== 1) return [];
       const project = matches[0];
       const fixed = session.projectSpace;
-      const configuredBot = agents.get(fixed?.botId ?? project.agentId ?? '');
-      const bot = fixed ? { id: fixed.botId, name: fixed.botName, icon: fixed.botIcon ?? configuredBot?.icon } : configuredBot;
-      if (!bot || (input.projectId && input.projectId !== project.id) || (input.projectSpaceId && input.projectSpaceId !== fixed?.projectId)) return [];
+      const configuredBot = agents.get(fixed?.botId ?? project.agentId ?? "");
+      const bot = fixed
+        ? {
+            id: fixed.botId,
+            name: fixed.botName,
+            icon: fixed.botIcon ?? configuredBot?.icon,
+          }
+        : configuredBot;
+      if (
+        !bot ||
+        (input.projectId && input.projectId !== project.id) ||
+        (input.projectSpaceId && input.projectSpaceId !== fixed?.projectId)
+      )
+        return [];
       const tabs = input.tabs.filter(
         (tab) => tab.view === "chat" && tab.sessionId === session.id,
       );
@@ -50,7 +75,8 @@ export function projectBotConversations(input: {
           session,
           project,
           bot,
-          projectLabel: fixed?.projectName ?? project.displayName ?? project.name,
+          projectLabel:
+            fixed?.projectName ?? project.displayName ?? project.name,
           projectSpaceId: fixed?.projectId,
           working: tabs.some((tab) => tab.view === "chat" && tab.isGenerating),
           unread: Math.max(

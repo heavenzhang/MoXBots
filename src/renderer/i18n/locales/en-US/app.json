@@ -2290,6 +2290,12 @@
     "startUncertain": "The start status is uncertain. Check this chat and existing results before continuing here. The request will not be replayed automatically."
   },
   "botExperience": {
+    "botFilterOption": "Bot · {{name}}",
+    "projectFilterOption": "Project · {{name}}",
+    "filterConversations": "Filter conversations by Bot or project",
+    "allConversations": "All conversations",
+    "pinned": "Pinned",
+    "emptyProjects": "No projects yet. Use + above to create one.",
     "new": "New",
     "newConversation": "New conversation",
     "newBot": "New Bot",
