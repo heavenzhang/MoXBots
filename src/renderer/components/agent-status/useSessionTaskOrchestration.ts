@@ -47,6 +47,10 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     planSupport?: SessionTaskSnapshot['planSupport']; executionRecovery?: SessionExecutionRecoveryProjection; runtimeKey: string } | null>(null);
   const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const [recoveryReview, setRecoveryReview] = useState<{ sessionId: string; count: number; checking: boolean; failed: boolean; open: () => void }>();
+  const publishRecoveryReview = useCallback((value: { sessionId: string; count: number; checking: boolean; failed: boolean; open: () => void } | undefined) => {
+    setRecoveryReview(value);
+  }, []);
   const planSupport = snapshot?.sessionId === sessionId && snapshot.runtimeKey === runtimeKey
     && !tab?.isSessionLoading && failure?.sessionId !== sessionId ? snapshot.planSupport : undefined;
   const currentSupport = useRef(planSupport);
@@ -166,7 +170,7 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
   const planStart = proposal && snapshot?.ledger.planStart?.proposalId === proposal.id && snapshot.ledger.planStart.revision === proposal.revision ? snapshot.ledger.planStart : undefined;
   const canRetryReview = tab?.sessionState === 'idle' && !tab.isLoading
     && !tab.hasBackgroundWork && !tab.hasNativeWork && !tab.queuedMessages?.length;
-  return { sessionId, epoch: scope.current.epoch, canRetryReview, tasks, proposal,
+  return { recoveryReview: recoveryReview?.sessionId === sessionId ? recoveryReview : undefined, publishRecoveryReview, sessionId, epoch: scope.current.epoch, canRetryReview, tasks, proposal,
     execution,
     executionAdmission,
     executionRecovery,

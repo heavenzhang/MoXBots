@@ -220,6 +220,10 @@ Builtin Rewind 以保留前缀末条 native 内容的精确 chain UUID 为边界
 
 错误横幅按接纳事实分流：只有明确未接纳的本地失败才显示「重新发送」，通过既有普通 desktop send/admission 重发可见原文与附件，并只替换临时失败投影。已接纳且最新 canonical turn 为 `error` / `stopped` / `interrupted` 时显示「继续执行」，沿既有 `continueFromTurnId` 准入在原 Session 发送续接指令，保留 native/product history、工具结果、文件与任务清单；由 entry、promotion、同步 commit 重新核对原 turn、generation、运行/后台活动、队列和交互。指令要求先核对进度和结果不明操作，只从未完成处继续，不重放原业务请求，不调用 `/chat/retry` 或建立新的 `sdkResumeSessionAt`。传输结果不明、缺少可靠续接候选或 Runtime 暂不支持精确继续时仅显示「核查状态」，读取原会话记录和队列，不自动重发；普通输入框再次提交相同未确认正文也先核查并保留草稿。Goal paused 继续交原 Goal owner；Goal/Task 的系统包装仍由当前 preparation 生成。失效 native boundary 保持原拒绝和分支恢复入口，不借续接清空边界或恢复已丢弃历史。
 
+中断恢复检查沿原 Session mutation 锁、ContextRecovery/native journal 与 SessionTaskLedger。界面自动读取有界的SDK选中链和原始记录，仅当所有同输入调用的成功终态可逐条证明时，保存native completion证明并保持同输入已完成防重放；仅文件现状一致不能推断调用终态。原Write目标的只读字节核对限定已有工作区，不接受前端任意路径；用户补充/延后按requestId幂等写入原TaskLedger，不能成为操作授权或任务验收。
+
+当原执行仅因未知操作暂停、root已结算、未Stop且既有预算允许时，原SessionExecution可接纳一次相同未知集合的恢复核查，recoveryPassDigest耐久限制空转。主任务只读查询/评审，已有独立后台任务包仍走原任务/依赖/实际规范化资源校验；未知根操作作为只读投影的资源reservation继续保留，缺少范围时保留整个工作区。恢复期间不能改包规避保护。全部精确未知事实由原生成功证明结清后，由原owner在原queue续接，保留任务ID/步骤/计数；用户Stop、后台归属、当前代次、权限和最终验收仍由原owner裁决。状态卡与任务条共享当前Session展示投影，不建立第二执行/持久化owner。
+
 Retry 经 `POST /chat/retry` 进入 adapter，`/chat/external-retry` 仅保留同一语义的路由别名。Builtin 使用现有串行 mutation scope：内部重发可以重入，外部接纳等待该 scope 结束。External 的 mutation lease 覆盖重发接纳；期间新入队的消息保留，自身 replay 排到队首后才释放 dispatch。V1 复用既有删除事件、V2 由 writer 发布删除操作，先同步移除旧消息再接收 replay。不支持精确 native history 操作的 Runtime 返回明确能力错误，不以只截断产品记录代替。Codex 的边界选择见 [Runtime 文档](multi_agent_runtime.md#53-codex)。
 
 Retry 的 `model` / `reasoningEffort` 是与普通发送一致的可选发送意图：UI 传当前选项，adapter 在同一 mutation scope 内将其带入重新入队。不能只传消息 ID 后依赖预热进程默认模型，也不能把 Runtime 展示用的 reported model 反写成配置 authority。未传选项的旧调用仍采用既有后端默认语义。
@@ -407,3 +411,6 @@ native UUID 优先按 SDK-to-SDK 的精确映射复制。仅当旧 Product user 
 ## 项目背景自动接续
 
 新桌面会话在实际 query preparation 时读取同项目近期来源，首轮重试沿同一入口刷新；后续轮次不重复注入。Scope、原文保真与Token预算见 [项目背景](project_context.md)。固定 pre-warm prompt 不拥有动态项目状态。
+
+
+Recovery investigation permission is active only while the original execution is RECOVERY_CHECKING. The durable recoveryPassDigest remains a deduplication record after settlement, not a permanent read-only mode. Unresolved prior settled effects keep their original resource reservations even when investigation pauses; current unsettled calls do not acquire synthetic unknown claims from their own PreToolUse pending fact.

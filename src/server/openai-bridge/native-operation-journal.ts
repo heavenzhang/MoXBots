@@ -100,6 +100,20 @@ export class NativeOperationJournal {
     if (this.hasUnresolved(actionHash)) throw new Error('context_recovery_required: Cannot review a pending native attempt');
     this.legacy.delete(actionHash);
   }
+  canReviewCompletion(actionHash: string, proofs: readonly { toolUseId: string; resultDigest: string }[]): boolean {
+    return [...this.entries.values()].filter(a => a.actionHash === actionHash).every(attempt =>
+      proofs.some(proof => proof.toolUseId === attempt.toolUseId && (attempt.status === 'reserved'
+        || attempt.status === 'returned' && attempt.outcome === 'success' && attempt.resultDigest === proof.resultDigest)));
+  }
+  reviewCompletion(actionHash: string, proofs: readonly { toolUseId: string; resultDigest: string }[], reviewedAt: string): void {
+    if (!this.canReviewCompletion(actionHash, proofs)) throw new Error('Completion proof does not cover every attempt');
+    for (const attempt of this.entries.values()) {
+      if (attempt.actionHash !== actionHash) continue;
+      const proof = proofs.find(proof => proof.toolUseId === attempt.toolUseId)!;
+      attempt.status = 'returned'; attempt.outcome = 'success'; attempt.resultDigest = proof.resultDigest; attempt.returnedAt ??= reviewedAt;
+    }
+    this.legacy.delete(actionHash);
+  }
   markLegacy(actionHash: string): void { this.legacy.add(actionHash); }
   hasUnresolved(actionHash: string): boolean { return [...this.entries.values()].some(a => a.actionHash === actionHash && a.status !== 'returned'); }
   hasReturnedAction(toolUseId: string, actionHash: string): boolean {

@@ -9,8 +9,10 @@ export function SessionRecoveryPanels({ continuation, review, children }: {
   children?: ReactNode;
 }) {
   return <>
-    <SessionContinuationBanner key={`continuation:${continuation.sessionId}`} {...continuation} />
     {children}
-    {review && <RecoveryActionReview key={`review:${review.sessionId}`} {...review} />}
+    {review ? <RecoveryActionReview key={`review:${review.sessionId}`} {...review}
+      interrupted={!!continuation.turnId && !continuation.hidden}
+      continuation={<SessionContinuationBanner key={`continuation:${continuation.sessionId}`} {...continuation} compact />} />
+      : <SessionContinuationBanner key={`continuation:${continuation.sessionId}`} {...continuation} />}
   </>;
 }

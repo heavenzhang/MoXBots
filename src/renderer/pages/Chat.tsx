@@ -6734,6 +6734,17 @@ function ChatContent({
                 inspectRevision: `${messages.length}:${streamingMessage?.id ?? ''}`,
                 inspect: () => apiGet<RecoveryActionSnapshot>(RECOVERY_REVIEW_ACTIONS_PATH),
                 reconcile: request => apiPost<RecoveryActionSnapshot>(RECOVERY_RECONCILE_PATH, request),
+                onPrepareCheck: action => {
+                  if (!chatInputRef.current || isComposerUpdateCheckpointLocked()) return;
+                  const operation = t(`recoveryReview.kinds.${action.presentation?.kind ?? 'unknown'}`);
+                  const prompt = t('recoveryReview.checkDraft', {
+                    operation,
+                    target: action.presentation?.target ?? t('recoveryReview.targetUnavailable'),
+                    hash: action.actionHash,
+                  });
+                  const existing = chatInputRef.current.getCurrentValue();
+                  chatInputRef.current.setValue(existing ? `${existing}\n\n${prompt}` : prompt);
+                },
               } : undefined}
             >
 

@@ -107,6 +107,8 @@ export default memo(function ExecutionStatusBar({
     unknown: orchestration.executionUnknown,
   };
   const executionPresentation = useSessionExecutionPresentation(executionProps);
+  const recoveryReview = orchestration.recoveryReview;
+  const hasRecoveryReview = !!recoveryReview && (recoveryReview.count > 0 || recoveryReview.failed);
   const hasExecution = Boolean(executionPresentation);
   const hasAgents = Boolean(
     activity && (agents.length || background.length || tab?.hasMoreBefore),
@@ -249,7 +251,7 @@ export default memo(function ExecutionStatusBar({
           onJumpToTool={activity.onJumpToTool}
         />
       )}
-      {(hasExecution || goal || hasTodos || hasAgents) && (
+      {(hasRecoveryReview || hasExecution || goal || hasTodos || hasAgents) && (
         <section
           data-execution-status
           onKeyDown={(event) => {
@@ -275,7 +277,10 @@ export default memo(function ExecutionStatusBar({
               className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto overscroll-x-contain"
               aria-label={t("executionStatus.summary")}
             >
-              {executionPresentation &&
+              {hasRecoveryReview && <button type="button" className={buttonClass} onClick={recoveryReview.open}>
+                {t(recoveryReview.checking ? 'recoveryReview.checking' : recoveryReview.failed ? 'recoveryReview.unavailable' : 'recoveryReview.pending', {count: recoveryReview.count})}
+              </button>}
+              {executionPresentation && !hasRecoveryReview &&
                 summaryButton(
                   "execution",
                   <>

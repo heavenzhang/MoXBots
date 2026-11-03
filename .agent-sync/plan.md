@@ -1174,7 +1174,7 @@ Originalmobile/QAHost owner01a12b99 selects reviewedmain63ce/c0a feature source 
 
 第十二项（MB-RECOVERY-INCIDENT-20261101）：532.1无效accept证据纠错19轮但reworks=0，修正为沿既有返工计数和同一证明规则有界纠错，给出具体criterion/失效证据反馈，保留真实进度、原ID及人工补证。代理ConnectTimeoutError只在精确当前attempt/原生连接建立前、同fetch取消与预算内最多2次重连；HTTP429/5xx、已发送/部分流和旧unknown不获重放权。冷恢复和原生loopback回归后由同owner独审、集成、分配新不可变包、安装并复验四原会话；不增加部署负责人，不独立触发共享CI，不宣称限流或旧业务验收已闭合。证据见 recovery-incident-20261101/acceptance.md 最新章节。
 
-第十三项：已原生returned的精确tool-use在SDK历史短暂缺result时不再被prearm新降级为legacy unknown；只过滤本次分析候选，不清旧不确定集合，不赋予新的推理/工具权限。live/cold旧失败复现，四负例保持保护，141项相关回归/tsc/lint通过；等待同desktop owner独审和下一未冻结批。第十二项已独立冻结532.2/PR226/CI41325876238，不能覆盖或复用其制品与检查。
+第十三项：已原生returned的精确tool-use在SDK历史短暂缺result时不再被prearm新降级为legacy unknown；只过滤本次分析候选，不清旧不确定集合，不赋予新的推理/工具权限。live/cold旧失败复现，四负例保持保护，141项相关回归/tsc/lint通过；等待同desktop owner独审和下一未冻结批。第十二项已独立冻结532.2/PR226/CI41325876248，不能覆盖或复用其制品与检查。
 
 第十三项审查补证：原owner精确7c3fe1f09静态/58项定向通过并独立补失败Bash live/cold围栏验证；源分支吸收该测试与未完成peer/退休身份反例，最终74项及tsc/lint/diff通过。产品逻辑不变，保持既有unknown，不覆盖532.2冻结批；真实原生验收仍待下一批安装。
 
@@ -1215,6 +1215,11 @@ Human requests latestdesktop package on https://101.42.11.29/moxbots/download/. 
 WEB-DOWNLOAD-0536-20261102 production/UIclosure:0.5.36(536.1) live at20261102-web0536-e6fbdf880317; only3aggregate staticfiles,1narrow-noteSHAwraprepair.23websitechecks/13normalTLSreads/primaryIAB1440+390andoriginalRootindependentIABPASS; prior527backupretained. Existingwholepublicarchive/SHA/minisign reused andindependentlyrehash/gzipchecked; no thirdfullGET/packagechange. SourceCI/mainhandoffstilloriginalRoot01a12bc2, remoteclosurependingatthisreceiptcommit.
 
 
+## MB-RECOVERY-UX-20261102 — 中断恢复交互
+
+用户批准以自动检查和任务语言替换“核对操作结果”展开列表。隔离 codex/recovery-ux-20261102 基于 main589351245；复用原签名入口、Session mutation owner及操作账本，仅增加可选展示投影和系统自动保存已有证明。未知/Stop/身份/摘要/CAS/原继续动作保护保留；用户补充进入原会话草稿，不直接认定业务成功。任务 `.agent-sync/tasks/codex-recovery-ux-20261102-bdc90dbf.md`，验收 `dev-docs/recovery-ux-20261102/acceptance.md`。159定向+28integration、tsc/lint/分类/renderer build及IAB实际组件合成场景通过；原生/业务未验收。
+
+仅 desktop builtin client/macOS-arm64/updater，共享CI/main/版本/构建/安装/回滚仍由原唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4负责下一未冻结批。本开发会话提交/推送和请求集成，不创建PR或触发共享CI，不改变已有冻结制品或日常客户端。无cloud/mobile/Host/website部署。
 ## MB-BOT-NAV-20261102 — M2.1 会话导航紧急整理与原规划校正
 
 用户要求替换本机最新包、复核最初规划，并立即解决左侧会话难以辨认。隔离codex/bot-nav-cleanup-20261102基于main589351245610910476fb4f1328b7c8d4f83da203；两行主题优先、Bot/项目归属、置顶/未读/最近互斥分组、Bot/项目筛选、单一新项目入口。保持原Session打开owner与冻结项目快照，无历史迁移/删除、模型调用或新存储。任务`.agent-sync/tasks/codex-bot-nav-cleanup-20261102-79bcc06a.md`，验收`dev-docs/bot-navigation-20261102/ACCEPTANCE.md`。
@@ -1236,3 +1241,10 @@ Human requests first mobile workflow wording/detail changes on Kevin iPhone; ori
 ## Recovery Phase20 desktop owner intake — 2026-11-03
 
 Desktop/macOS-arm64/updater/shared CI/main remains solely01a12bc2-907a-7702-b6dd-788225c5dfe4. Selected producer74459ca78cd1bccd8cea0c20e49ee8443632476a at mainc79dd55; new isolated branchcodex/release-recovery-0540-r1-20261103 reserves0.5.40/build540.1. Root additionally reproduced four valid-response selection races and guards original session/model/provider/mode after each awaited classifier result. Exact local/CI/main/formal/native gates remain separate;539.1 immutable QA and stable0.5.36 unchanged. Temporary-review prevention does not restore historical salary execution; original source owner prepares snapshot/CAS recovery separately, reviewed before installation. No cloud/website/Host/mobile deployment or stable promotion in this intake. See taskcodex-release-recovery-0540-r1-20261103-1903b11b and dev-docs/reliability-20261028/release-0540-root-intake.md.
+
+MB-RECOVERY-UX-20261102完整续接：用户要求补齐整个方案。原分支保留main82dffd887，沿原ContextRecovery/native journal/SessionTaskLedger/SessionExecution实现真实成功回执、目标字节检查、持久补充/延后、一次性受限核查和原owner续接。依赖/规范化资源确定独立任务包，未知根操作继续保留reservation；无通用重试或用户说明直接解锁。底部与状态卡同源。624本地回归及真实SDK隔离Write/历史/冷恢复通过，新增真实浏览器被Work设置禁用；主干/组合CI/制品/安装/原会话验收继续由唯一desktop/sharedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4组织。未完成发布不标全交付；任务详见原record和acceptance新增章节。
+
+
+### Root recovery UX release 0541 (MB-RECOVERY-UX-20261102)
+
+Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4 integrates exact producer 5cf4aac with main f719dad in codex/release-recovery-ux-0541-r1-20261103. Proposed immutable version 0.5.41/build541.1. Root lifecycle fence fix and 708 tests/typecheck passed; exact source CI/main, new artifact, fresh safe maintenance, signed native new UI and same-artifact 101 publication are pending. Prior 540.1 local acceptance/stable hold remains distinct. Other deployment owners and author workspaces are unchanged. Receipts: work/release-0541-20261103/owner.

@@ -23,7 +23,7 @@ describe('Session recovery panel reconciliation', () => {
       for (let i = 0; i < 8; i++) {
         current = props(`session-${i}`);
         view.rerender(<SessionRecoveryPanels {...current} />);
-        expect(screen.getAllByRole('button', { name: 'shell.continuation.continue' })).toHaveLength(1);
+        expect(await screen.findAllByRole('button', { name: 'shell.continuation.continue' })).toHaveLength(1);
         view.rerender(<SessionRecoveryPanels {...current} continuation={{ ...current.continuation, hidden: true }}>
           <div role="alert">current error</div>
         </SessionRecoveryPanels>);
@@ -31,7 +31,7 @@ describe('Session recovery panel reconciliation', () => {
         expect(screen.getAllByRole('alert')).toHaveLength(1);
         view.rerender(<SessionRecoveryPanels {...current} />);
       }
-      fireEvent.click(screen.getByRole('button', { name: 'shell.continuation.continue' }));
+      fireEvent.click(await screen.findByRole('button', { name: 'shell.continuation.continue' }));
       await waitFor(() => expect(current.continuation.onContinue).toHaveBeenCalledExactlyOnceWith('turn-session-7'));
       expect(errors.mock.calls.filter(args => args.some(x => String(x).includes('same key')))).toEqual([]);
       view.unmount();
@@ -44,10 +44,22 @@ describe('Session recovery panel reconciliation', () => {
     const a = props('a'); a.continuation.onContinue = vi.fn(() => new Promise<boolean>(resolve => { complete = resolve; }));
     const b = props('b');
     const { rerender } = render(<SessionRecoveryPanels {...a} />);
-    fireEvent.click(screen.getByRole('button', { name: 'shell.continuation.continue' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'shell.continuation.continue' }));
     rerender(<SessionRecoveryPanels {...b} />);
     await act(async () => complete(true));
-    expect(screen.getAllByRole('button', { name: 'shell.continuation.continue' })).toHaveLength(1);
+    expect(await screen.findAllByRole('button', { name: 'shell.continuation.continue' })).toHaveLength(1);
     expect(b.continuation.onContinue).not.toHaveBeenCalled();
   });
+});
+
+it('preserves accepted continuation identity through a new recovery check', async () => {
+  const p = props('s');
+  p.continuation.onContinue = vi.fn(async () => true);
+  const view = render(<SessionRecoveryPanels {...p} review={{ ...p.review, inspectRevision: 'idle:1' }} />);
+  fireEvent.click(await screen.findByRole('button', { name: 'shell.continuation.continue' }));
+  await waitFor(() => expect(screen.queryByRole('button', { name: 'shell.continuation.continue' })).not.toBeInTheDocument());
+  view.rerender(<SessionRecoveryPanels {...p} review={{ ...p.review, inspectRevision: 'idle:2' }} />);
+  await waitFor(() => expect(p.review.inspect).toHaveBeenCalledTimes(2));
+  expect(screen.queryByRole('button', { name: 'shell.continuation.continue' })).not.toBeInTheDocument();
+  expect(p.continuation.onContinue).toHaveBeenCalledTimes(1);
 });

@@ -30,7 +30,7 @@ it('requires a native signature over the exact body, not the CLI capability', as
 it('fails closed for unsupported runtimes, oversized data and method confusion', async () => {
   expect((await handleRecoveryReconciliationRoute(path, request(true), {} as SessionEngine))?.status).toBe(409);
   const e = engine();
-  expect((await handleRecoveryReconciliationRoute(path, request(false, 'x'.repeat(8193)), e))?.status).toBe(413);
+  expect((await handleRecoveryReconciliationRoute(path, request(false, 'x'.repeat(32769)), e))?.status).toBe(413);
   expect((await handleRecoveryReconciliationRoute(path, new Request(`http://local${path}`), e))?.status).toBe(405);
   expect(e.reconcileRecoveryAction).not.toHaveBeenCalled();
 });
