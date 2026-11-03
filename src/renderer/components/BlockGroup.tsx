@@ -15,6 +15,7 @@ interface BlockGroupProps {
   blocks: ContentBlock[];
   isLatestActiveSection?: boolean;
   isStreaming?: boolean;
+  compactHistory?: boolean;
 }
 
 interface ProcessPhaseCardProps { phase: ProcessPhase; live: boolean; hasFollowingPhase: boolean }
@@ -98,11 +99,31 @@ const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollow
   </section>;
 }, samePhase);
 
-const BlockGroup = memo(function BlockGroup({ blocks, isStreaming = false }: BlockGroupProps) {
+const BlockGroup = memo(function BlockGroup({ blocks, isStreaming = false, compactHistory = false }: BlockGroupProps) {
+  const { t } = useTranslation('chat');
+  const notify = useNotifyRowLayoutChanged();
+  const [open, setOpen] = useState(false);
+  const detailsId = useId();
   const phases = buildProcessPhases(blocks, isStreaming);
   if (!phases.length) return null;
+
+  // Keep active, uncertain, failed, and child-agent rows directly reachable.
+  const compact = compactHistory && !isStreaming && phases.every(phase =>
+    phase.entries.every(entry => entry.outcome === 'succeeded'
+      && !(entry.block.tool && isSubagentContainerTool(entry.block.tool.name))),
+  );
   return <div className="my-2 min-w-0 space-y-1 select-none" data-process-group>
-    {phases.map((phase, index) => <ProcessPhaseCard key={phase.key} phase={phase} live={isStreaming} hasFollowingPhase={index < phases.length - 1} />)}
+    {compact && (
+      <button type="button" aria-expanded={open} aria-controls={detailsId}
+        className="flex min-h-8 max-w-full items-center gap-1.5 rounded-md px-1 text-left text-xs text-[var(--ink-muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--ink)]"
+        onClick={() => { notify(open ? 'block-group-collapse' : 'block-group-expand'); setOpen(!open); }}>
+        <ChevronDownIcon aria-hidden="true" className={`size-3 shrink-0 ${open ? '' : '-rotate-90'}`} />
+        {t('process.completedSteps', { count: blocks.length })}
+      </button>
+    )}
+    <div id={detailsId} hidden={compact && !open} className="space-y-1">
+      {phases.map((phase, index) => <ProcessPhaseCard key={phase.key} phase={phase} live={isStreaming} hasFollowingPhase={index < phases.length - 1} />)}
+    </div>
   </div>;
 });
 export default BlockGroup;

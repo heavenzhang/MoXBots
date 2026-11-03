@@ -16,6 +16,23 @@ function tool(id: string, name = 'Read', patch: Record<string, unknown> = {}): C
 const details = () => screen.getByRole('button', { name: /展开结果与时间|收起结果与时间/ });
 
 describe('BlockGroup stage summaries and folding', () => {
+  it('folds completed history while keeping failed steps directly visible', () => {
+    const completed = [tool('complete', 'Read', { isLoading: false })];
+    const { container, rerender } = render(<BlockGroup blocks={completed} compactHistory />);
+    const summary = screen.getByRole('button', { name: '已完成 1 个执行步骤' });
+    const row = container.querySelector('[data-process-row="succeeded"]');
+    expect(row).not.toBeVisible();
+    fireEvent.click(summary);
+    expect(row).toBeVisible();
+    fireEvent.click(summary);
+    expect(row).not.toBeVisible();
+
+    rerender(<BlockGroup compactHistory blocks={[...completed, tool('failed', 'Bash', {
+      isLoading: false, isError: true, resultMeta: { status: 'failed' },
+    })]} />);
+    expect(container.querySelector('[data-process-row="failed"]')).toBeVisible();
+  });
+
   it('renders folded ProcessRow failure without a CheckIcon and keeps success check-only for success', () => {
     const failed = tool('hook-denied', 'Bash', {
       result: 'PreToolUse hook denied', isError: true, isLoading: false,

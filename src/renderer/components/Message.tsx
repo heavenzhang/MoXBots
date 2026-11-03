@@ -23,6 +23,7 @@ import { useToastOptional } from '@/components/Toast';
 import WidgetRenderer from '@/components/tools/WidgetRenderer';
 import { parseWidgetTags, hasWidgetTags } from '@/components/tools/widgetTagParser';
 import Tip from '@/components/Tip';
+import { DropdownMenu } from '@/components/ui/DropdownMenu';
 import ToolAttachmentGallery from '@/components/tools/ToolAttachmentGallery';
 import { TurnFileEditSummary } from '@/components/TurnFileEditSummary';
 import { useNotifyRowLayoutChanged } from '@/context/ChatRowLayoutContext';
@@ -185,7 +186,7 @@ function AssistantActions({ message, onRetry, onFork, citationSources, className
   };
 
   return (
-    <div className={`group/actions flex min-h-8 w-full items-center gap-1 -ml-2 pt-1 ${className}`}>
+    <div className={`group/actions flex min-h-8 w-full items-center gap-1 -ml-2 pt-1 [&>.compact-action]:opacity-0 [&>.compact-action]:transition-opacity group-hover/reply:[&>.compact-action]:opacity-100 focus-within:[&>.compact-action]:opacity-100 [@media(hover:none)]:[&>.compact-action]:opacity-100 ${className}`}>
       <Tip label={copied ? t('message.actions.copied') : t('message.actions.copy')}>
         <button type="button"
           aria-label={t('message.actions.copy')}
@@ -205,34 +206,25 @@ function AssistantActions({ message, onRetry, onFork, citationSources, className
           {copied ? <CheckIcon className="size-3.5" /> : <CopyIcon className="size-3.5" />}
         </button>
       </Tip>
-      {!remoteContent && <Tip label={t('message.actions.exportMarkdown')}>
-        <button type="button"
-          aria-label={t('message.actions.exportMarkdown')}
-          onClick={handleExport}
-          className="compact-action text-[var(--ink-muted)] transition-colors hover:bg-[var(--paper-inset)] hover:text-[var(--ink)]">
-          <DownloadIcon className="size-3.5" />
-        </button>
-      </Tip>}
-      {onRetry && (
-        <Tip label={t('message.actions.retry')}>
-          <button type="button"
-            aria-label={t('message.actions.retry')}
-            onClick={() => onRetry(message.id)}
-            className="compact-action text-[var(--ink-muted)] transition-colors hover:bg-[var(--paper-inset)] hover:text-[var(--ink)]">
-            <UndoIcon className="size-3.5" />
-          </button>
-        </Tip>
-      )}
-      {onFork && (message.sdkUuid || message.runtimeTurnAnchor) && (
-        <Tip label={t('message.actions.fork')}>
-          <button type="button"
-            aria-label={t('message.actions.fork')}
-            onClick={() => onFork(message.id)}
-            className="compact-action text-[var(--ink-muted)] transition-colors hover:bg-[var(--paper-inset)] hover:text-[var(--ink)]">
-            <GitBranchIcon className="size-3.5" />
-          </button>
-        </Tip>
-      )}
+      <div className="compact-action">
+        <DropdownMenu size="md" sections={[{ items: [
+          ...(!remoteContent ? [{
+            label: t('message.actions.exportMarkdown'),
+            icon: <DownloadIcon className="size-3.5" />,
+            onClick: () => void handleExport(),
+          }] : []),
+          ...(onRetry ? [{
+            label: t('message.actions.retry'),
+            icon: <UndoIcon className="size-3.5" />,
+            onClick: () => onRetry(message.id),
+          }] : []),
+          ...(onFork && (message.sdkUuid || message.runtimeTurnAnchor) ? [{
+            label: t('message.actions.fork'),
+            icon: <GitBranchIcon className="size-3.5" />,
+            onClick: () => onFork(message.id),
+          }] : []),
+        ] }]} />
+      </div>
       {!remoteContent && <TurnFileEditSummary content={message.content} />}
       {turnMetaLabel && (
         <span
@@ -262,7 +254,7 @@ function renderWidgetSegments(text: string, isLoading: boolean, unclosedNotice: 
   return segments.map((seg, si) => {
     if (seg.type === 'text') {
       return (
-        <div key={`t-${si}`} className="flex justify-start w-full px-1 py-1 select-none">
+        <div key={`t-${si}`} className="flex justify-start w-full py-1 select-none">
           <div className="ai-message-content w-full max-w-none text-[var(--ink)] select-text">
             <Markdown citationSources={citationSources}>{seg.content}</Markdown>
           </div>
@@ -524,7 +516,7 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
   if (typeof message.content === 'string') {
     const hasWidgets = !remoteContent && hasWidgetTags(message.content);
     return (
-      <div className="flex justify-start w-full px-4 py-2 select-none" data-role="assistant">
+      <div className="group/reply flex justify-start w-full py-2 select-none" data-role="assistant">
         <div className="w-full max-w-none">
           {hasWidgets ? (
             <div className="w-full space-y-3">
@@ -588,9 +580,9 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
     : -1;
 
   return (
-    <div className="flex justify-start select-none" data-role="assistant">
+    <div className="group/reply flex justify-start select-none" data-role="assistant">
       <div className="w-full">
-        <article className="w-full px-3 py-2">
+        <article className="w-full py-2">
           <div className="space-y-3">
             {groupedBlocks.map((item, index) => {
               // Single text block — may contain <widget> tags for inline rendering
@@ -619,7 +611,7 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
                   return (
                     <div
                       key={index}
-                      className="flex justify-start w-full px-1 py-1 select-none"
+                      className="flex justify-start w-full py-1 select-none"
                     >
                       <div className="ai-message-content w-full max-w-none text-[var(--ink)] select-text">
                         <Markdown citationSources={citationSources} streaming={isLoading && index === groupedBlocks.length - 1 && !!message.streamingTextActive}>{item.text}</Markdown>
@@ -654,6 +646,7 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
                 <Fragment key={`group-${index}`}>
                   <BlockGroup
                     blocks={item}
+                    compactHistory={!remoteContent && index !== exitPlanModeGroupIndex}
                     isLatestActiveSection={isLatestActiveSection}
                     isStreaming={isAssistantStreaming}
                   />

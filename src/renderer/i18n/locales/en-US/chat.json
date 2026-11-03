@@ -1473,6 +1473,7 @@
       "matches_one": "Returned {{count}} matching line",
       "matches_other": "Returned {{count}} matching lines"
     },
+    "completedSteps": "{{count}} completed steps",
     "showResults": "Show results and timing ({{count}})",
     "hideResults": "Hide results and timing ({{count}})",
     "timing": {

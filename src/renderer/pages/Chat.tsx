@@ -377,12 +377,27 @@ function readWorkspaceLayoutMetrics(): WorkspaceLayoutMetrics {
   };
 }
 
+const WORKSPACE_PANEL_PREFERENCE = 'moxbots.chat.workspace-panel';
+
 function shouldShowWorkspaceByDefault(): boolean {
+  try {
+    if (localStorage.getItem(WORKSPACE_PANEL_PREFERENCE) !== 'open') return false;
+  } catch {
+    return false;
+  }
   const metrics = readWorkspaceLayoutMetrics();
   return (
     metrics.viewportWidthPx - metrics.sidebarMinWidthPx >=
     metrics.contentMinWidthPx
   );
+}
+
+function saveWorkspacePanelPreference(open: boolean): void {
+  try {
+    localStorage.setItem(WORKSPACE_PANEL_PREFERENCE, open ? 'open' : 'closed');
+  } catch {
+    // The panel remains usable when browser storage is unavailable.
+  }
 }
 
 // Lazy load FilePreviewModal for split view panel
@@ -619,7 +634,7 @@ const SessionTitleEditor = forwardRef<
         />
       ) : (
         <span
-          className="block truncate cursor-pointer px-1.5 py-0.5 text-sm font-medium text-[var(--ink-subtle)] hover:text-[var(--ink)] transition-colors"
+          className="block truncate cursor-pointer px-1.5 py-0.5 text-sm font-semibold text-[var(--ink)] hover:text-[var(--ink-secondary)] transition-colors"
           onClick={() => setEditing(true)}
           title={t('shell.sessionTitle.renameTitle')}
         >
@@ -6449,7 +6464,15 @@ function ChatContent({
           {/* Compact header - single row */}
           <div className="relative z-10 flex h-12 flex-shrink-0 items-center justify-between bg-[var(--paper-elevated)] px-4 after:pointer-events-none after:absolute after:inset-x-0 after:top-full after:h-3 after:bg-gradient-to-b after:from-[var(--paper-elevated)] after:to-[var(--paper-elevated-a0)]">
             <div className="flex min-w-0 items-center gap-2">
-              {/* Project name */}
+              {sessionTitle &&
+                sessionTitle !== 'New Tab' &&
+                sessionTitle !== 'New Chat' && (
+                  <SessionTitleEditor
+                    ref={titleEditorRef}
+                    title={sessionTitle}
+                    onRename={(newTitle) => onRenameSession?.(newTitle)}
+                  />
+                )}
               {agentDir && (
                 <BotIdentityButton
                   name={currentProject?.displayName || currentProject?.name || agentDir.split(/[/\\]/).filter(Boolean).pop() || ''}
@@ -6458,21 +6481,6 @@ function ChatContent({
                 />
               )}
               {sessionMeta?.projectSpace && <ProjectContextBadge snapshot={sessionMeta.projectSpace} />}
-              {/* Session title — click to rename */}
-              {sessionTitle &&
-                sessionTitle !== 'New Tab' &&
-                sessionTitle !== 'New Chat' && (
-                  <>
-                    <span className="flex-shrink-0 text-[var(--ink-subtle)]">
-                      /
-                    </span>
-                    <SessionTitleEditor
-                      ref={titleEditorRef}
-                      title={sessionTitle}
-                      onRename={(newTitle) => onRenameSession?.(newTitle)}
-                    />
-                  </>
-                )}
               <UserTagPills
                 tags={sessionMeta?.userTags}
                 onTagClick={(name) => onOpenHistoryTag?.(name)}
@@ -6622,7 +6630,10 @@ function ChatContent({
                 >
                   <button
                     type="button"
-                    onClick={handleExpandWorkspace}
+                    onClick={() => {
+                      saveWorkspacePanelPreference(true);
+                      handleExpandWorkspace();
+                    }}
                     aria-label={t('shell.header.expandWorkspace')}
                     className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--hover-bg)] hover:text-[var(--ink)]"
                   >
@@ -7206,7 +7217,10 @@ function ChatContent({
                 provider={effectiveModelProvider}
                 providers={providerUiProviders}
                 onProviderChange={handleProviderChange}
-                onCollapse={handleCollapseWorkspace}
+                onCollapse={() => {
+                  saveWorkspacePanelPreference(false);
+                  handleCollapseWorkspace();
+                }}
                 onOpenConfig={handleOpenAgentSettings}
                       refreshTrigger={
                         toolCompleteCount + workspaceRefreshTrigger

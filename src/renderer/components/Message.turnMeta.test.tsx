@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { Message as MessageType, ToolUseSimple } from '@/types/chat';
@@ -86,6 +86,7 @@ describe('Message — assistant turn meta footer', () => {
       />
     );
 
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
     expect(screen.getByRole('button', { name: '分支' })).toBeInTheDocument();
   });
 
@@ -104,6 +105,7 @@ describe('Message — assistant turn meta footer', () => {
       runtimeTurnAnchor: { turnId: 'turn-stable', rootUserMessageId: 'user-stable' },
     });
     const { rerender } = render(<Message message={message} onFork={vi.fn()} />);
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
     expect(screen.getByRole('button', { name: '分支' })).toBeInTheDocument();
 
     rerender(<Message message={message} />);

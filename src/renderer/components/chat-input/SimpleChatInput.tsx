@@ -1381,7 +1381,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
 
       {/* Queued messages retain their independent edit/cancel controls. */}
       {!isLauncherMode && (
-        <div className="pointer-events-none mb-2 flex w-full max-w-3xl flex-wrap items-end justify-end gap-2 empty:hidden">
+        <div className="pointer-events-none mb-2 flex w-full max-w-[792px] flex-wrap items-end justify-end gap-2 empty:hidden">
           {queuedMessages.length > 0 && (
             <QueuedMessagesPanel
               key={sessionId ?? 'pending'}
@@ -1397,7 +1397,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
       {/* Input container */}
       <div className={isLauncherMode
         ? 'relative w-full'
-        : 'pointer-events-auto relative w-full max-w-3xl'
+        : 'pointer-events-auto relative w-full max-w-[792px]'
       }>
         {!isLauncherMode && <ExecutionStatusBar
           key={sessionId ?? 'pending'}
@@ -1455,7 +1455,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
           />
         )}
 
-        <ComposerSurface joined={hasStatusBar}>
+        <ComposerSurface joined={hasStatusBar} className={isLauncherMode ? undefined : "shadow-none!"}>
           {/* Clickable area for focus - covers input area but not toolbar */}
           <div
             className="cursor-text"
@@ -1786,7 +1786,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                 title={configControlLockTitle ?? t('input.toolsTitle')}
               >
                 <WrenchIcon className="h-3.5 w-3.5" />
-                <span className="toolbar-label">{t('input.toolsLabel')}</span>
+                <span className="sr-only">{t('input.toolsLabel')}</span>
                 {enabledToolEntryCount > 0 && (
                   <span className="text-xs text-[var(--ink-muted)]">
                     {enabledToolEntryCount}

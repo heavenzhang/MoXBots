@@ -1473,6 +1473,7 @@
       "matches_one": "返回 {{count}} 条匹配行",
       "matches_other": "返回 {{count}} 条匹配行"
     },
+    "completedSteps": "已完成 {{count}} 个执行步骤",
     "showResults": "展开结果与时间（{{count}}）",
     "hideResults": "收起结果与时间（{{count}}）",
     "timing": {

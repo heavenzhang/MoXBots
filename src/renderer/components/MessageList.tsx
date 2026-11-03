@@ -390,7 +390,7 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
 }: FooterProps) {
   const spacerHeight = composerPlacement === 'flow' ? 16 : resolveChatBottomSpacerPx(bottomSpacerPx);
   return (
-    <div className="mx-auto max-w-3xl px-3">
+    <div className="mx-auto max-w-[824px] px-4">
       {pendingPermission && onPermissionDecision && (
         <div className="py-2">
           <PermissionPrompt
@@ -448,7 +448,7 @@ function MessageListFooter({ context }: { context?: MessageListContext }) {
   return context ? <VirtuosoFooter {...context.footer} /> : null;
 }
 function MessageListHeader({ context }: { context?: MessageListContext }) {
-  return context?.headerContent ? <div className="mx-auto max-w-3xl px-3">{context.headerContent}</div> : null;
+  return context?.headerContent ? <div className="mx-auto max-w-[824px] px-4">{context.headerContent}</div> : null;
 }
 const VIRTUOSO_COMPONENTS = { Header: MessageListHeader, Footer: MessageListFooter };
 
@@ -799,7 +799,7 @@ const MessageList = memo(function MessageList({
         // measurement fix without the clipping.
         return (
           <div
-            className="mx-auto max-w-3xl px-3 py-1 flow-root"
+            className="mx-auto max-w-[824px] px-4 py-2 flow-root"
             data-chat-search-scope=""
             data-message-id={message.id}
           >
