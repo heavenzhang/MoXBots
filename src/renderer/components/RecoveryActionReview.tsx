@@ -4,16 +4,16 @@ import type { RecoveryActionSnapshot, RecoveryMutationRequest, RecoveryReviewAct
 import { useSessionTaskOrchestrationContext } from './agent-status/useSessionTaskOrchestration';
 import { RecoveryActionDetails } from './RecoveryActionDetails';
 
-export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, inspectRevision, interrupted = false, continuation, onPrepareCheck }: {
+export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, inspectRevision, continuation, onPrepareCheck, onViewOperation }: {
   inspect: () => Promise<RecoveryActionSnapshot>;
   reconcile: (request: RecoveryMutationRequest) => Promise<RecoveryActionSnapshot>;
   disabled: boolean;
   sessionId: string;
   /** Each settled revision is inspected once, including after a busy transition. */
   inspectRevision?: string;
-  interrupted?: boolean;
   continuation?: ReactNode;
   onPrepareCheck?: (action: RecoveryReviewAction) => void;
+  onViewOperation?: (toolUseId: string) => void;
 }) {
   const { t } = useTranslation('chat');
   const taskContext = useSessionTaskOrchestrationContext();
@@ -23,7 +23,6 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(false);
   const [details, setDetails] = useState(false);
-  const [hadActions, setHadActions] = useState(false);
   const generation = useRef({ epoch: 0 });
   const pending = useRef(false);
   const lastAutoInspection = useRef<string | undefined>(undefined);
@@ -36,7 +35,7 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
     scope.epoch++;
     pending.current = false;
     lastAutoInspection.current = undefined;
-    setSnapshot(undefined); setBusy(false); setError(false); setDetails(false); setHadActions(false);
+    setSnapshot(undefined); setBusy(false); setError(false); setDetails(false);
     return () => { scope.epoch++; };
   }, [sessionId, disabled]);
 
@@ -56,7 +55,6 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
       assertCurrent();
       if (latest.sessionId !== target) throw new Error('review_owner_changed');
       setSnapshot(latest);
-      if (latest.actions.length) setHadActions(true);
       const owner = { sdkSessionId: latest.sdkSessionId, epoch: latest.epoch, authority: latest.reviewAuthority };
       const attempted = new Set<string>();
       // These existing owner-validated receipts record proof only. They never
@@ -128,40 +126,39 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
     finally { if (epoch === generation.current.epoch) { pending.current = false; setBusy(false); } }
   }, [snapshot]);
 
-  const pendingCount = snapshot?.actions.length ?? 0;
+  const attentionActions = snapshot?.actions.filter(action => snapshot.attention?.actionHashes.includes(action.actionHash)) ?? [];
+  const attentionCount = attentionActions.length;
+  const showCard = !disabled && !busy && !error && attentionCount > 0;
   useEffect(() => {
-    if (publishRecovery) publishRecovery({ sessionId, count: pendingCount, checking: busy, failed: error, open: openDetails });
+    publishRecovery?.(showCard ? { sessionId, count: attentionCount, checking: false, failed: false, open: openDetails } : undefined);
     return () => publishRecovery?.(undefined);
-  }, [publishRecovery, sessionId, pendingCount, busy, error, openDetails]);
-  const visible = hadActions || interrupted || details;
-  // Ordinary conversations have no recovery banner. Explicit continuation keeps
-  // its existing admission; inspecting evidence cannot claim task completion.
-  const showCard = !disabled && (visible || pendingCount > 0);
-  const checking = busy || (!snapshot && !error);
-  const state = checking ? 'checking' : error ? 'unavailable' : pendingCount ? 'pending' : 'ready';
+  }, [publishRecovery, sessionId, attentionCount, showCard, openDetails]);
   const buttonClass = 'rounded-md px-2 py-1 text-sm font-medium text-[var(--accent)] hover:bg-[var(--paper-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50';
-  return <div className={showCard ? 'shrink-0 px-4 py-2 text-sm text-[var(--ink-secondary)]' : ''}>
-    <section aria-label={showCard ? t('recoveryReview.title') : undefined} aria-busy={showCard && checking}
-      className={showCard ? 'mx-auto max-w-3xl rounded-lg border border-[var(--line)] bg-[var(--paper-inset)] px-3 py-2.5' : ''}>
-      <div hidden={!showCard}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0 flex-1">
-          <p role="status" className="font-medium text-[var(--ink)]">{t(`recoveryReview.states.${state}`, { count: pendingCount })}</p>
-          <p className="mt-1">{t(`recoveryReview.descriptions.${state}`)}</p>
-          {!!snapshot?.resolvedCount && <p className="mt-1">{t('recoveryReview.confirmedCount', { count: snapshot.resolvedCount })}</p>}
+  return <>
+    {showCard && <section aria-label={t('recoveryReview.decision.title')} className="shrink-0 px-4 py-2 text-sm text-[var(--ink-secondary)]">
+      <div className="mx-auto max-w-3xl rounded-lg border border-[var(--line)] bg-[var(--paper-inset)] px-3 py-2.5">
+        <p role="status" className="font-medium text-[var(--ink)]">{t('recoveryReview.decision.title')}</p>
+        <p className="mt-1">{t('recoveryReview.decision.explanation')}</p>
+        <ul className="mt-2 space-y-2">
+          {attentionActions.slice(0, 3).map(action => <li key={action.actionHash}>
+            <p className="break-words font-medium text-[var(--ink)]">{t(`recoveryReview.kinds.${action.presentation?.kind ?? 'unknown'}`)} · {action.presentation?.target ?? t('recoveryReview.decision.targetMissing')}</p>
+            <p>{action.association ? t('recoveryReview.decision.impact', { task: action.association.title, count: action.association.blockedTaskIds.length }) : t('recoveryReview.decision.currentTask')}</p>
+            {action.check && <p>{t(`recoveryReview.checks.${action.check.kind}`)}</p>}
+            <p>{t(`recoveryReview.decision.next.${action.presentation?.kind ?? 'unknown'}`)}</p>
+            {onViewOperation && action.toolUseIds?.[0] && <button type="button" className={buttonClass}
+              onClick={() => onViewOperation(action.toolUseIds![0])}>{t('recoveryReview.decision.viewOperation')}</button>}
+          </li>)}
+        </ul>
+        {attentionCount > 3 && <p className="mt-2">{t('recoveryReview.decision.more', { count: attentionCount - 3 })}</p>}
+        <div className="mt-2 flex flex-wrap gap-2">
+          <button type="button" className={buttonClass} aria-haspopup="dialog" onClick={openDetails}>{t('recoveryReview.decision.resolve')}</button>
         </div>
-        <button type="button" className={buttonClass} aria-haspopup="dialog" onClick={openDetails}>{t('recoveryReview.details')}</button>
       </div>
-      {error && <p role="alert" className="mt-2">{t('recoveryReview.changed')}</p>}
-      {!checking && <div className="mt-2 flex flex-wrap items-center gap-2">
-        {(pendingCount > 0 || error) && <button type="button" className={buttonClass} onClick={() => void run()}>{t('recoveryReview.checkAgain')}</button>}
-      </div>}
-      </div>
-      {/* Keep the continuation owner mounted through check/busy transitions. */}
-      <div hidden={showCard && checking} className={showCard ? 'mt-2' : ''}>{continuation}</div>
-    </section>
-    {showCard && details && <RecoveryActionDetails actions={snapshot?.actions ?? []} completed={snapshot?.completed ?? []} reviewed={snapshot?.reviewed ?? []}
-      independentTasks={snapshot?.independentTasks ?? []} busy={checking} error={error}
+    </section>}
+    {/* Background inspection never hides or remounts the original continuation owner. */}
+    {continuation}
+    {!disabled && details && <RecoveryActionDetails actions={attentionActions} completed={snapshot?.completed ?? []} reviewed={snapshot?.reviewed ?? []}
+      independentTasks={snapshot?.independentTasks ?? []} busy={busy} error={error}
       onClose={() => setDetails(false)} onPrepareCheck={onPrepareCheck} onSave={saveFollowup} />}
-  </div>;
+  </>;
 }

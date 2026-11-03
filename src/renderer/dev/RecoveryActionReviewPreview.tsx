@@ -11,11 +11,11 @@ import type { ToolUseSimple } from '../types/chat';
 
 const initialSnapshot: RecoveryActionSnapshot = {
   sessionId: 'preview-session', sdkSessionId: 'preview-sdk', epoch: 1,
-  reviewAuthority: 'preview-authority', ledgerDigest: 'preview-ledger', resolvedCount: 0,
+  reviewAuthority: 'preview-authority', ledgerDigest: 'preview-ledger', resolvedCount: 0, attention: {executionId:'preview-execution',actionHashes:['other-demo']},
   actions: [
     { actionHash: 'hook-denied-demo', tool: 'Bash', presentation: { kind: 'command' }, eligible: true, reason: 'native_hook_denied' },
     { actionHash: 'task-query-demo', tool: 'TaskGet', eligible: true, reason: 'builtin_task_query' },
-    { actionHash: 'other-demo', tool: 'Other', presentation: { kind: 'write_file', target: '考勤统计与薪资方案.docx' }, check: {kind:'file_matches'}, association: {taskId:'save-plan',title:'保存考勤方案',blockedTaskIds:['verify-plan']}, eligible: false, reason: 'external_receipt_required' },
+    { actionHash: 'other-demo', tool: 'Other', toolUseIds:['original-save-call'], presentation: { kind: 'write_file', target: '考勤统计与薪资方案.docx' }, check: {kind:'file_matches'}, association: {taskId:'save-plan',title:'保存考勤方案',blockedTaskIds:['verify-plan']}, eligible: false, reason: 'external_receipt_required' },
     { actionHash: 'missing-demo', tool: 'Other', eligible: false, reason: 'native_evidence_missing' },
   ],
 };
@@ -23,17 +23,17 @@ const initialSnapshot: RecoveryActionSnapshot = {
 function Preview() {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [draft, setDraft] = useState('');
-  const [scenario, setScenario] = useState<'blocked' | 'all-eligible'>(() =>
+  const [scenario, setScenario] = useState<'blocked' | 'all-eligible' | 'historical'>(() =>
     new URLSearchParams(window.location.search).get('scenario') === 'eligible' ? 'all-eligible' : 'blocked');
   const [scenarioRevision, setScenarioRevision] = useState(0);
-  const selectScenario = (value: 'blocked' | 'all-eligible') => {
+  const selectScenario = (value: 'blocked' | 'all-eligible' | 'historical') => {
     setSnapshot(initialSnapshot);
     setScenario(value);
     setScenarioRevision(revision => revision + 1);
   };
   const scenarioSnapshot = useMemo(() => scenario === 'all-eligible'
     ? { ...snapshot, actions: snapshot.actions.filter(action => action.eligible) }
-    : snapshot, [scenario, snapshot]);
+    : scenario === 'historical' ? {...snapshot, attention:undefined} : snapshot, [scenario, snapshot]);
   const latest = useRef(scenarioSnapshot);
   useLayoutEffect(() => { latest.current = scenarioSnapshot; }, [scenarioSnapshot]);
   const inspect = async () => latest.current;
@@ -58,11 +58,12 @@ function Preview() {
       <div className="mb-3 flex gap-2">
         <button className="rounded border px-3 py-1" onClick={() => selectScenario('blocked')}>Blocked evidence</button>
         <button className="rounded border px-3 py-1" onClick={() => selectScenario('all-eligible')}>All eligible</button>
+        <button className="rounded border px-3 py-1" onClick={() => selectScenario('historical')}>Historical only</button>
       </div>
       <RecoveryActionReview
         sessionId="preview-session"
         disabled={false}
-        interrupted
+        onViewOperation={id => setDraft(`查看原操作：${id}`)}
         onPrepareCheck={action => setDraft(`查询操作：${action.actionHash}`)}
         inspectRevision={`preview:${scenario}:${scenarioRevision}`}
         inspect={inspect}

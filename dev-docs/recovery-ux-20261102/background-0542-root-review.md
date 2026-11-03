@@ -1,0 +1,7 @@
+# Root integration 0.5.42 / 542.1
+
+Original producer33df108d1c8dbc54f43855d9b9fcd022b644317c is integrated on main065f2. Existing desktop/macOS/updater/sharedCI/main owner01a12bc2 remains sole publisher; old541.1 artifacts are immutable and are not promoted by this batch.
+
+Root reproduced12 eligible query receipts reading the same SDK history13 times (EXPECTED RED). Background collection now takes one invocation-local native observation, with SDK history and native records read concurrently under their existing5-second bounds. Every receipt still reloads the ledger and checks current owner, epoch, digest/CAS and native proof; file checks remain fresh. Later collection calls always read again. Unknown records are retained, and no tool/investigation/message is dispatched by collection. New regression verifies12 commits with one native read pair, later-call freshness, owner invalidation after first receipt, and concurrent bounded reads. This is bounded IO work, not a claim of signed-client latency acceptance.
+
+Incoming user-visible behavior is preserved: only exact current settled paused/incomplete TOOL_OUTCOME_UNKNOWN calls, with no existing automatic investigation or live delegation, request information. Historical entries and automatic check states remain silent. Root local/source CI/main/formal/native/channel gates are tracked separately in work/release-0542-20261104/owner; native acceptance is pending and original unknown/Stop/resource guards are retained.

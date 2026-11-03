@@ -2476,6 +2476,7 @@
   "recoveryReview": {
     "checking": "Checking interrupted operations",
     "unavailable": "Recovery check needs attention",
-    "pending": "{{count}} results unconfirmed"
+    "pending": "{{count}} results unconfirmed",
+    "decision": "Task needs your input"
   }
 }

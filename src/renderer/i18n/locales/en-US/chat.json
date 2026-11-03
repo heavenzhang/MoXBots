@@ -1530,7 +1530,7 @@
     }
   },
   "recoveryReview": {
-    "title": "Interruption recovery details",
+    "title": "Resolve a paused step",
     "close": "Close",
     "details": "View details",
     "checkAgain": "Check again",
@@ -1607,6 +1607,25 @@
       "file_outside_workspace": "The target is outside the original workspace and was not read automatically. Ask the Bot to check within existing authorization.",
       "external_check_required": "Check the original business system or execution service. Add context or ask the Bot to use an authorized query tool."
     },
-    "reviewedCount": "View reviewed records ({{count}})"
+    "reviewedCount": "View reviewed records ({{count}})",
+    "decision": {
+      "title": "This step needs information from you",
+      "explanation": "Automatic checks could not confirm the operations below, so the current task is paused. Provide a result or a way to look it up so Bot can verify and continue.",
+      "targetMissing": "Target was not retained; view the original operation",
+      "impact": "Impact: “{{task}}” and {{count}} dependent steps are waiting.",
+      "currentTask": "Impact: the current task must confirm this result before continuing.",
+      "resolve": "Provide information or handling instructions",
+      "viewOperation": "View original operation",
+      "more": "{{count}} more blocking operations are available in the details.",
+      "next": {
+        "write_file": "Provide the file location or observed save result so Bot can verify it.",
+        "edit_file": "Provide the file location or details of the edited content so Bot can verify it.",
+        "read_file": "Provide the file location and read access so Bot can check it.",
+        "command": "View the original command and provide its output or a way to check it. Do not rerun it before confirming the result.",
+        "tool": "View the original tool call and provide a business record ID or a result lookup location.",
+        "task_query": "Provide the task ID or query access so Bot can verify its status.",
+        "unknown": "Check the original conversation and describe the target and where its result can be checked."
+      }
+    }
   }
 }
