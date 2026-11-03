@@ -1,6 +1,8 @@
+import { createSessionExecution } from '../../shared/sessionExecution';
+import { emptyTaskLedger } from '../../shared/sessionTaskOrchestration';
 import { describe, expect, it, vi } from 'vitest';
 import { ContextRecoveryController, recoveryActionHash } from '../openai-bridge/context-recovery';
-import { inspectRecoveryActions, reconcileRecoveryAction, recoveryLedgerDigest, type RecoveryReviewDependencies } from './recovery-reconciliation';
+import { inspectRecoveryActions, reconcileRecoveryAction, reconcileAvailableRecoveryProof, recoveryLedgerDigest, type RecoveryReviewDependencies } from './recovery-reconciliation';
 
 function fixture(name = 'TaskGet', input: Record<string, unknown> = { taskId: '1' }) {
   const owner = { sessionId: 'product', sdkSessionId: 'native', epoch: 3, reviewAuthority: 'process-1' };
@@ -122,4 +124,59 @@ it('does not invent a description from missing or duplicate native evidence', as
   f.rows.length = 0;
   result = await inspectRecoveryActions(f.deps);
   expect(result.actions.every(a => a.presentation === undefined)).toBe(true);
+});
+
+describe('background recovery and necessary user decisions', () => {
+  function blockedFixture() {
+    const f = fixture('Write', {file_path:'/workspace/report.txt',content:'private'});
+    const ledger=emptyTaskLedger();
+    ledger.execution={...createSessionExecution({id:'execution',requestId:'human',originalInput:'save report',queueId:'q',now:1,
+      intent:{kind:'execute',objective:'save report',scope:'report',acceptanceCriteria:['saved']}}),
+      phase:'paused',reason:'TOOL_OUTCOME_UNKNOWN',lastSettledQueueId:'q'};
+    ledger.executionEvidence=[{id:'call-1',queueId:'q',name:'Write',digest:'observed',successful:false,observationOrder:1,mutating:true,pending:true}];
+    f.deps.taskLedger=()=>ledger;
+    return {...f,ledger};
+  }
+  it('projects only the exact pending call blocking the settled current task',async()=>{
+    const f=blockedFixture();
+    const snapshot=await inspectRecoveryActions(f.deps);
+    expect(snapshot.attention).toEqual({executionId:'execution',actionHashes:[f.hash]});
+    expect(snapshot.actions).toHaveLength(2);
+    expect(JSON.stringify(snapshot)).not.toContain('private');
+  });
+  it.each(['no-task','running','completed','stopped','unsettled','unrelated','automatic','delegation'])('keeps %s uncertainty silent',async mode=>{
+    const f=blockedFixture();
+    if(mode==='no-task')f.ledger.execution=undefined;
+    if(mode==='running')f.ledger.execution!.phase='running';
+    if(mode==='completed')f.ledger.execution!.phase='completed';
+    if(mode==='stopped')f.ledger.execution!.reason='stopped';
+    if(mode==='unsettled')f.ledger.execution!.lastSettledQueueId='old';
+    if(mode==='unrelated')f.ledger.executionEvidence![0].id='unrelated';
+    if(mode==='automatic')f.deps.canInvestigate=()=>true;
+    if(mode==='delegation')f.ledger.delegationClaims=[{toolUseId:'child',taskId:'t',executionId:'execution',state:'running'}];
+    expect((await inspectRecoveryActions(f.deps)).attention).toBeUndefined();
+  });
+  it('clears stale attention when the original owner starts its investigation',async()=>{
+    const f=blockedFixture(); f.deps.canInvestigate=()=>true;
+    f.deps.startInvestigation=vi.fn(async()=>{f.ledger.execution!.phase='running';});
+    const result=await reconcileRecoveryAction({...await f.request(),kind:'investigate'},f.deps);
+    expect(result.attention).toBeUndefined();
+    expect(f.deps.startInvestigation).toHaveBeenCalledOnce();
+  });
+  it('automatically settles proven calls without a mounted UI or dispatching an investigation',async()=>{
+    const f=fixture(); f.deps.startInvestigation=vi.fn();
+    await reconcileAvailableRecoveryProof(f.deps);
+    const result=await inspectRecoveryActions(f.deps);
+    expect(result.actions).toHaveLength(1);
+    expect(result.actions[0].eligible).toBe(false);
+    expect(f.adopt).toHaveBeenCalledOnce();
+    expect(f.deps.startInvestigation).not.toHaveBeenCalled();
+  });
+  it('retains unknown calls and stops on storage failure rather than retrying writes',async()=>{
+    const f=fixture();f.deps.save=vi.fn(async()=>{throw new Error('storage');});
+    await expect(reconcileAvailableRecoveryProof(f.deps)).rejects.toThrow('storage');
+    expect(f.deps.save).toHaveBeenCalledOnce();
+    expect(f.adopt).not.toHaveBeenCalled();
+    expect((await inspectRecoveryActions(f.deps)).actions).toHaveLength(2);
+  });
 });

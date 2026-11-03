@@ -108,7 +108,7 @@ export default memo(function ExecutionStatusBar({
   };
   const executionPresentation = useSessionExecutionPresentation(executionProps);
   const recoveryReview = orchestration.recoveryReview;
-  const hasRecoveryReview = !!recoveryReview && (recoveryReview.count > 0 || recoveryReview.failed);
+  const hasRecoveryReview = !!recoveryReview && recoveryReview.count > 0;
   const hasExecution = Boolean(executionPresentation);
   const hasAgents = Boolean(
     activity && (agents.length || background.length || tab?.hasMoreBefore),
@@ -278,7 +278,7 @@ export default memo(function ExecutionStatusBar({
               aria-label={t("executionStatus.summary")}
             >
               {hasRecoveryReview && <button type="button" className={buttonClass} onClick={recoveryReview.open}>
-                {t(recoveryReview.checking ? 'recoveryReview.checking' : recoveryReview.failed ? 'recoveryReview.unavailable' : 'recoveryReview.pending', {count: recoveryReview.count})}
+                {t('recoveryReview.decision')}
               </button>}
               {executionPresentation && !hasRecoveryReview &&
                 summaryButton(

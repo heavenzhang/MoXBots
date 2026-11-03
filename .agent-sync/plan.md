@@ -1248,3 +1248,6 @@ MB-RECOVERY-UX-20261102完整续接：用户要求补齐整个方案。原分支
 ### Root recovery UX release 0541 (MB-RECOVERY-UX-20261102)
 
 Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4 integrates exact producer 5cf4aac with main f719dad in codex/release-recovery-ux-0541-r1-20261103. Proposed immutable version 0.5.41/build541.1. Root lifecycle fence fix and 708 tests/typecheck passed; exact source CI/main, new artifact, fresh safe maintenance, signed native new UI and same-artifact 101 publication are pending. Prior 540.1 local acceptance/stable hold remains distinct. Other deployment owners and author workspaces are unchanged. Receipts: work/release-0541-20261103/owner.
+
+
+MB-RECOVERY-UX-20261102 / BG（2026-11-04）：用户要求后台处理、只在当前任务真实阻断且需要用户信息时提示。codex/recovery-background-20261104基于实际main065f2b6c；原账本/Stop/未知操作围栏保留，准确原生tool ID与当前暂停执行共同决定可选attention显示投影，不把历史数量或检查失败当用户待办。顶部/底部同源、具体操作/影响/处理办法和原工具定位，原补充/草稿/延后继续走既有owner。任务.agent-sync/tasks/codex-recovery-background-20261104-190274c9.md及dev-docs/recovery-ux-20261102/background-20261104.md。唯一desktop/macOS/updater/sharedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4已确认下一批接收；开发只提交证据，原owner统一版本/必要CI/main/新包原生验收/发布，不覆盖541.1冻结制品。

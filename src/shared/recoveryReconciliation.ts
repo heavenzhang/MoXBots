@@ -44,6 +44,22 @@ export interface RecoveryActionSnapshot {
   investigationAvailable?: boolean;
   independentTasks?: { taskId: string; title: string }[];
   checkedAt?: string;
+  /** Display only: the settled current task is blocked on these exact calls.
+   * Absence means historical uncertainty is handled silently. Never admission. */
+  attention?: { executionId: string; actionHashes: string[] };
+}
+
+export function recoveryAttention(snapshot: RecoveryActionSnapshot, ledger?: import('./sessionTaskOrchestration').SessionTaskLedger): RecoveryActionSnapshot['attention'] {
+  const execution = ledger?.execution;
+  if (!execution || !['paused', 'incomplete'].includes(execution.phase)
+    || execution.reason !== 'TOOL_OUTCOME_UNKNOWN'
+    || execution.lastSettledQueueId !== execution.currentQueueId
+    || snapshot.investigationAvailable
+    || ledger?.delegationClaims?.some(claim => claim.executionId === execution.id && claim.state !== 'settled')) return undefined;
+  const pendingIds = new Set(ledger?.executionEvidence?.filter(fact => fact.pending && fact.mutating).map(fact => fact.id));
+  const actionHashes = snapshot.actions.filter(action => !action.eligible && action.toolUseIds?.some(id => pendingIds.has(id)))
+    .map(action => action.actionHash);
+  return actionHashes.length ? { executionId: execution.id, actionHashes } : undefined;
 }
 export interface RecoveryActionRequest {
   reviewAuthority: string;
