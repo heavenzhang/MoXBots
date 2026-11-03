@@ -20,7 +20,7 @@ function fixture(name = 'TaskGet', input: Record<string, unknown> = { taskId: '1
     }),
   };
   return { deps, hash, rows, adopt, setCurrent: (v: boolean) => { current = v; }, setLedger: (v: unknown) => { ledger = v; },
-    request: async () => { const snapshot = await inspectRecoveryActions(deps); const { actions: _actions, resolvedCount: _count, ...identity } = snapshot; return { ...identity, actionHash: hash }; } };
+    request: async () => { const snapshot = await inspectRecoveryActions(deps); return { sessionId:snapshot.sessionId, sdkSessionId:snapshot.sdkSessionId, epoch:snapshot.epoch, reviewAuthority:snapshot.reviewAuthority, ledgerDigest:snapshot.ledgerDigest, actionHash:hash }; } };
 }
 
 describe('native query outcome review', () => {
@@ -90,6 +90,7 @@ describe('native query outcome review', () => {
       scope: () => 'turn', isActive: () => false, backup: async () => '' });
     f.deps.adopt = receipt => {
       if (receipt.kind === 'builtin-task-query-reviewed') context.adoptReadonlyTaskResolution(receipt);
+      else if (receipt.kind === 'native-completion-reviewed') context.adoptNativeCompletion(receipt);
       else context.adoptPreToolDenialResolution(receipt);
     };
     await reconcileRecoveryAction(await f.request(), f.deps);
@@ -97,4 +98,28 @@ describe('native query outcome review', () => {
     expect(context.beforeTool('Bash', { command: 'something-new' })).toContain('blocked');
     expect(context.canRetryInference()).toBe(false);
   });
+});
+
+
+it.each([['Read', 'read_file'], ['Write', 'write_file'], ['Edit', 'edit_file']] as const)('describes %s from exact native input without granting eligibility', async (name, kind) => {
+  const f = fixture(name, { file_path: '/private/work/方案.docx', content: 'private body', token: 'private token' });
+  const result = await inspectRecoveryActions(f.deps);
+  expect(result.actions.find(a => a.actionHash === f.hash)).toMatchObject({ eligible: false, presentation: { kind, target: '方案.docx' } });
+  expect(JSON.stringify(result)).not.toMatch(/private body|private token|private\/work/);
+  expect(f.deps.save).not.toHaveBeenCalled();
+});
+it('identifies uncertain Bash without exposing commands or guessing business effects', async () => {
+  const f = fixture('Bash', { command: 'SECRET_TOKEN=private-value do-something', description: 'private description' });
+  const result = await inspectRecoveryActions(f.deps);
+  expect(result.actions.find(a => a.actionHash === f.hash)).toMatchObject({ tool: 'Bash', eligible: false, presentation: { kind: 'command' } });
+  expect(JSON.stringify(result)).not.toMatch(/SECRET_TOKEN|private-value|private description/);
+});
+it('does not invent a description from missing or duplicate native evidence', async () => {
+  const f = fixture('Write', { file_path: '/private/file.txt' });
+  f.rows.push(structuredClone(f.rows[0]));
+  let result = await inspectRecoveryActions(f.deps);
+  expect(result.actions.find(a => a.actionHash === f.hash)?.presentation).toBeUndefined();
+  f.rows.length = 0;
+  result = await inspectRecoveryActions(f.deps);
+  expect(result.actions.every(a => a.presentation === undefined)).toBe(true);
 });

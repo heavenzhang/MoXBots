@@ -84,3 +84,36 @@ export async function reconcileKnownExecutionFailures(deps: ExecutionFailureRevi
     return next;
   }, current);
 }
+
+/** Synchronize completion facts only from the existing durable, verified native receipt owner. */
+export async function reconcileKnownExecutionCompletions(deps: ExecutionFailureReviewDependencies): Promise<void> {
+  if (!deps.isCurrent()) return;
+  const ledger = deps.load();
+  if (!object(ledger)) return;
+  const digest = recoveryLedgerDigest(ledger);
+  const controller = new ContextRecoveryController({ initialLedger: ledger, recoveryOwner: deps.owner,
+    scope: () => undefined, isActive: () => false, backup: async () => { throw new Error('Review cannot execute'); } });
+  const receipts = controller.inspectNativeCompletionReceipts();
+  if (!receipts.length) return;
+  const executionId = getSessionMetadata(deps.owner.sessionId)?.taskOrchestration?.execution?.id;
+  if (!executionId) return;
+  const entries = object(ledger.operationAttempts) && Array.isArray(ledger.operationAttempts.entries)
+    ? ledger.operationAttempts.entries as import('../openai-bridge/native-operation-journal').NativeOperationAttempt[] : [];
+  const current = () => deps.isCurrent() && recoveryLedgerDigest(deps.load()) === digest
+    && getSessionMetadata(deps.owner.sessionId)?.taskOrchestration?.execution?.id === executionId;
+  await deps.mutateLedger(deps.owner.sessionId, next => {
+    if (!current()) return next;
+    for (const fact of next.executionEvidence ?? []) {
+      if (!fact.pending || !fact.mutating) continue;
+      const receipt = receipts.find(item => item.toolName === fact.name && item.completions.some(proof => proof.toolUseId === fact.id));
+      if (!receipt) continue;
+      const nativeAttempt = entries.find(item => item.toolUseId === fact.id && item.scope === fact.queueId
+        && item.actionHash === receipt.actionHash && item.status === 'returned' && item.outcome === 'success');
+      if (!nativeAttempt && fact.digest !== deps.observationDigest(receipt.toolName, receipt.input)) continue;
+      fact.pending = false; fact.successful = true; fact.recovered = 'native-completion';
+      // A recovered mutation is not a fresh verification and does not advance any watermark.
+      fact.verificationEpoch = undefined;
+    }
+    return next;
+  }, current);
+}

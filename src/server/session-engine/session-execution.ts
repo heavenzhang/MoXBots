@@ -3,6 +3,7 @@ import { getSessionData, getSessionMetadata } from "../SessionStore";
 import { APP_CLI_NAME } from "../../shared/appProfile";
 import { escapeSystemReminderText } from "../../shared/systemReminder";
 import {
+  EXECUTION_LIMITS,
   createSessionExecution,
   canContinueSessionExecution,
   executionIntentSchema,
@@ -307,6 +308,7 @@ function executionReminder(
 请完成原始范围内的实际产物、检查和必要返工。多步骤本身不要求再次确认，不要以仅分析/计划结束代替交付。
 原任务已授权的必要文件或数据修改可以继续。历史复测中的“本轮只读”只约束那次核对，不得扩展为本次执行的永久禁写；具体未知操作仍须按其防重复保护处理。
 ${recoveryGuidance}
+${recoveryInvestigationGuidance(currentLedger(sessionId))}
 启动子 Agent 前，将其范围、依赖与验收要求登记到当前主任务。后台子任务未结算时主任务仍由你负责；可以让出当前模型回合等待原运行时事件，但不能宣布主任务完成。收到结果后核验并继续原清单；失败、结果未知或缺权限必须记录原因，不盲目重派。
 查询验收工具 ID 时，直接执行 ${APP_CLI_NAME} session tasks --json --data '{"kind":"list","view":"execution"}'。它返回当前执行与有界证据页，eligible=true 才表示当前具备验证资格；需要更早记录时在同一 data 中加入 beforeOrder，值取返回的 nextBeforeOrder。不要为过滤大账本而使用临时文件、Python、管道或重定向；这会被当作可能修改操作，使先前验证失效。完整任务清单仍可用 ${APP_CLI_NAME} session tasks --json 查看。每轮交付后，用同一命令 --data 提交：
 {"kind":"execution_review","executionId":"${execution.id}","queueId":"${execution.currentQueueId}","assessment":{"decision":"accept|rework|blocked|needs_user","summary":"具体结果或阻断","checks":[{"criterion":0,"toolUseIds":["实际成功且修改后的根工具调用ID"]}]}}。
@@ -354,7 +356,7 @@ export async function prepareSessionExecution(
   if (proof?.bodyDigest !== hash(request.text)) return noChange;
   // Only native receipt reconciliation may repair known failed execution facts.
   // Unavailable/currently busy history retains every existing pending fence.
-  if (currentLedger(request.sessionId)?.executionEvidence?.some(fact => fact.pending && fact.name === 'Bash')) {
+  if (currentLedger(request.sessionId)?.executionEvidence?.some(fact => fact.pending && fact.mutating)) {
     await engine.reconcileExecutionEvidence?.().catch(() => {});
   }
   const queueId = EXECUTION_QUEUE_PREFIX + randomUUID();
@@ -823,11 +825,44 @@ function acceptanceCorrectionGuidance(ledger: SessionTaskLedger, verificationEpo
       : `criterion ${issue.criterion} 引用的工具无有效验证资格：${issue.toolUseId}（须成功、属于当前原生代次，且在最后可能修改之后验证）`);
   return `\n上轮评审已收到，但验收证据未通过；已计入既有返工次数。${details.join('；')}。保留已有产物和真实进度，按下列完整条件核对并补充有效证据，不重做已完成或结果未知的操作。如果原范围缺权限或仍有无法核实的业务结果，请提交 blocked/needs_user 和具体原因，不能仅为结束循环而声称 accept。`;
 }
+export function canInvestigateSessionRecovery(sessionId: string): boolean {
+  const ledger = currentLedger(sessionId); const execution = ledger?.execution;
+  if (!execution || execution.reason !== 'TOOL_OUTCOME_UNKNOWN' || !['paused', 'incomplete'].includes(execution.phase)
+    || revoked.has(sessionId) || execution.lastSettledQueueId !== execution.currentQueueId
+    || execution.noProgress >= EXECUTION_LIMITS.maxNoProgress || execution.reworks >= EXECUTION_LIMITS.maxReworks
+    || (execution.reviewReceiptFailures ?? 0) >= EXECUTION_LIMITS.maxReviewReceiptFailures
+    || ledger?.delegationClaims?.some(claim => claim.executionId === execution.id && claim.state !== 'settled')) return false;
+  const pending = ledger?.executionEvidence?.filter(fact => fact.pending && fact.mutating) ?? [];
+  return pending.length > 0 && execution.recoveryPassDigest !== hash(pending.map(fact => [fact.id, fact.queueId, fact.digest]).sort());
+}
+/** Original SessionExecution owner admits one read-only investigation per unchanged uncertainty set. */
+export async function prepareSessionRecoveryInvestigation(sessionId: string): Promise<void> {
+  if (!canInvestigateSessionRecovery(sessionId)) return;
+  await mutateSessionTaskLedger(sessionId, ledger => {
+    if (!canInvestigateSessionRecovery(sessionId) || !ledger.execution) return ledger;
+    const pending = ledger.executionEvidence!.filter(fact => fact.pending && fact.mutating);
+    ledger.execution = { ...ledger.execution, phase: 'running', reason: 'RECOVERY_CHECKING',
+      recoveryPassDigest: hash(pending.map(fact => [fact.id, fact.queueId, fact.digest]).sort()),
+      continuation: {queueId: EXECUTION_QUEUE_PREFIX + randomUUID(), afterQueueId: ledger.execution.currentQueueId, state: 'pending'},
+    };
+    return ledger;
+  });
+}
+
+export function recoveryInvestigationGuidance(ledger: SessionTaskLedger | undefined): string {
+  const unknown = ledger?.executionEvidence?.filter(fact => fact.pending && fact.mutating) ?? [];
+  if (!unknown.length) return '';
+  const notes = (ledger?.recoveryFollowups ?? []).slice(-10).map(note =>
+    `${note.kind === 'defer' ? '用户延后处理' : '用户补充（尚未独立验证）'}：${escapeSystemReminderText(note.text.slice(0, 1000))}`).join('\n');
+  return `中断恢复检查：仍有 ${unknown.length} 次操作的结果未知。先查询已有执行记录和实际结果，明确已查内容、尚缺证据和受影响步骤。本次自动核查不重复旧操作；相关依赖未核实前不执行，已经在运行且不受影响的任务保留原owner继续。已有明确任务绑定、依赖已验收且资源包独立的步骤，可以沿原后台任务包继续；范围不明时只核查，不自行创建替代步骤或新资源包。请用原只读工具查文件/网页或直接任务list查询；需要外部账号/授权的查询请说明具体缺口。查询完给出具体结论，仍未知则提交blocked/needs_user，不无限检查。用户延后处理不代表任务完成，用户说明不代表系统验证。\n${notes}`;
+}
+
 export function sessionExecutionToolDenial(
   sessionId: string,
   queueId: string | undefined,
   name: string,
   input: unknown,
+  nativeLaunchToolUseId?: string,
 ): string | undefined {
   const ledger = currentLedger(sessionId);
   const execution = ledger?.execution;
@@ -843,6 +878,16 @@ export function sessionExecutionToolDenial(
   const readCommand = ["Bash", "Shell", "shell", "exec_command"].includes(name)
     ? parseSessionTaskCommand(input)
     : undefined;
+  // The digest survives settlement to prevent another automatic pass over the
+  // same uncertainty set. It is not a permanent permission mode: normal future
+  // calls acquire pending facts during their own final PreToolUse check.
+  if (execution && execution.currentQueueId === queueId && execution.reason === 'RECOVERY_CHECKING' && execution.recoveryPassDigest
+    && ledger?.executionEvidence?.some(fact => fact.pending && fact.mutating)
+    && !READ_TOOLS.has(name) && !['Agent', 'Task'].includes(name)
+    && !ledger.delegationClaims?.some(claim => claim.toolUseId === nativeLaunchToolUseId && claim.executionId === execution.id && ['reserved', 'running'].includes(claim.state))
+    && readCommand?.kind !== 'list' && readCommand?.kind !== 'execution_review') {
+    return 'RECOVERY_VERIFICATION_ONLY: 本轮正在核查结果未知的操作；主任务可只读查询及提交评审，已有独立任务包须经原资源与依赖校验。未知操作及其依赖未获执行权；不要换参数重做。';
+  }
   const planBookkeeping =
     admission?.intent?.kind === "plan" &&
     !admission.intent.preserveExecution &&
@@ -1274,7 +1319,25 @@ export async function reconcileSessionExecution(
   engine: SessionEngine,
   sessionId: string,
 ): Promise<void> {
-  const execution = currentLedger(sessionId)?.execution;
+  let execution = currentLedger(sessionId)?.execution;
+  const recovered = currentLedger(sessionId)?.executionEvidence;
+  if (execution?.reason === 'TOOL_OUTCOME_UNKNOWN' && ['paused', 'incomplete'].includes(execution.phase)
+    && execution.lastSettledQueueId === execution.currentQueueId && !revoked.has(sessionId) && !engine.isBusy()
+    && recovered?.some(fact => fact.recovered === 'native-completion') && !recovered.some(fact => fact.pending && fact.mutating)
+    && !currentLedger(sessionId)?.delegationClaims?.some(claim => claim.executionId === execution!.id && claim.state !== 'settled')) {
+    const expected = execution;
+    await mutateSessionTaskLedger(sessionId, ledger => {
+      if (ledger.execution?.id !== expected.id || ledger.execution.reason !== expected.reason || revoked.has(sessionId)
+        || ledger.executionEvidence?.some(fact => fact.pending && fact.mutating)) return ledger;
+      const next = { ...ledger.execution, phase: 'running' as const, reason: undefined };
+      if (!canContinueSessionExecution(next, Date.now())) return ledger;
+      next.continuation = { queueId: EXECUTION_QUEUE_PREFIX + randomUUID(), afterQueueId: next.currentQueueId, state: 'pending' };
+      ledger.execution = next;
+      return ledger;
+    });
+    execution = currentLedger(sessionId)?.execution;
+    if (execution?.continuation?.state === 'pending') await continueSessionExecution(engine, sessionId);
+  }
   if (
     !execution ||
     !isActive(execution.phase) ||

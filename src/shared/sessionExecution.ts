@@ -90,6 +90,7 @@ export const sessionExecutionSchema = z
     noProgress: z.number().int().nonnegative(),
     /** Consecutive completed turns with a proposed review but no native receipt. */
     reviewReceiptFailures: z.number().int().nonnegative().optional(),
+    recoveryPassDigest: z.string().regex(/^[a-f0-9]{64}$/).optional(),
     lastProgressDigest: z.string().max(256).optional(),
     currentQueueId: idSchema,
     lastSettledQueueId: idSchema.optional(),

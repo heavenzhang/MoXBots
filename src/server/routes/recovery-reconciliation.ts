@@ -1,6 +1,6 @@
 import { getSessionEngine } from '../session-engine';
 import { verifySessionUserAction } from '../session-engine/user-action-proof';
-import { RECOVERY_REVIEW_ACTIONS_PATH, RECOVERY_RECONCILE_PATH, type RecoveryActionRequest } from '../../shared/recoveryReconciliation';
+import { RECOVERY_REVIEW_ACTIONS_PATH, RECOVERY_RECONCILE_PATH, type RecoveryMutationRequest } from '../../shared/recoveryReconciliation';
 import type { SessionEngine } from '../session-engine/types';
 
 const json = (body: unknown, status = 200) => Response.json(body, { status, headers: { 'cache-control': 'no-store' } });
@@ -19,7 +19,7 @@ export async function handleRecoveryReconciliationRoute(path: string, request: R
         const chunk = await reader.read();
         if (chunk.done) break;
         size += chunk.value.byteLength;
-        if (size > 8192) { await reader.cancel(); return json({ error: 'recovery_review_invalid_request' }, 413); }
+        if (size > 32 * 1024) { await reader.cancel(); return json({ error: 'recovery_review_invalid_request' }, 413); }
         body += decoder.decode(chunk.value, { stream: true });
       }
       body += decoder.decode();
@@ -28,7 +28,7 @@ export async function handleRecoveryReconciliationRoute(path: string, request: R
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || !('sessionId' in parsed)
       || typeof parsed.sessionId !== 'string') return json({ error: 'recovery_review_invalid_request' }, 400);
     if (!verifySessionUserAction(request, parsed.sessionId, body)) return json({ error: 'native_recovery_review_required' }, 403);
-    return json(await engine.reconcileRecoveryAction(parsed as RecoveryActionRequest));
+    return json(await engine.reconcileRecoveryAction(parsed as RecoveryMutationRequest));
   } catch {
     return json({ error: 'recovery_review_changed_or_unavailable' }, 409);
   }

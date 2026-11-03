@@ -174,7 +174,15 @@ export interface PreToolDenialResolution {
   ledgerBeforeDigest: string;
   reviewedAt: string;
 }
-export type RecoveryActionResolution = ReadonlyTaskResolution | PreToolDenialResolution;
+export interface NativeCompletionResolution extends Omit<PreToolDenialResolution, 'kind' | 'denials'> {
+  kind: 'native-completion-reviewed';
+  completions: PreToolDenialResolution['denials'];
+}
+export type RecoveryActionResolution = ReadonlyTaskResolution | PreToolDenialResolution | NativeCompletionResolution;
+export function validNativeCompletionResolution(value: unknown, owner?: { sessionId: string; sdkSessionId: string }): value is NativeCompletionResolution {
+  return record(value) && value.kind === 'native-completion-reviewed' && ['Write', 'Edit', 'Bash'].includes(String(value.toolName))
+    && validPreToolDenialResolution({ ...value, kind: 'native-pre-tool-denied-reviewed', denials: value.completions }, owner);
+}
 
 export function validPreToolDenialResolution(value: unknown, owner?: { sessionId: string; sdkSessionId: string }): value is PreToolDenialResolution {
   const hash = (v: unknown) => typeof v === 'string' && /^[a-f0-9]{64}$/.test(v);
@@ -437,6 +445,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   private readonly operations = new NativeOperationJournal();
   private uncertainLedger = new Set<string>();
   private readonlyTasks = new Map<string, ReadonlyTaskResolution>();
+  private nativeCompletions = new Map<string, NativeCompletionResolution>();
   private preToolDenials = new Map<string, PreToolDenialResolution>();
   private deniedLedger = new Set<string>();
   private ledgerBlocked = false;
@@ -454,6 +463,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
   inspectActionLedger() {
     return {
       completedCount: this.completedLedger.size,
+      nativeCompletionReceiptCount: this.nativeCompletions.size,
       uncertainCount: this.uncertainLedger.size,
       blocked: this.ledgerBlocked,
       nativeErrorReceiptCount: this.nativeErrors.size,
@@ -582,6 +592,24 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     this.uncertainLedger.delete(receipt.actionHash);
     this.state?.uncertain.delete(receipt.actionHash);
     // Keep current-turn and transport fences. Only a later explicit turn may act.
+  }
+
+  inspectNativeCompletionReceipts(): NativeCompletionResolution[] { return structuredClone([...this.nativeCompletions.values()]); }
+
+  canAdoptNativeCompletion(receipt: NativeCompletionResolution): boolean {
+    if (!validNativeCompletionResolution(receipt, this.options.recoveryOwner) || this.state?.inFlight.size
+      || this.state?.recovering || this.ledgerBlocked || !this.uncertainLedger.has(receipt.actionHash)) return false;
+    return this.operations.canReviewCompletion(receipt.actionHash, receipt.completions);
+  }
+  adoptNativeCompletion(receipt: NativeCompletionResolution): void {
+    if (!this.canAdoptNativeCompletion(receipt)) throw new Error('context_recovery_required: Completion cannot be adopted');
+    this.operations.reviewCompletion(receipt.actionHash, receipt.completions, receipt.reviewedAt);
+    this.nativeCompletions.set(receipt.actionHash, structuredClone(receipt));
+    const evidence = { result: { nativeCompletionConfirmed: true }, digest: receipt.sourceSnapshotDigest };
+    this.completedLedger.set(receipt.actionHash, evidence);
+    this.state?.completed.set(receipt.actionHash, evidence);
+    this.uncertainLedger.delete(receipt.actionHash);
+    this.state?.uncertain.delete(receipt.actionHash);
   }
 
   /** Used only for pre-delivery inference retries, never tool execution. */
@@ -798,9 +826,20 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       }
       this.preToolDenials = new Map(value.preToolDenials.map(item => [item.actionHash, item]));
     }
-    this.operations.restore(value.operationAttempts, this.options.recoveryOwner, new Set(value.uncertain as string[]), new Set([...this.readonlyTasks.keys(), ...this.preToolDenials.keys()]));
+    if (value.nativeCompletions !== undefined) {
+      if (!Array.isArray(value.nativeCompletions) || value.nativeCompletions.length > MAX_LEDGER_ENTRIES
+        || !value.nativeCompletions.every(item => validNativeCompletionResolution(item, this.options.recoveryOwner)
+          && (value.uncertain as string[]).includes(item.actionHash))
+        || new Set(value.nativeCompletions.map(item => item.actionHash)).size !== value.nativeCompletions.length) {
+        throw new Error('context_recovery_required: Invalid completion receipts');
+      }
+      this.nativeCompletions = new Map(value.nativeCompletions.map(item => [item.actionHash, item]));
+      for (const receipt of this.nativeCompletions.values()) this.completedLedger.set(receipt.actionHash,
+        { result: { nativeCompletionConfirmed: true }, digest: receipt.sourceSnapshotDigest });
+    }
+    this.operations.restore(value.operationAttempts, this.options.recoveryOwner, new Set(value.uncertain as string[]), new Set([...this.readonlyTasks.keys(), ...this.preToolDenials.keys(), ...this.nativeCompletions.keys()]));
     this.uncertainLedger = new Set((value.uncertain as string[]).filter(key => !this.readonlyTasks.has(key)
-      && (!this.preToolDenials.has(key) || this.operations.isUncertain(key))));
+      && ((!this.preToolDenials.has(key) && !this.nativeCompletions.has(key)) || this.operations.isUncertain(key))));
     this.deniedLedger = new Set(value.denied as string[]);
     if (value.streamArmedOnly !== undefined && typeof value.streamArmedOnly !== 'boolean') throw new Error('context_recovery_required: Invalid stream protection marker');
     this.streamArmedOnly = value.streamArmedOnly === true;
@@ -813,10 +852,11 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       if (this.ledgerBlocked) throw new Error('Recovery ledger is blocked');
       if (stillCurrent && !stillCurrent()) throw new Error('Recovery owner changed before evidence commit');
       await this.options.persistLedger!({ version: 1, completed: [...this.completedLedger],
-        uncertain: [...new Set([...this.uncertainLedger, ...this.readonlyTasks.keys(), ...this.preToolDenials.keys()])], denied: [...this.deniedLedger], blocked: this.ledgerBlocked,
+        uncertain: [...new Set([...this.uncertainLedger, ...this.readonlyTasks.keys(), ...this.preToolDenials.keys(), ...this.nativeCompletions.keys()])], denied: [...this.deniedLedger], blocked: this.ledgerBlocked,
         projectionActive: this.projectionActive, streamArmedOnly: this.streamArmedOnly,
         noDispatch: [...this.noDispatchLedger], nativeErrors: [...this.nativeErrors],
         ...(this.readonlyTasks.size ? { readonlyTasks: [...this.readonlyTasks.values()] } : {}),
+        ...(this.nativeCompletions.size ? { nativeCompletions: [...this.nativeCompletions.values()] } : {}),
         ...(this.preToolDenials.size ? { preToolDenials: [...this.preToolDenials.values()] } : {}),
         ...(this.options.recoveryOwner ? { operationAttempts: this.operations.serialize() } : {}) }, stillCurrent);
     });

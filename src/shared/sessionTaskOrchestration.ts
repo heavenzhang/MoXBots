@@ -25,6 +25,7 @@ export interface SessionTaskRecord { id: string; title: string; blockedBy: strin
 export interface SessionTaskReview { taskId: string; attemptId: string; decision: 'accept' | 'reject'; evidence: string; rootToolUseId?: string }
 export interface SessionTaskLedger {
   revision: number;
+  recoveryFollowups?: import('./recoveryReconciliation').RecoveryFollowup[];
   /** Original human ingress and bounded ordinary execution, owned by this ledger. */
   executionInputs?: {
     requestId: string;
@@ -56,6 +57,7 @@ export interface SessionTaskLedger {
     pending?: boolean;
     /** A paired native process-exit receipt; failure remains failure and replay stays fenced. */
     settledFailure?: 'native-bash-exit';
+    recovered?: 'native-completion';
   }[];
   executionReview?: {
     id: string;
