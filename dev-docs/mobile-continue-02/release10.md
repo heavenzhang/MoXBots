@@ -1,0 +1,9 @@
+# MB-MOBILE-CONTINUE-02 · mobile0.3.0-rc.1 / build10
+
+Feature source45d474c6e3916f5617ac46d7ac9fc067e5c28f4c on mainbasef719dad17191fc9ea260e8775be85c143af36f1d. Original mobileowner01a12b99 selects compatible new work overview, original current-request/artifact/draft navigation and bounded directory status coverage. MINOR0.2.1→0.3.0, candidate0.3.0-rc.1, iOSnumeric0.3.0/CFBundleVersion10 and AndroidversionCode10. No dependency resolution, Host/native protocol or desktop version change.
+
+One feature+version candidate to originalsharedCI/mainowner01a12bc2 for review and coordinatedCI/main; no separate feature CI or second mobilePR. After exact accepted SHA/tree/main gate, mobileowner freezes new immutable native+JS artifact/provenance, signing/CRC/SHA/source/permission checks and meaningful native/simulator verification. iOS keyboard/VoiceOver, realaccount/Host/execution and production artifact persistence remain separate from synthetic QA.
+
+Immutable build9 retained as rollback:0.2.1-rc.1/build9, sourcefde114ce, tagmoxbots-ios-internal-0.2.1-rc.1-build9-fde114ce, IPA17993807B/SHA c8f4e1264a8ffa275e5d3364f3496862d22eb857c9b2c29cb24ca7e5ce8eacfd. Do not overwrite old tags or artifacts. Fresh deviceinventory at preparation: Kevin iPhone16ProMax unavailable; current app/lock queries4016, previousbuild9 install is historical verified state only. Prepare candidate/package independently; no Xu substitute, no install while target unavailable, no uninstall/reset or credential export. DailyMac/original101configuration protected; no paidmodel or business send.
+
+At this metadata commit no build10 signedpackage, simulatednative result, physical install or TestFlight/publication claimed. Evidence/next-step privateoutputmobile-continue-02-release-20261103. Producer124policy/type/full lint and independent actualQA/UI review details are in acceptance.md and INDEPENDENT-REVIEW.md; publisher must preserve their real-UI/fixture and native limitations.
