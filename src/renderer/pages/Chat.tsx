@@ -6883,6 +6883,7 @@ function ChatContent({
 
             {/* Message list with max-width */}
                 <MessageList
+                  revealTurnProcess={chatSearchOpen}
                   footerContent={taskResults}
                   messages={chatScrollModel.data}
                   streamingMessage={streamingMessage}

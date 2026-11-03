@@ -1,7 +1,7 @@
 import { useRemoteConversationContent } from '@/context/ConversationContentContext';
 import { AGENT_MENTIONS_TAG } from "../../shared/agentMentions";
 import AsyncQuestionCard from '@/components/AsyncQuestionCard';
-import { Fragment, memo, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ChevronDownIcon,
   CopyIcon,
@@ -29,6 +29,8 @@ import { TurnFileEditSummary } from '@/components/TurnFileEditSummary';
 import { useNotifyRowLayoutChanged } from '@/context/ChatRowLayoutContext';
 import { buildReplyMarkdown, downloadMarkdown, localDateStr } from '@/utils/markdownExport';
 import { formatDuration, formatTokens } from '@/utils/formatTokens';
+import { getProcessOutcome } from '@/utils/processPresentation';
+import { isSubagentContainerTool } from '@/components/tools/subagentActivity';
 import { groupContentBlocksForDisplay } from '@/utils/contentBlockDisplay';
 import { parseBackgroundTaskNotificationContent } from '@/utils/backgroundTaskStatus';
 import { copyPlainText } from '@/utils/clipboard';
@@ -47,6 +49,7 @@ import {
 } from '../../shared/systemReminder';
 
 interface MessageProps {
+  revealTurnProcess?: boolean;
   message: MessageType;
   citationSources?: CitationSources;
   isLoading?: boolean;
@@ -94,7 +97,7 @@ function areMessagesEqual(prev: MessageProps, next: MessageProps): boolean {
   // This eliminates mass re-renders of ALL N history messages when streaming
   // state changes (~30px × N ≈ 1500+px layout-recalc in long sessions).
   // exitPlanModeSlot — useMemo in MessageList keeps reference stable during streaming
-  if (prev.exitPlanModeSlot !== next.exitPlanModeSlot) return false;
+  if (prev.exitPlanModeSlot !== next.exitPlanModeSlot || prev.revealTurnProcess !== next.revealTurnProcess) return false;
   // initialUserCollapsed is consumed only by the initial state of a user row.
   // Once mounted, DOM measurement and explicit user expansion own the state.
   // Callback identities are stable, but optional action presence is row data:
@@ -288,12 +291,15 @@ function renderWidgetSegments(text: string, isLoading: boolean, unclosedNotice: 
  * Message component with memo optimization.
  * History messages won't re-render when streaming message updates.
  */
-const Message = memo(function Message({ message, citationSources, isLoading = false, onRewind, onRetry, onFork, exitPlanModeSlot, initialUserCollapsed = false }: MessageProps) {
+const Message = memo(function Message({ message, revealTurnProcess = false, citationSources, isLoading = false, onRewind, onRetry, onFork, exitPlanModeSlot, initialUserCollapsed = false }: MessageProps) {
   const remoteContent = useRemoteConversationContent();
   const { t } = useTranslation('app');
   const { openPreview } = useImagePreview();
   const toast = useToastOptional();
   const notifyRowLayoutChanged = useNotifyRowLayoutChanged();
+  const { t: tChat } = useTranslation('chat');
+  const processId = useId();
+  const [showTurnProcess, setShowTurnProcess] = useState(false);
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   // User message collapse: default collapsed, expand on click (no re-collapse)
@@ -540,7 +546,24 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
     );
   }
 
-  const groupedBlocks = groupContentBlocksForDisplay(message.content);
+  // Only an explicit, completed closeout grants permission to hide earlier
+  // commentary. Older runtimes may send substantive results between tools.
+  const canFoldTurn = !remoteContent && !isLoading && message.transcriptState === 'complete'
+    && Boolean(message.runtimeTurnAnchor)
+    && message.content.some(block => block.type === 'text'
+      && block.textPhase === 'final_answer' && block.isComplete && block.text?.trim());
+  const canFoldTool = (block: ContentBlock) => getProcessOutcome(block, false) === 'succeeded'
+    && !(block.tool && isSubagentContainerTool(block.tool.name));
+  const groupedBlocks = groupContentBlocksForDisplay(message.content).flatMap<ContentBlock | ContentBlock[]>(item => {
+    if (!canFoldTurn || !Array.isArray(item)) return [item];
+    const runs: ContentBlock[][] = [];
+    for (const block of item) {
+      const last = runs.at(-1);
+      if (last && canFoldTool(last[0]) === canFoldTool(block)) last.push(block);
+      else runs.push([block]);
+    }
+    return runs;
+  });
 
   // Determine which BlockGroup is the latest active section
   // Find the last BlockGroup index
@@ -579,12 +602,38 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
       )
     : -1;
 
+  const finalIndex = canFoldTurn ? groupedBlocks.findIndex(item =>
+    !Array.isArray(item) && item.textPhase === 'final_answer' && item.isComplete && item.text?.trim()) : -1;
+  const foldedIndexes = new Set<number>();
+  for (let index = 0; index < finalIndex; index++) {
+    const item = groupedBlocks[index];
+    if (Array.isArray(item) ? index !== exitPlanModeGroupIndex && item.every(canFoldTool)
+      : item.textPhase === 'commentary' && item.isComplete && !item.asyncQuestions
+        && !!item.text?.trim() && !hasWidgetTags(item.text)) {
+      foldedIndexes.add(index);
+    }
+  }
+  const hasTurnProcess = foldedIndexes.size > 0;
+  const processExpanded = revealTurnProcess || showTurnProcess;
+
   return (
     <div className="group/reply flex justify-start select-none" data-role="assistant">
       <div className="w-full">
         <article className="w-full py-2">
-          <div className="space-y-3">
+          {hasTurnProcess && (
+            <button type="button" aria-expanded={processExpanded} aria-controls={processId} disabled={revealTurnProcess}
+              className="mb-2 flex min-h-8 items-center gap-1.5 rounded-md px-1 text-xs text-[var(--ink-muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--ink)]"
+              onClick={() => {
+                notifyRowLayoutChanged(showTurnProcess ? 'block-group-collapse' : 'block-group-expand');
+                setShowTurnProcess(!showTurnProcess);
+              }}>
+              <ChevronDownIcon aria-hidden="true" className={`size-3 ${processExpanded ? '' : '-rotate-90'}`} />
+              {tChat(processExpanded ? 'process.hideTurnProcess' : 'process.showTurnProcess')}
+            </button>
+          )}
+          <div id={hasTurnProcess ? processId : undefined} className="space-y-3">
             {groupedBlocks.map((item, index) => {
+              const hiddenProcess = foldedIndexes.has(index) && !processExpanded;
               // Single text block — may contain <widget> tags for inline rendering
               if (!Array.isArray(item)) {
                 if (!remoteContent && item.type === 'text' && item.asyncQuestions) {
@@ -609,11 +658,8 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
                   // this text (moved to next tool/thinking, or a slow gap), the fade clears
                   // even though the turn is still loading. Without it the last chars linger faded.
                   return (
-                    <div
-                      key={index}
-                      className="flex justify-start w-full py-1 select-none"
-                    >
-                      <div className="ai-message-content w-full max-w-none text-[var(--ink)] select-text">
+                    <div key={index} hidden={hiddenProcess}>
+                      <div className="ai-message-content w-full max-w-none py-1 text-[var(--ink)] select-text">
                         <Markdown citationSources={citationSources} streaming={isLoading && index === groupedBlocks.length - 1 && !!message.streamingTextActive}>{item.text}</Markdown>
                       </div>
                     </div>
@@ -644,12 +690,14 @@ const Message = memo(function Message({ message, citationSources, isLoading = fa
               );
               return (
                 <Fragment key={`group-${index}`}>
-                  <BlockGroup
-                    blocks={item}
-                    compactHistory={!remoteContent && index !== exitPlanModeGroupIndex}
-                    isLatestActiveSection={isLatestActiveSection}
-                    isStreaming={isAssistantStreaming}
-                  />
+                  <div hidden={hiddenProcess}>
+                    <BlockGroup
+                      blocks={item}
+                      compactHistory={!hasTurnProcess && !remoteContent && index !== exitPlanModeGroupIndex}
+                      isLatestActiveSection={isLatestActiveSection}
+                      isStreaming={isAssistantStreaming}
+                    />
+                  </div>
                   {!remoteContent && groupAttachments.length > 0 && (
                     <div className="px-1">
                       <ToolAttachmentGallery attachments={groupAttachments} />

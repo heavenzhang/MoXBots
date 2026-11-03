@@ -1473,6 +1473,8 @@
       "matches_one": "Returned {{count}} matching line",
       "matches_other": "Returned {{count}} matching lines"
     },
+    "showTurnProcess": "Show execution process",
+    "hideTurnProcess": "Hide execution process",
     "completedSteps": "{{count}} completed steps",
     "showResults": "Show results and timing ({{count}})",
     "hideResults": "Hide results and timing ({{count}})",

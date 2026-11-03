@@ -60,6 +60,7 @@ function formatElapsedTime(totalSeconds: number, t: TFunction<'chat'>): string {
 }
 
 interface MessageListProps {
+  revealTurnProcess?: boolean;
   /** Transport-owned history/status and interaction slots, with no local Session authority. */
   headerContent?: React.ReactNode;
   footerContent?: React.ReactNode;
@@ -361,6 +362,7 @@ type FooterProps = {
 };
 
 interface MessageListContext extends MessageActionContext {
+  revealTurnProcess?: boolean;
   headerContent?: React.ReactNode;
   footer: FooterProps;
   streamingMessage: MessageType | null;
@@ -461,6 +463,7 @@ const MessageList = memo(function MessageList({
   headerContent,
   footerContent,
   composerPlacement = 'overlay',
+  revealTurnProcess,
   messages,
   streamingMessage,
   isLoading,
@@ -809,6 +812,7 @@ const MessageList = memo(function MessageList({
             >
               <Message
                 message={message}
+                revealTurnProcess={actionContext.revealTurnProcess}
                 citationSources={actionContext.citationSources.get(citationScope(message))}
                 isLoading={isStreamingMsg && actionContext.isLoading}
                 onRewind={canRewind ? actionContext.onRewind : undefined}
@@ -841,6 +845,7 @@ const MessageList = memo(function MessageList({
   const listContext = useMemo<MessageListContext>(
     () => ({
       ...messageActionContext,
+      revealTurnProcess,
       headerContent,
       streamingMessage,
       isLoading,
@@ -868,6 +873,7 @@ const MessageList = memo(function MessageList({
     }),
     [
       messageActionContext,
+      revealTurnProcess,
       headerContent,
       footerContent,
       composerPlacement,

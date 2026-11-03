@@ -47,7 +47,7 @@ const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollow
   const { counts, outcome } = summarizeProcessPhase(phase.entries);
   // Real active/failed calls and child navigation anchors remain reachable.
   const important = (entry: ProcessPhase['entries'][number]) =>
-    ['running', 'failed', 'stopped'].includes(entry.outcome)
+    ['running', 'failed', 'stopped', 'unknown'].includes(entry.outcome)
     || Boolean(entry.block.tool && isSubagentContainerTool(entry.block.tool.name));
   const single = phase.entries.length === 1;
   const visible = single || expanded ? phase.entries : phase.entries.filter(important);

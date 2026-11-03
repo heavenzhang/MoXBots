@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import type { Message as MessageType, ToolUseSimple } from '@/types/chat';
+import type { ContentBlock, Message as MessageType, ToolUseSimple } from '@/types/chat';
 
 vi.mock('@/context/ImagePreviewContext', () => ({ useImagePreview: () => ({ openPreview: vi.fn() }) }));
 vi.mock('@/analytics', () => ({ track: vi.fn() }));
@@ -132,4 +132,54 @@ describe('Message — assistant turn meta footer', () => {
     render(<Message message={message} />);
     expect(screen.getByRole('button', { name: /本轮编辑 1 个文件/ })).toBeInTheDocument();
   });
+});
+
+describe('completed turn process disclosure', () => {
+  const read = (id: string, result?: string): ContentBlock => ({
+    type: 'tool_use', tool: { id, name: 'Read', input: { file_path: id }, result, isLoading: false, streamIndex: 0 },
+  });
+  const message = assistantMsg({
+    transcriptState: 'complete',
+    runtimeTurnAnchor: { turnId: 'turn', rootUserMessageId: 'user' },
+    content: [
+      { type: 'text', text: '先查看文件。', textPhase: 'commentary', isComplete: true },
+      read('checked.txt', 'checked'),
+      read('unknown.txt'),
+      { type: 'text', text: '接下来汇总。', textPhase: 'commentary', isComplete: true },
+      { type: 'text', text: '成果已经交付。', textPhase: 'final_answer', isComplete: true },
+    ],
+  });
+
+  it('folds interleaved commentary and successful tool calls behind one control while leaving unknown work visible', () => {
+    const { container, rerender } = render(<Message message={message} />);
+    const disclosure = screen.getByRole('button', { name: '查看执行过程' });
+    expect(disclosure).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.getByText('成果已经交付。')).toBeVisible();
+    expect(screen.getByText('先查看文件。')).not.toBeVisible();
+    expect(screen.getByText('接下来汇总。')).not.toBeVisible();
+    expect(container.querySelector('[data-process-row="succeeded"]')).not.toBeVisible();
+    expect(container.querySelector('[data-process-row="unknown"]')).toBeVisible();
+    fireEvent.click(disclosure);
+    expect(screen.getByText('先查看文件。')).toBeVisible();
+    expect(screen.getByText('接下来汇总。')).toBeVisible();
+    expect(container.querySelector('[data-process-row="succeeded"]')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '收起执行过程' }));
+    expect(screen.getByText('接下来汇总。')).not.toBeVisible();
+    rerender(<Message message={message} revealTurnProcess />);
+    expect(screen.getByText('接下来汇总。')).toBeVisible();
+  });
+
+  it.each(['streaming', 'interrupted', 'missing-anchor', 'unmarked-answer'] as const)(
+    'keeps progress visible when the terminal answer cannot be established (%s)', condition => {
+      const row = { ...message };
+      if (condition === 'streaming' || condition === 'interrupted') row.transcriptState = condition;
+      if (condition === 'missing-anchor') row.runtimeTurnAnchor = undefined;
+      if (condition === 'unmarked-answer') row.content = (row.content as ContentBlock[]).map(block =>
+        block.textPhase === 'final_answer' ? { ...block, textPhase: undefined } : block);
+      render(<Message message={row} />);
+      expect(screen.queryByRole('button', { name: '查看执行过程' })).toBeNull();
+      expect(screen.getByText('先查看文件。')).toBeVisible();
+      expect(screen.getByText('成果已经交付。')).toBeVisible();
+    },
+  );
 });

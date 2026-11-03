@@ -23,6 +23,25 @@ function setup() {
 }
 
 describe('native blocks and product presentation', () => {
+  it('retains explicit native text phases and terminal state across transcript replay', async () => {
+    const { writer, content, presentation, durable } = setup();
+    presentation.confirmNativeBlocks('progress', 'progress', [
+      { type: 'text', text: 'Checking.', textPhase: 'commentary' },
+    ], undefined, 'native');
+    presentation.confirmNativeBlocks('final', 'final', [
+      { type: 'text', text: 'Done.', textPhase: 'final_answer' },
+    ], undefined, 'native');
+    content.finishTurn('complete', { runtimeTurnAnchor: { turnId: 'native-turn', rootUserMessageId: 'user' } });
+    await vi.advanceTimersByTimeAsync(100);
+    const message = transcriptMessages(durable).at(-1)!;
+    expect(message).toMatchObject({ transcriptState: 'complete', runtimeTurnAnchor: { turnId: 'native-turn' } });
+    expect(JSON.parse(message.content)).toMatchObject([
+      { text: 'Checking.', textPhase: 'commentary' },
+      { text: 'Done.', textPhase: 'final_answer' },
+    ]);
+    await writer.close();
+  });
+
   it('retains Provider tool identity in canonical content across display segmentation', async () => {
     const { writer, content, presentation } = setup();
     presentation.record('chat:server-tool-use-start', { id: 'provider-tool', name: 'image_generation', input: {},
