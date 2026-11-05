@@ -12,6 +12,7 @@ import { NATIVE_RESUME_BOUNDARY_MESSAGE } from '../../shared/nativeResumeBoundar
 import { projectErrorMessageResend, projectErrorRecovery, type ErrorRecovery } from './errorMessageResend';
 import { ErrorRecoveryAction } from '@/components/ErrorRecoveryAction';
 import { useChatDraftScope } from "@/hooks/useChatDraftScope";
+import { SessionFilesButton } from '@/components/SessionFilesButton';
 import type { SessionPlanTarget } from '../../shared/sessionPlanConfirmation';
 import { useNextPromptSuggestion } from '@/hooks/useNextPromptSuggestion';
 import TaskDiscussionRecovery from "@/components/TaskDiscussionRecovery";
@@ -4201,8 +4202,9 @@ function ChatContent({
     active: chatSearchOpen,
   });
 
-  const handleLoadOlderMessages = useCallback(() => {
-    void loadOlderMessages({
+  const handleLoadOlderMessages = useCallback((onError?: (error: unknown) => void) => {
+    return loadOlderMessages({
+      onError,
       beforePrepend: () => {
         const anchor = captureAnchor('prepend-older');
         if (anchor) {
@@ -4211,6 +4213,11 @@ function ChatContent({
       },
     });
   }, [captureAnchor, loadOlderMessages, preserveAnchorAfterPrepend]);
+  const handleLoadEarlierFiles = useCallback(async () => {
+    let failure: { error: unknown } | undefined;
+    await handleLoadOlderMessages(error => { failure = { error }; });
+    if (failure) throw failure.error;
+  }, [handleLoadOlderMessages]);
   const chatSearchSetQueryRef = useRef(chatSearch.setQuery);
   chatSearchSetQueryRef.current = chatSearch.setQuery;
   const closeChatSearch = useCallback(() => {
@@ -6570,6 +6577,8 @@ function ChatContent({
                       )}
               </button>
               {/* Developer setting keeps this legacy entry reversible while it is phased out. */}
+              <SessionFilesButton key={sessionId ?? 'pending'} active={isActive} messages={chatScrollModel.data}
+                hasMoreBefore={_hasMoreBefore} onLoadOlder={handleLoadEarlierFiles} onNavigate={handleNavigateToQuery} />
               {isChatHistoryEntryVisible && (
                 <>
                   {/* History button */}
