@@ -348,6 +348,41 @@ pub(crate) async fn cmd_agent_network_owned_start(
     result
 }
 #[tauri::command]
+pub(crate) async fn cmd_agent_network_owned_start_password(
+    app: tauri::AppHandle,
+    manager: tauri::State<'_, crate::sidecar::ManagedSidecarManager>,
+    state: tauri::State<'_, super::actor::ManagedAgentNetwork>,
+    issuer: String,
+    public_tls_ca_file: Option<String>,
+    username: String,
+    password: String,
+    consent_accepted: bool,
+    connection_id: Option<String>,
+    expected_registry_revision: Option<u64>,
+) -> Result<super::owned_account_desktop::StartedLogin, NetworkError> {
+    let password = zeroize::Zeroizing::new(password);
+    // Explicit consent and bounded credentials are checked before discovery,
+    // credential storage, or any remote authentication request.
+    let credentials = super::owned_account_desktop::PasswordCredentials::new(
+        username,
+        password,
+        consent_accepted,
+    )?;
+    let started = state
+        .owned_start_password(
+            &issuer,
+            public_tls_ca_file.as_deref(),
+            credentials,
+            connection_id.as_deref(),
+            expected_registry_revision,
+        )
+        .await?;
+    state
+        .inner()
+        .drive_owned_login(app, manager.inner().clone(), started.attempt_id.clone());
+    Ok(started)
+}
+#[tauri::command]
 pub(crate) async fn cmd_agent_network_owned_start_existing(
     app: tauri::AppHandle,
     manager: tauri::State<'_, crate::sidecar::ManagedSidecarManager>,

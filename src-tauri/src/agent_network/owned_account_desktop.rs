@@ -1,4 +1,4 @@
-//! Browser-login secrets are owned by the desktop process and stored only in
+//! Login secrets are owned by the desktop process and stored only in
 //! the explicitly selected operating-system credential backend.
 use super::{
     account::OwnedAccount,
@@ -77,6 +77,7 @@ struct Attempt {
     expires_at: u64,
     consuming: bool,
     replayable_result: bool,
+    native_password: bool,
     oauth: Option<super::owned_oauth::NativeOAuth>,
     phase: LoginPhase,
     failure: Option<NetworkError>,
@@ -165,6 +166,7 @@ fn can_resume_login(
             | "ACCOUNT_BINDING_CHANGED"
             | "OWNED_SESSION_INVALID"
             | "OWNED_REAUTH_REQUIRED"
+            | "OWNED_NATIVE_REAUTHENTICATION_REQUIRED"
             | "UNAUTHORIZED"
             | "OWNED_LOGIN_COMMIT_UNCONFIRMED"
             | "NETWORK_FEATURE_DISABLED"
@@ -228,6 +230,12 @@ fn recover_poll_failure(attempt: &mut Attempt, error: NetworkError) -> NetworkEr
         error
     };
     error.details = Some(serde_json::json!({"phase":attempt.phase.name(),"canRetry":resumable}));
+    if error.code == "OWNED_NATIVE_REAUTHENTICATION_REQUIRED" {
+        if let Some(candidate) = &attempt.reauthorization {
+            error.details.as_mut().expect("login details")["connectionId"] =
+                serde_json::json!(candidate.id);
+        }
+    }
     attempt.consuming = false;
     attempt.failure = Some(error.clone());
     crate::ulog_warn!(
@@ -264,6 +272,33 @@ pub(crate) struct StartedLogin {
     pub expires_at: u64,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub phase: Option<&'static str>,
+}
+/// Passwords live only for the single start request, never in an Attempt,
+/// pending credential record, receipt, or retry task.
+pub(crate) struct PasswordCredentials {
+    username: String,
+    password: Zeroizing<String>,
+}
+impl PasswordCredentials {
+    pub(crate) fn new(
+        username: String,
+        password: Zeroizing<String>,
+        consent_accepted: bool,
+    ) -> Result<Self, NetworkError> {
+        if !consent_accepted {
+            return Err(NetworkError::new("OWNED_NATIVE_CONSENT_REQUIRED"));
+        }
+        if username.is_empty()
+            || username.len() > 256
+            || username.contains(['\r', '\n', '\0'])
+            || password.is_empty()
+            || password.len() > 1024
+            || password.contains('\0')
+        {
+            return Err(NetworkError::new("OWNED_CREDENTIALS_INVALID"));
+        }
+        Ok(Self { username, password })
+    }
 }
 pub(crate) enum LoginProgress {
     Pending,
@@ -1048,10 +1083,39 @@ async fn start_transport(
         Ok((started, verifier, None))
     }
 }
+async fn start_password_transport(
+    client: &OwnedClient,
+    device: &str,
+    credentials: PasswordCredentials,
+) -> Result<(super::owned_login::OwnedLoginStart, Zeroizing<String>), NetworkError> {
+    let (verifier, challenge) = pkce();
+    let started = client
+        .start_password(
+            device,
+            &challenge,
+            &credentials.username,
+            &credentials.password,
+            true,
+        )
+        .await;
+    // Release the only desktop-owned password immediately after the request
+    // finishes, before constructing any long-lived state.
+    drop(credentials);
+    let started = started?;
+    Ok((
+        super::owned_login::OwnedLoginStart {
+            transaction_id: started.transaction_id,
+            expires_at: started.expires_at,
+            authorization_url: String::new(),
+            replayable_result: false,
+        },
+        verifier,
+    ))
+}
 fn persist_pending(attempt: &Attempt) -> Result<(), NetworkError> {
-    // Standard OAuth proof and the loopback listener are process-local. Only a
+    // Native proof (password PKCE or standard OAuth) is process-local. Only a
     // validated session enters the existing durable credential commit path.
-    if attempt.oauth.is_some() {
+    if attempt.oauth.is_some() || attempt.native_password {
         return Ok(());
     }
     write(
@@ -1064,7 +1128,7 @@ fn persist_pending(attempt: &Attempt) -> Result<(), NetworkError> {
     )
 }
 fn delete_pending(attempt: &Attempt) -> Result<(), NetworkError> {
-    if attempt.oauth.is_some() {
+    if attempt.oauth.is_some() || attempt.native_password {
         return Ok(());
     }
     delete(&pending_entry(
@@ -1324,6 +1388,7 @@ impl OwnedLoginManager {
             candidates,
             selected_id,
             None,
+            None,
         )
         .await
     }
@@ -1342,6 +1407,39 @@ impl OwnedLoginManager {
             candidates,
             record.id.clone(),
             Some(record),
+            None,
+        )
+        .await
+    }
+    pub(crate) async fn start_password(
+        &self,
+        issuer: &str,
+        owner_device_id: &str,
+        public_tls_ca_file: Option<&str>,
+        candidates: Vec<super::registry::StoredOwnedConnection>,
+        selected_id: String,
+        pinned: Option<super::registry::StoredOwnedConnection>,
+        credentials: PasswordCredentials,
+    ) -> Result<StartedLogin, NetworkError> {
+        let public_tls_ca = if let Some(record) = &pinned {
+            if super::account::origin(issuer)? != record.descriptor.issuer
+                || (public_tls_ca_file.is_some()
+                    && read_public_ca_file(public_tls_ca_file)? != record.public_tls_ca)
+            {
+                return Err(NetworkError::new("OWNED_TRUST_CHANGED"));
+            }
+            record.public_tls_ca.clone()
+        } else {
+            read_public_ca_file(public_tls_ca_file)?
+        };
+        self.start_scoped(
+            issuer,
+            owner_device_id,
+            public_tls_ca,
+            candidates,
+            selected_id,
+            pinned,
+            Some(credentials),
         )
         .await
     }
@@ -1353,6 +1451,7 @@ impl OwnedLoginManager {
         candidates: Vec<super::registry::StoredOwnedConnection>,
         selected_id: String,
         pinned: Option<super::registry::StoredOwnedConnection>,
+        credentials: Option<PasswordCredentials>,
     ) -> Result<StartedLogin, NetworkError> {
         if crate::app_dirs::IS_UPDATER_QA {
             return Err(NetworkError::new("UPDATER_QA_CREDENTIALS_DISABLED"));
@@ -1375,6 +1474,8 @@ impl OwnedLoginManager {
                 .and_then(|id| state.attempts.get(id))
             {
                 let same_intent = existing.lifecycle_epoch == lifecycle_epoch
+                    && !existing.native_password
+                    && credentials.is_none()
                     && existing.deadline() > now()
                     && existing.public_tls_ca == public_tls_ca
                     && existing.candidates == candidates
@@ -1421,7 +1522,14 @@ impl OwnedLoginManager {
         } else {
             uuid::Uuid::new_v4().to_string()
         };
-        let (started, verifier, oauth) = start_transport(&client, &device_id).await?;
+        let native_password = credentials.is_some();
+        let (started, verifier, oauth) = if let Some(credentials) = credentials {
+            let (started, verifier) =
+                start_password_transport(&client, &device_id, credentials).await?;
+            (started, verifier, None)
+        } else {
+            start_transport(&client, &device_id).await?
+        };
         let attempt_id = uuid::Uuid::new_v4().to_string();
         let attempt = Attempt {
             client,
@@ -1445,6 +1553,7 @@ impl OwnedLoginManager {
             expires_at: started.expires_at,
             consuming: false,
             replayable_result: started.replayable_result,
+            native_password,
             oauth,
             phase: LoginPhase::AwaitingAuthorization,
             failure: None,
@@ -1527,6 +1636,9 @@ impl OwnedLoginManager {
             .attempts
             .get(attempt_id)
             .ok_or_else(|| NetworkError::new("OWNED_LOGIN_NOT_FOUND"))?;
+        if attempt.native_password {
+            return Err(NetworkError::new("OWNED_LOGIN_INVALID"));
+        }
         if attempt.expires_at <= now() {
             return Err(NetworkError::new("OWNED_LOGIN_EXPIRED"));
         }
@@ -1605,14 +1717,15 @@ impl OwnedLoginManager {
         }
         Ok(LoginObservation::Pending {
             phase: attempt.phase.name(),
-            authorization: (attempt.child_epoch > 0 && attempt.staged_session.is_none()).then(
-                || StartedLogin {
-                    attempt_id: attempt.attempt_id.clone(),
-                    authorization_url: attempt.authorization_url.clone(),
-                    expires_at: attempt.expires_at,
-                    phase: Some(attempt.phase.name()),
-                },
-            ),
+            authorization: (!attempt.native_password
+                && attempt.child_epoch > 0
+                && attempt.staged_session.is_none())
+            .then(|| StartedLogin {
+                attempt_id: attempt.attempt_id.clone(),
+                authorization_url: attempt.authorization_url.clone(),
+                expires_at: attempt.expires_at,
+                phase: Some(attempt.phase.name()),
+            }),
         })
     }
     pub(crate) async fn retry(&self, attempt_id: &str) -> Result<(), NetworkError> {
@@ -1789,6 +1902,7 @@ impl OwnedLoginManager {
             // Legacy requests persist their consumption fence before network IO.
             // V2 proof is replayable, so pending polls do not rewrite Keychain.
             if attempt.oauth.is_none()
+                && !attempt.native_password
                 && !attempt.replayable_result
                 && attempt.staged_session.is_none()
                 && attempt.reauthorization.is_none()
@@ -1975,15 +2089,26 @@ impl OwnedLoginManager {
         epoch: u64,
         candidate: super::registry::StoredOwnedConnection,
     ) -> Result<LoginProgress, NetworkError> {
-        let (client, staged) = {
+        let (client, staged, native_password) = {
             let mut state = self.state.lock().await;
             let attempt = current_child(&mut state, scope, attempt_id, epoch)?;
-            (attempt.client.clone(), attempt.staged_session.clone())
+            (
+                attempt.client.clone(),
+                attempt.staged_session.clone(),
+                attempt.native_password,
+            )
         };
         if let Some(session) = staged {
             client.logout(&session.access_token).await?;
             let mut state = self.state.lock().await;
             current_child(&mut state, scope, attempt_id, epoch)?.staged_session = None;
+        }
+        if native_password {
+            // The temporary grant is bound to another device ID and cannot be
+            // repurposed. Ask for a new explicit password submission pinned to
+            // the selected registration; never retain/replay the password or
+            // switch this attempt to browser/OAuth authorization.
+            return Err(NetworkError::new("OWNED_NATIVE_REAUTHENTICATION_REQUIRED"));
         }
         let (started, verifier, oauth) = start_transport(&client, &candidate.device_id).await?;
         let mut state = self.state.lock().await;
@@ -2116,6 +2241,12 @@ impl OwnedLoginManager {
             if let Some(mut error) = reason {
                 error.retryable = false;
                 error.details = Some(serde_json::json!({"phase":"failed","canRetry":false}));
+                if error.code == "OWNED_NATIVE_REAUTHENTICATION_REQUIRED" {
+                    if let Some(candidate) = &attempt.reauthorization {
+                        error.details.as_mut().expect("login details")["connectionId"] =
+                            serde_json::json!(candidate.id);
+                    }
+                }
                 state
                     .receipts
                     .retain(|_, receipt| receipt.expires_at > now());
@@ -3190,12 +3321,289 @@ mod tests {
             expires_at: now() + 3600,
             consuming: true,
             replayable_result: true,
+            native_password: false,
             oauth: None,
             phase: LoginPhase::SavingSession,
             failure: None,
             reauthorization: None,
             completed: None,
         }
+    }
+
+    #[tokio::test]
+    async fn native_password_start_uses_pkce_and_original_poll_staging_and_cancel() {
+        use axum::{
+            routing::{get, post},
+            Json, Router,
+        };
+        use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine as _};
+        use sha2::Digest as _;
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let origin = format!("http://{}", listener.local_addr().unwrap());
+        let mut attempt = staged_login_attempt();
+        let device = "22222222-2222-4222-8222-222222222222";
+        let transaction = "33333333-3333-4333-8333-333333333333";
+        let session = attempt.staged_session.as_ref().unwrap().clone();
+        let expires = session.expires_at;
+        let principal = session.principal_id.clone();
+        let network = session.network_id.clone();
+        let calls = Arc::new(AtomicUsize::new(0));
+        let challenge = Arc::new(Mutex::new(String::new()));
+        let start_calls = calls.clone();
+        let poll_calls = calls.clone();
+        let inspect_calls = calls.clone();
+        let revoke_calls = calls.clone();
+        let start_challenge = challenge.clone();
+        let poll_challenge = challenge.clone();
+        let router = Router::new()
+            .route("/auth/login/password", post(move |Json(body): Json<serde_json::Value>| {
+                start_calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(body["deviceId"], device);
+                assert_eq!(body["username"], "synthetic-user");
+                assert_eq!(body["password"], "synthetic-password");
+                assert_eq!(body["consentAccepted"], true);
+                *start_challenge.lock().unwrap() = body["pkceChallenge"].as_str().unwrap().into();
+                async move { ([("cache-control", "no-store")], Json(serde_json::json!({
+                    "transactionId": transaction, "expiresAt": now() + 180
+                }))) }
+            }))
+            .route("/auth/login/poll", post(move |Json(body): Json<serde_json::Value>| {
+                poll_calls.fetch_add(1, Ordering::SeqCst);
+                assert_eq!(body["deviceId"], device);
+                assert_eq!(body["transactionId"], transaction);
+                let proof = body["pkceVerifier"].as_str().unwrap();
+                assert_eq!(*poll_challenge.lock().unwrap(),
+                    URL_SAFE_NO_PAD.encode(sha2::Sha256::digest(proof.as_bytes())));
+                let session = session.clone();
+                async move { ([("cache-control", "no-store")], Json(session)) }
+            }))
+            .route("/auth/session", get(move || {
+                inspect_calls.fetch_add(1, Ordering::SeqCst);
+                let principal = principal.clone();
+                let network = network.clone();
+                async move { ([("cache-control", "no-store")], Json(serde_json::json!({
+                    "principalId": principal, "networkId": network, "deviceId": device, "expiresAt": expires
+                }))) }
+            }).delete(move || {
+                revoke_calls.fetch_add(1, Ordering::SeqCst);
+                async { (reqwest::StatusCode::NO_CONTENT, [("cache-control", "no-store")]) }
+            }));
+        let server = tauri::async_runtime::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        attempt.client = super::OwnedClient::for_test(origin, attempt.instance.clone());
+        let credentials = super::PasswordCredentials::new(
+            "synthetic-user".into(),
+            Zeroizing::new("synthetic-password".into()),
+            true,
+        )
+        .unwrap();
+        let (started, verifier) =
+            super::start_password_transport(&attempt.client, device, credentials)
+                .await
+                .unwrap();
+        assert!(started.authorization_url.is_empty());
+        assert!(!started.replayable_result);
+        attempt.native_password = true;
+        attempt.replayable_result = started.replayable_result;
+        attempt.transaction_id = started.transaction_id;
+        attempt.verifier = verifier;
+        attempt.authorization_url = started.authorization_url;
+        attempt.expires_at = started.expires_at;
+        attempt.device_id = device.into();
+        attempt.staged_session = None;
+        attempt.consuming = false;
+        attempt.phase = LoginPhase::AwaitingAuthorization;
+        let manager = super::OwnedLoginManager::default();
+        let scope =
+            super::attempt_scope(&attempt.instance.issuer, &attempt.owner_device_id).unwrap();
+        {
+            let mut state = manager.state.lock().await;
+            let (generation, _) = state.begin(&scope);
+            assert!(state.register(&scope, generation, "uncertain"));
+            state.attempts.insert("uncertain".into(), attempt);
+        }
+        let super::LoginProgress::Authenticated(done) = manager.poll("uncertain").await.unwrap()
+        else {
+            panic!("password grant must use the existing staged completion path")
+        };
+        assert_eq!(done.device_id, device);
+        assert!(done.session_bound);
+        assert_eq!(calls.load(Ordering::SeqCst), 3);
+        assert!(
+            manager.state.lock().await.receipts.is_empty(),
+            "no durable commit before registry"
+        );
+        manager.cancel("uncertain").await.unwrap();
+        assert_eq!(calls.load(Ordering::SeqCst), 4);
+        assert!(manager.state.lock().await.attempts.is_empty());
+        server.abort();
+    }
+
+    #[test]
+    fn native_password_requires_explicit_consent_and_rejects_invalid_credentials() {
+        use super::PasswordCredentials;
+        let secret = || Zeroizing::new("synthetic-password".to_owned());
+        assert_eq!(
+            PasswordCredentials::new("user".into(), secret(), false)
+                .err()
+                .unwrap()
+                .code,
+            "OWNED_NATIVE_CONSENT_REQUIRED"
+        );
+        for username in ["", "bad\nname", "bad\0name"] {
+            assert_eq!(
+                PasswordCredentials::new(username.into(), secret(), true)
+                    .err()
+                    .unwrap()
+                    .code,
+                "OWNED_CREDENTIALS_INVALID"
+            );
+        }
+        assert_eq!(
+            PasswordCredentials::new("user".into(), Zeroizing::new(String::new()), true)
+                .err()
+                .unwrap()
+                .code,
+            "OWNED_CREDENTIALS_INVALID"
+        );
+        assert!(PasswordCredentials::new("user".into(), secret(), true).is_ok());
+    }
+
+    #[tokio::test]
+    async fn native_password_never_persists_pending_proof_or_opens_browser() {
+        let mut attempt = staged_login_attempt();
+        attempt.native_password = true;
+        attempt.authorization_url.clear();
+        // These deliberately invalid credential coordinates would fail if the
+        // native path attempted any Pending Keychain write or deletion.
+        attempt.instance.issuer = "not-an-issuer".into();
+        super::persist_pending(&attempt).unwrap();
+        super::delete_pending(&attempt).unwrap();
+        let manager = super::OwnedLoginManager::default();
+        manager
+            .state
+            .lock()
+            .await
+            .attempts
+            .insert("uncertain".into(), attempt);
+        assert_eq!(
+            manager.open("uncertain").await.unwrap_err().code,
+            "OWNED_LOGIN_INVALID"
+        );
+    }
+
+    #[tokio::test]
+    async fn native_password_existing_identity_requires_fresh_pinned_password_without_browser() {
+        use axum::{
+            routing::{delete, post},
+            Router,
+        };
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let mut attempt = staged_login_attempt();
+        let session = attempt.staged_session.as_ref().unwrap().clone();
+        let saved = candidate("saved-account", &session.principal_id);
+        attempt.native_password = true;
+        attempt.replayable_result = false;
+        attempt.consuming = false;
+        attempt.authorization_url.clear();
+        attempt.reauthorization = Some(saved.clone());
+        attempt.expected_principal = Some(session.principal_id.clone());
+        attempt.client = super::OwnedClient::for_test(
+            format!("http://{}", listener.local_addr().unwrap()),
+            attempt.instance.clone(),
+        );
+        let revocations = Arc::new(AtomicUsize::new(0));
+        let revoked = revocations.clone();
+        let router = Router::new()
+            .route(
+                "/auth/session",
+                delete(move |headers: axum::http::HeaderMap| {
+                    assert_eq!(
+                        headers["authorization"].to_str().unwrap(),
+                        format!("Bearer {}", session.access_token)
+                    );
+                    revoked.fetch_add(1, Ordering::SeqCst);
+                    async {
+                        (
+                            reqwest::StatusCode::NO_CONTENT,
+                            [("cache-control", "no-store")],
+                        )
+                    }
+                }),
+            )
+            .route(
+                "/auth/login/cancel",
+                post(|| async {
+                    (
+                        reqwest::StatusCode::NO_CONTENT,
+                        [("cache-control", "no-store")],
+                    )
+                }),
+            );
+        let server = tauri::async_runtime::spawn(async move {
+            axum::serve(listener, router).await.unwrap();
+        });
+        let manager = super::OwnedLoginManager::default();
+        let scope =
+            super::attempt_scope(&attempt.instance.issuer, &attempt.owner_device_id).unwrap();
+        {
+            let mut state = manager.state.lock().await;
+            let (generation, _) = state.begin(&scope);
+            assert!(state.register(&scope, generation, "uncertain"));
+            state.attempts.insert("uncertain".into(), attempt);
+        }
+        let error = manager.poll("uncertain").await.err().unwrap();
+        assert_eq!(error.code, "OWNED_NATIVE_REAUTHENTICATION_REQUIRED");
+        assert_eq!(error.details.as_ref().unwrap()["canRetry"], false);
+        assert_eq!(error.details.as_ref().unwrap()["connectionId"], saved.id);
+        assert_eq!(revocations.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            manager.retry("uncertain").await.unwrap_err().code,
+            error.code
+        );
+        {
+            let state = manager.state.lock().await;
+            let attempt = &state.attempts["uncertain"];
+            assert!(attempt.staged_session.is_none());
+            assert!(attempt.oauth.is_none());
+            assert!(attempt.authorization_url.is_empty());
+            assert_eq!(
+                attempt.child_epoch, 1,
+                "no child browser authorization was created"
+            );
+        }
+        manager.retire("uncertain", error).await;
+        let terminal = manager.observe("uncertain").await.err().unwrap();
+        assert_eq!(terminal.code, "OWNED_NATIVE_REAUTHENTICATION_REQUIRED");
+        assert_eq!(terminal.details.as_ref().unwrap()["connectionId"], saved.id);
+        assert_eq!(terminal.details.as_ref().unwrap()["canRetry"], false);
+        assert!(manager.state.lock().await.attempts.is_empty());
+        server.abort();
+    }
+
+    #[test]
+    fn native_password_unknown_poll_result_requires_restart_but_staged_session_can_retry() {
+        let mut attempt = staged_login_attempt();
+        attempt.native_password = true;
+        attempt.replayable_result = false;
+        attempt.staged_session = None;
+        attempt.phase = LoginPhase::ReceivingGrant;
+        let unknown =
+            super::recover_poll_failure(&mut attempt, NetworkError::new("NETWORK_QUERY_FAILED"));
+        assert_eq!(unknown.code, "OWNED_LOGIN_RESTART_REQUIRED");
+        assert_eq!(unknown.details.unwrap()["canRetry"], false);
+        let mut staged = staged_login_attempt();
+        staged.native_password = true;
+        staged.replayable_result = false;
+        staged.phase = LoginPhase::VerifyingIdentity;
+        let transient =
+            super::recover_poll_failure(&mut staged, NetworkError::new("NETWORK_QUERY_FAILED"));
+        assert_eq!(transient.code, "NETWORK_QUERY_FAILED");
+        assert_eq!(transient.details.unwrap()["canRetry"], true);
+        assert!(staged.staged_session.is_some());
     }
 
     #[tokio::test]
@@ -3386,9 +3794,19 @@ mod tests {
 
     #[tokio::test]
     async fn real_poll_retries_staged_grant_then_advances_to_identity_without_reconsuming() {
+        assert_staged_poll_retry(false).await;
+    }
+
+    #[tokio::test]
+    async fn native_password_retries_staged_grant_without_resubmitting_password_or_poll() {
+        assert_staged_poll_retry(true).await;
+    }
+
+    async fn assert_staged_poll_retry(native_password: bool) {
         use tokio::io::{AsyncReadExt, AsyncWriteExt};
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let mut attempt = staged_login_attempt();
+        attempt.native_password = native_password;
         attempt.device_id = "22222222-2222-4222-8222-222222222222".into();
         attempt.phase = LoginPhase::VerifyingIdentity;
         attempt.consuming = false;
@@ -3660,6 +4078,7 @@ mod tests {
             expires_at: now() + 3600,
             consuming: true,
             replayable_result: true,
+            native_password: false,
             oauth: None,
             phase: LoginPhase::SavingSession,
             failure: None,

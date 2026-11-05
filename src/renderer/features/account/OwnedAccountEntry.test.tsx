@@ -14,6 +14,7 @@ const mocks = vi.hoisted(() => ({
   accept: vi.fn(),
   start: vi.fn(),
   reauthenticate: vi.fn(),
+  password: vi.fn(),
   open: vi.fn(),
   poll: vi.fn(),
   cancel: vi.fn(),
@@ -36,6 +37,7 @@ vi.mock("@/api/agentNetwork", async (original) => ({
   ...(await original<typeof import("@/api/agentNetwork")>()),
   startOwnedNetworkLogin: mocks.start,
   startOwnedNetworkReauthentication: mocks.reauthenticate,
+  startOwnedNetworkPasswordLogin: mocks.password,
   openOwnedNetworkAuthorization: mocks.open,
   pollOwnedNetworkLogin: mocks.poll,
   cancelOwnedNetworkLogin: mocks.cancel,
@@ -55,9 +57,18 @@ vi.mock("@/features/feedback/api", () => ({
 
 import OwnedAccountEntry from "./OwnedAccountEntry";
 
-function accountAction(name: string) {
+function browserAccountAction(name: string) {
   fireEvent.click(screen.getByRole("button", { name }));
   fireEvent.click(screen.getAllByRole("button", { name }).at(-1)!);
+  fireEvent.click(screen.getByRole("button", { name: "使用浏览器登录（备用）" }));
+}
+function submitNativePassword() {
+  fireEvent.click(screen.getByRole("button", { name: "登录 MoXBots" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "登录 MoXBots" }).at(-1)!);
+  fireEvent.change(screen.getByLabelText("账号或邮箱"), { target: { value: "synthetic@example.test" } });
+  fireEvent.change(screen.getByLabelText("密码"), { target: { value: "synthetic-password" } });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "同意并登录" }));
 }
 
 const makeRegistry = (ownedAccount?: {
@@ -147,6 +158,74 @@ it("shows a clear unconfigured state and does not call any login or official acc
   expect(mocks.start).not.toHaveBeenCalled();
 });
 
+it("defaults to native password login and pins saved identity/revision without opening a browser", async () => {
+  mocks.registry = makeRegistry({ state: "signInRequired", principalId: "principal-existing", expiresAt: null });
+  mocks.password.mockResolvedValue({ attemptId: "password-a", authorizationUrl: "", phase: "receiving_grant", expiresAt: 1_900_000_000 });
+  const authenticated = makeRegistry({ state: "authenticated", principalId: "principal-existing", expiresAt: 1_900_000_000 });
+  mocks.poll.mockResolvedValue({ status: "authenticated", registry: authenticated });
+  mocks.select.mockResolvedValue(authenticated);
+  render(<OwnedAccountEntry expanded />);
+  fireEvent.click(screen.getByRole("button", { name: "登录 MoXBots" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "登录 MoXBots" }).at(-1)!);
+  expect(screen.getByLabelText("账号或邮箱")).toBeVisible();
+  expect(screen.getByRole("checkbox")).not.toBeChecked();
+  fireEvent.change(screen.getByLabelText("账号或邮箱"), { target: { value: "synthetic@example.test" } });
+  fireEvent.change(screen.getByLabelText("密码"), { target: { value: "synthetic-password" } });
+  fireEvent.click(screen.getByRole("checkbox"));
+  fireEvent.click(screen.getByRole("button", { name: "同意并登录" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
+  expect(mocks.password).toHaveBeenCalledExactlyOnceWith({
+    issuer: "https://login.example.test", username: "synthetic@example.test", password: "synthetic-password", consentAccepted: true,
+    connectionId: "owned-a", expectedRegistryRevision: 2,
+  });
+  expect(mocks.accept).toHaveBeenCalledWith(authenticated);
+  expect(mocks.start).not.toHaveBeenCalled();
+  expect(mocks.reauthenticate).not.toHaveBeenCalled();
+  expect(mocks.open).not.toHaveBeenCalled();
+});
+it("cancels a late password start after the account boundary changes without publishing its result", async () => {
+  let resolveStart!: (value: unknown) => void;
+  mocks.password.mockImplementationOnce(() => new Promise((resolve) => { resolveStart = resolve; }));
+  const view = render(<OwnedAccountEntry expanded />);
+  await waitFor(() => expect(mocks.connections).toHaveBeenCalledOnce());
+  submitNativePassword();
+  mocks.registry = makeRegistry({ state: "signInRequired", principalId: "replacement-principal", expiresAt: null });
+  view.rerender(<OwnedAccountEntry expanded />);
+  await waitFor(() => expect(screen.queryByLabelText("密码")).not.toBeInTheDocument());
+  mocks.accept.mockClear();
+  await act(async () => { resolveStart({ attemptId: "late-native", authorizationUrl: "", expiresAt: 1_900_000_000 }); });
+  expect(mocks.cancel).toHaveBeenCalledExactlyOnceWith("late-native");
+  expect(mocks.accept).not.toHaveBeenCalled();
+  expect(mocks.open).not.toHaveBeenCalled();
+});
+it("ignores a late native authenticated observation after explicit cancellation", async () => {
+  let resolvePoll!: (value: unknown) => void;
+  mocks.password.mockResolvedValue({ attemptId: "native-late-poll", authorizationUrl: "", expiresAt: 1_900_000_000 });
+  mocks.poll.mockImplementationOnce(() => new Promise((resolve) => { resolvePoll = resolve; }));
+  render(<OwnedAccountEntry expanded />);
+  submitNativePassword();
+  await waitFor(() => expect(mocks.poll).toHaveBeenCalledOnce());
+  fireEvent.click(screen.getByRole("button", { name: "取消本次登录" }));
+  await waitFor(() => expect(screen.queryByLabelText("密码")).not.toBeInTheDocument());
+  mocks.accept.mockClear();
+  await act(async () => { resolvePoll({ status: "authenticated", registry: makeRegistry({ state: "authenticated", principalId: "stale-principal", expiresAt: 1_900_000_000 }) }); });
+  expect(mocks.cancel).toHaveBeenCalledExactlyOnceWith("native-late-poll");
+  expect(mocks.accept).not.toHaveBeenCalled();
+  expect(mocks.select).not.toHaveBeenCalled();
+});
+it("detaches native presentation on unmount without revoking an accepted start or publishing late results", async () => {
+  let resolveStart!: (value: unknown) => void;
+  mocks.password.mockImplementationOnce(() => new Promise((resolve) => { resolveStart = resolve; }));
+  const view = render(<OwnedAccountEntry expanded />);
+  submitNativePassword();
+  view.unmount();
+  mocks.accept.mockClear();
+  await act(async () => { resolveStart({ attemptId: "detached-native", authorizationUrl: "", expiresAt: 1_900_000_000 }); });
+  expect(mocks.cancel).not.toHaveBeenCalled();
+  expect(mocks.accept).not.toHaveBeenCalled();
+  expect(mocks.open).not.toHaveBeenCalled();
+});
+
 it("keeps a valid account signed in while the network is offline and removes only this instance on sign-out", async () => {
   const registry = makeRegistry({
     state: "authenticated",
@@ -192,7 +271,8 @@ it("routes authorization recovery through the existing AgentNet page", async () 
   render(
     <OwnedAccountEntry expanded onOpenAgentNetwork={onOpenAgentNetwork} />,
   );
-  accountAction("授权恢复 MoXBots 账号");
+  fireEvent.click(screen.getByRole("button", { name: "授权恢复 MoXBots 账号" }));
+  fireEvent.click(screen.getAllByRole("button", { name: "授权恢复 MoXBots 账号" }).at(-1)!);
   await waitFor(() => expect(mocks.select).toHaveBeenCalledWith("owned-a"));
   expect(onOpenAgentNetwork).toHaveBeenCalledOnce();
   expect(mocks.start).not.toHaveBeenCalled();
@@ -239,7 +319,7 @@ it("uses the configured product issuer even when another owned instance is selec
   });
   mocks.select.mockResolvedValue(authenticated);
   render(<OwnedAccountEntry expanded />);
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   expect(
     screen.queryByRole("tab", { name: "设备 key（旧方式）" }),
   ).not.toBeInTheDocument();
@@ -273,7 +353,7 @@ it("shows an unauthenticated product account when only an isolated QA account ex
     ),
   } as NetworkRegistry;
   render(<OwnedAccountEntry expanded />);
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   expect(screen.queryByLabelText("服务 URL")).not.toBeInTheDocument();
   expect(mocks.start).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
@@ -446,7 +526,7 @@ it("cancels a pending login when the same issuer account generation changes", as
   );
   const view = render(<OwnedAccountEntry expanded />);
   await waitFor(() => expect(mocks.connections).toHaveBeenCalledOnce());
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
   fireEvent(window, new Event("focus"));
@@ -471,7 +551,7 @@ it("cancels a pending login when the same issuer account generation changes", as
   view.rerender(<OwnedAccountEntry expanded />);
   await waitFor(() => expect(mocks.cancel).toHaveBeenCalledWith("attempt-a"));
   expect(screen.queryByText("等待浏览器登录")).not.toBeInTheDocument();
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
   expect(mocks.start).toHaveBeenCalledOnce();
@@ -493,7 +573,7 @@ it("ends locally after explicit cancellation fails and permits a new login", asy
   mocks.cancel.mockRejectedValueOnce(new Error("cancel unavailable"));
   render(<OwnedAccountEntry expanded />);
   await waitFor(() => expect(mocks.connections).toHaveBeenCalledOnce());
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
   fireEvent.click(screen.getByRole("button", { name: "取消登录" }));
@@ -501,7 +581,7 @@ it("ends locally after explicit cancellation fails and permits a new login", asy
   await waitFor(() =>
     expect(screen.queryByText("等待浏览器登录")).not.toBeInTheDocument(),
   );
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
   expect(mocks.start).toHaveBeenCalledTimes(2);
@@ -514,7 +594,7 @@ it("reauthenticates the saved product identity once and closes after its browser
   mocks.poll.mockResolvedValue({ status: "authenticated", registry: authenticated });
   mocks.select.mockResolvedValue(authenticated);
   render(<OwnedAccountEntry expanded />);
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
   expect(mocks.reauthenticate).toHaveBeenCalledExactlyOnceWith("owned-a", saved.revision);
@@ -530,7 +610,7 @@ it("keeps native reauthentication errors visible without silently creating a new
   mocks.registry = makeRegistry({ state: "signInRequired", principalId: "principal-existing", expiresAt: null });
   mocks.reauthenticate.mockRejectedValueOnce(new Error("REVISION_CONFLICT"));
   render(<OwnedAccountEntry expanded />);
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   expect(await screen.findByText("REVISION_CONFLICT")).toBeInTheDocument();
   expect(mocks.start).not.toHaveBeenCalled();
@@ -541,7 +621,7 @@ it("does not start a saved account login without its native registry revision", 
   mocks.registry = makeRegistry({ state: "signInRequired", principalId: "principal-existing", expiresAt: null });
   delete mocks.registry.revision;
   render(<OwnedAccountEntry expanded />);
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await waitFor(() => expect(screen.getByRole("button", { name: "在浏览器中继续" })).toBeEnabled());
   expect(mocks.start).not.toHaveBeenCalled();
@@ -560,7 +640,7 @@ it("does not accept a late authenticated poll after the account entry unmounts",
   const view = render(<OwnedAccountEntry expanded />);
   await waitFor(() => expect(mocks.connections).toHaveBeenCalledOnce());
   mocks.accept.mockClear();
-  accountAction("登录 MoXBots");
+  browserAccountAction("登录 MoXBots");
   fireEvent.click(screen.getByRole("button", { name: "在浏览器中继续" }));
   await screen.findByText("等待浏览器登录");
   fireEvent(window, new Event("focus"));

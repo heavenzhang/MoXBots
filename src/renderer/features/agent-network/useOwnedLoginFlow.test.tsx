@@ -42,6 +42,17 @@ beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(1800000000000);
 });
+it("never opens an authorization URL in password mode, including unexpected reauthorization", async () => {
+  const { result, actions } = setup({
+    authorizationMode: "password",
+    onOwnedPoll: vi.fn().mockResolvedValue({ ...attempt, authorizationUrl: "https://cloud.test/next" }),
+  });
+  await act(async () => { await result.current.start("https://cloud.test"); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+  expect(actions.onOwnedOpen).not.toHaveBeenCalled();
+  expect(result.current.stopped).toBe(true);
+  expect(result.current.error).toContain("已有设备身份");
+});
 afterEach(() => {
   cleanup();
   nativeEvents.clear();

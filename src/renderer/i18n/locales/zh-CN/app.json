@@ -41,6 +41,18 @@
     "signOutMessage": "将退出“{{name}}”实例并移除此设备的本地连接。不会退出 MyAgents 官方账号。",
     "failed": "操作失败，请稍后重试。"
   },
+  "ownedNativeLogin": {
+    "hint": "使用 MoXBots 账号在客户端内登录。",
+    "service": "登录服务：{{service}}",
+    "username": "账号或邮箱",
+    "password": "密码",
+    "passwordHint": "密码仅用于本次登录，提交后立即清空输入。",
+    "consent": "我同意向 MoXBots 提供基本身份、姓名和邮箱信息以完成登录。",
+    "submit": "同意并登录",
+    "checking": "正在验证并保存登录…",
+    "cancel": "取消本次登录",
+    "browserFallback": "使用浏览器登录（备用）"
+  },
   "globalSidebar": {
     "resize": "拖动调整侧边栏宽度",
     "legacySpaceUnavailable": "此链接来自旧版协作空间，当前社区不支持该资源。请从个人菜单中的「协作社区」进入新的社区。",
@@ -1471,6 +1483,11 @@
     "descriptionFor": "{{name}} 的简介",
     "enableAgent": "在网络中开启 {{name}}",
     "errors": {
+      "ownedCredentialsInvalid": "账号或密码不正确，请重新输入。",
+      "ownedPasswordUnavailable": "当前服务暂不支持客户端内密码登录。可稍后重试，或主动选择浏览器登录。",
+      "ownedConsentRequired": "请先确认基本身份和邮箱授权。",
+      "ownedNativeReauthenticationRequired": "检测到已有设备身份。请从网络管理选择原账号，再在客户端内重新输入密码登录。",
+      "ownedLoginRateLimited": "登录尝试过于频繁，请稍后再试。",
       "conflict": "设置已在其他客户端改变，请查看最新设置后重试。",
       "descriptionTooLong": "简介不能超过 4096 字节。",
       "unconfirmed": "尚未确认保存结果，请刷新后查看。",
@@ -1485,7 +1502,7 @@
       "credentialStoreInvalid": "本机保存的会话无法验证。为保护身份，连接已停止，记录未被自动覆盖。",
       "identityConflict": "此设备的网络身份发生冲突，无法自动恢复。请核对登录账号与设备身份；现有连接和凭据已保留。",
       "ownedLoginCommitUnconfirmed": "登录保存结果尚未确认。旧身份已保留，请等任务结束后重新打开应用核对连接，暂勿重复登录。",
-      "ownedAccountMismatch": "授权页登录的账号与待恢复账号不同，请使用原账号重新登录。",
+      "ownedAccountMismatch": "登录账号与待恢复账号不同，请使用原账号重新登录。",
       "ownedIdentitySelectionRequired": "此账号在本机保存了多个设备身份。请先选择要恢复的连接，再重新登录。",
       "connectionTimeout": "连接 Agent 网络超时，正在自动重试。设备状态暂时无法确认。",
       "ownedSignInRequired": "此网络的登录已失效，请重新登录后恢复连接。",

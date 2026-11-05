@@ -41,6 +41,18 @@
     "signOutMessage": "This removes the local connection for “{{name}}” on this device. It does not sign you out of the official MyAgents account.",
     "failed": "The operation failed. Try again later."
   },
+  "ownedNativeLogin": {
+    "hint": "Sign in to your MoXBots account here in the app.",
+    "service": "Sign-in service: {{service}}",
+    "username": "Account or email",
+    "password": "Password",
+    "passwordHint": "Used only for this sign-in. The field clears on submission.",
+    "consent": "I agree to share my basic identity, name and email with MoXBots to sign in.",
+    "submit": "Agree and sign in",
+    "checking": "Verifying and saving sign-in…",
+    "cancel": "Cancel this sign-in",
+    "browserFallback": "Sign in with browser (alternative)"
+  },
   "globalSidebar": {
     "resize": "Resize sidebar",
     "legacySpaceUnavailable": "This link belongs to the legacy collaboration space. Its resources are not available in this community. Open Community from the personal menu to continue.",
@@ -1472,6 +1484,11 @@
     "descriptionFor": "Description for {{name}}",
     "enableAgent": "Enable {{name}} in this network",
     "errors": {
+      "ownedCredentialsInvalid": "The account or password is incorrect. Please enter them again.",
+      "ownedPasswordUnavailable": "This service cannot currently sign in with a password in the app. Try later, or choose browser sign-in.",
+      "ownedConsentRequired": "Confirm the identity and email permission to continue.",
+      "ownedNativeReauthenticationRequired": "A saved device identity was found. Select your original account in network settings, then enter your password again in the app.",
+      "ownedLoginRateLimited": "Too many sign-in attempts. Please try again later.",
       "conflict": "Settings changed in another client. Review the latest settings and retry.",
       "descriptionTooLong": "Descriptions cannot exceed 4096 bytes.",
       "unconfirmed": "Saving has not been confirmed. Refresh to check the result.",

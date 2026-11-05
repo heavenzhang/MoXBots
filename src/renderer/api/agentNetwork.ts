@@ -296,6 +296,11 @@ export function networkErrorKey(
   if (code === "OWNED_LOGIN_RESTART_REQUIRED") return "ownedLoginRestartRequired";
   if (code === "OWNED_LOGIN_COMMIT_UNCONFIRMED") return "ownedLoginCommitUnconfirmed";
   if (code === "OWNED_ACCOUNT_MISMATCH") return "ownedAccountMismatch";
+  if (code === "OWNED_CREDENTIALS_INVALID") return "ownedCredentialsInvalid";
+  if (code === "OWNED_PASSWORD_LOGIN_UNAVAILABLE") return "ownedPasswordUnavailable";
+  if (code === "OWNED_NATIVE_CONSENT_REQUIRED") return "ownedConsentRequired";
+  if (code === "OWNED_NATIVE_REAUTHENTICATION_REQUIRED") return "ownedNativeReauthenticationRequired";
+  if (code === "OWNED_PASSWORD_LOGIN_RATE_LIMITED") return "ownedLoginRateLimited";
   if (code === "OWNED_IDENTITY_SELECTION_REQUIRED") return "ownedIdentitySelectionRequired";
   if (code === "NETWORK_REMOVAL_UNCONFIRMED") return "removalPending";
   if (code === "NETWORK_CREDENTIAL_STORE_AUTHORIZATION_REQUIRED")
@@ -389,6 +394,16 @@ export const startOwnedNetworkReauthentication = (
     connectionId,
     expectedRegistryRevision,
   });
+/** Password is transient IPC input; tokens and persistence remain with Rust. */
+export const startOwnedNetworkPasswordLogin = (input: {
+  issuer: string;
+  username: string;
+  password: string;
+  consentAccepted: boolean;
+  connectionId?: string;
+  expectedRegistryRevision?: number;
+}): Promise<OwnedLoginAttempt> =>
+  invoke("cmd_agent_network_owned_start_password", input);
 export const openOwnedNetworkAuthorization = (
   attemptId: string,
 ): Promise<void> =>
