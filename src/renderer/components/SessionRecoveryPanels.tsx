@@ -11,8 +11,7 @@ export function SessionRecoveryPanels({ continuation, review, children }: {
   return <>
     {children}
     {review ? <RecoveryActionReview key={`review:${review.sessionId}`} {...review}
-      interrupted={!!continuation.turnId && !continuation.hidden}
-      continuation={<SessionContinuationBanner key={`continuation:${continuation.sessionId}`} {...continuation} compact />} />
+      continuation={<SessionContinuationBanner key={`continuation:${continuation.sessionId}`} {...continuation} />} />
       : <SessionContinuationBanner key={`continuation:${continuation.sessionId}`} {...continuation} />}
   </>;
 }

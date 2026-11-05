@@ -5,13 +5,14 @@ import OverlayBackdrop from './OverlayBackdrop';
 import { useCloseLayer } from '../hooks/useCloseLayer';
 import { isImeComposingEvent } from '../utils/imeKeyboard';
 
-export function RecoveryActionDetails({ actions, completed = [], reviewed = [], independentTasks = [], busy, error, onClose, onPrepareCheck, onSave }: {
+export function RecoveryActionDetails({ actions, completed = [], reviewed = [], independentTasks = [], busy, readOnly = false, error, onClose, onPrepareCheck, onSave }: {
   completed?: RecoveryReviewAction[];
   reviewed?: RecoveryReviewAction[];
   independentTasks?: {taskId: string; title: string}[];
   onSave?: (action: RecoveryReviewAction, kind: 'note' | 'defer', text: string, requestId: string) => Promise<boolean>;
   actions: RecoveryReviewAction[];
   busy: boolean;
+  readOnly?: boolean;
   error: boolean;
   onClose: () => void;
   onPrepareCheck?: (action: RecoveryReviewAction) => void;
@@ -53,6 +54,7 @@ export function RecoveryActionDetails({ actions, completed = [], reviewed = [], 
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         <p>{t('recoveryReview.boundary')}</p>
+        {readOnly && <p className="mt-3">{t('recoveryReview.readOnly')}</p>}
         {busy && <p role="status" className="mt-3">{t('recoveryReview.states.checking')}</p>}
         {error && <p role="alert" className="mt-3">{t('recoveryReview.changed')}</p>}
         {!busy && !error && !actions.length && <p className="mt-3">{t('recoveryReview.empty')}</p>}
@@ -76,27 +78,27 @@ export function RecoveryActionDetails({ actions, completed = [], reviewed = [], 
             </div>}
             {saved === action.actionHash && <p role="status" className="mt-2">{t('recoveryReview.saved')}</p>}
             {!action.eligible && <div className="mt-2 flex flex-wrap gap-2">
-              {onSave && <button type="button" disabled={busy} className="rounded-md px-2 py-1 font-medium text-[var(--accent)] hover:bg-[var(--paper-hover)] disabled:opacity-50"
+              {onSave && <button type="button" disabled={busy || readOnly} className="rounded-md px-2 py-1 font-medium text-[var(--accent)] hover:bg-[var(--paper-hover)] disabled:opacity-50"
                 onClick={() => {setEditing(action.actionHash); setDraft(''); setRequestId(crypto.randomUUID()); setSaved(undefined);}}>{t('recoveryReview.addNote')}</button>}
-              {onPrepareCheck && <button type="button" disabled={busy || error} className="rounded-md px-2 py-1 font-medium text-[var(--accent)] hover:bg-[var(--paper-hover)] disabled:opacity-50"
+              {onPrepareCheck && <button type="button" disabled={busy || readOnly || error} className="rounded-md px-2 py-1 font-medium text-[var(--accent)] hover:bg-[var(--paper-hover)] disabled:opacity-50"
                 onClick={() => { onPrepareCheck(action); onClose(); }}>{t('recoveryReview.prepareCheck')}</button>}
-              {onSave && !action.followups?.some(note => note.kind === 'defer') && <button type="button" disabled={busy}
+              {onSave && !action.followups?.some(note => note.kind === 'defer') && <button type="button" disabled={busy || readOnly}
                 className="rounded-md px-2 py-1 hover:bg-[var(--paper-hover)] disabled:opacity-50"
                 onClick={() => { void onSave(action, 'defer', '', crypto.randomUUID()).then(ok => {if(ok) setSaved(action.actionHash);}); }}>{t('recoveryReview.defer')}</button>}
             </div>}
             {editing === action.actionHash && <form className="mt-3" onSubmit={event => {
               event.preventDefault();
-              if (!onSave || busy || !draft.trim()) return;
+              if (!onSave || busy || readOnly || !draft.trim()) return;
               void onSave(action, 'note', draft, requestId).then(ok => {if(ok) {setEditing(undefined); setSaved(action.actionHash);}});
             }}>
               <label className="block">{t('recoveryReview.noteLabel')}
-                <textarea maxLength={4000} rows={4} value={draft} disabled={busy} onChange={event => {setDraft(event.target.value); setRequestId(crypto.randomUUID());}}
+                <textarea maxLength={4000} rows={4} value={draft} disabled={busy || readOnly} onChange={event => {setDraft(event.target.value); setRequestId(crypto.randomUUID());}}
                   className="mt-2 w-full rounded-md border border-[var(--line)] bg-[var(--paper)] p-2 text-[var(--ink)]" />
               </label>
               <p className="mt-1">{t('recoveryReview.noteBoundary')}</p>
               <div className="mt-2 flex gap-2">
-                <button type="submit" disabled={busy || !draft.trim()} className="rounded-md px-3 py-1 text-[var(--accent)] disabled:opacity-50">{t('recoveryReview.saveNote')}</button>
-                <button type="button" disabled={busy} onClick={() => setEditing(undefined)}>{t('recoveryReview.cancel')}</button>
+                <button type="submit" disabled={busy || readOnly || !draft.trim()} className="rounded-md px-3 py-1 text-[var(--accent)] disabled:opacity-50">{t('recoveryReview.saveNote')}</button>
+                <button type="button" disabled={busy || readOnly} onClick={() => setEditing(undefined)}>{t('recoveryReview.cancel')}</button>
               </div>
             </form>}
             <details className="mt-3 text-xs text-[var(--ink-muted)]"><summary className="cursor-pointer">{t('recoveryReview.technical')}</summary>

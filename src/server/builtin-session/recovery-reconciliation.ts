@@ -1,6 +1,7 @@
 import { NativeOperationJournal } from '../openai-bridge/native-operation-journal';
 import { createHash } from 'node:crypto';
 import type { RecoveryActionSnapshot, RecoveryReviewAction, RecoveryResultCheck, RecoveryMutationRequest } from '../../shared/recoveryReconciliation';
+import { recoveryAttention } from '../../shared/recoveryReconciliation';
 import { ContextRecoveryController, isBuiltinTaskQuery, recoveryActionHash, type RecoveryActionResolution } from '../openai-bridge/context-recovery';
 import { inspectNativeCompletions } from './native-completion-review';
 import { inspectNativePreToolDenials } from './native-denial-review';
@@ -149,11 +150,40 @@ async function inspect(deps: RecoveryReviewDependencies) {
       actionHash: receipt.actionHash, tool: ['Bash'].includes(receipt.toolName) ? 'Bash' : 'Other', eligible: false,
       reason: 'native_success', check: {kind: 'native_success'}, presentation: describeAction(receipt.toolName, receipt.input),
     })) : [];
+  snapshot.attention = recoveryAttention(snapshot, taskLedger);
   return { snapshot, ledger, candidates, verifiedDeniedTools };
 }
 
 export async function inspectRecoveryActions(deps: RecoveryReviewDependencies): Promise<RecoveryActionSnapshot> {
   return (await inspect(deps)).snapshot;
+}
+
+/** Event-driven background proof collection under the existing Session lock.
+ * Never dispatches a tool or starts an investigation during human admission. */
+export async function reconcileAvailableRecoveryProof(deps: RecoveryReviewDependencies): Promise<void> {
+  // One immutable native observation per Session-locked collection. Each
+  // adoption still reloads the current ledger and checks owner/CAS. Re-reading
+  // the complete history for every proven call would multiply the input gate's
+  // bounded SDK IO by the number of receipts. This cache never crosses calls;
+  // file checks and ledger reads deliberately remain fresh.
+  let observed: Promise<[readonly unknown[], readonly unknown[]]> | undefined;
+  const observe = () => observed ??= Promise.all([
+    deps.readNative(), deps.readNativeRecords?.() ?? Promise.resolve([]),
+  ]);
+  const collection: RecoveryReviewDependencies = { ...deps,
+    readNative: async () => (await observe())[0],
+    ...(deps.readNativeRecords ? { readNativeRecords: async () => (await observe())[1] } : {}),
+  };
+  let snapshot = await inspectRecoveryActions(collection);
+  const attempted = new Set<string>();
+  while (snapshot.actions.some(action => action.eligible)) {
+    const action = snapshot.actions.find(item => item.eligible)!;
+    if (attempted.has(action.actionHash) || attempted.size >= 100) throw new Error('recovery_review_no_progress');
+    attempted.add(action.actionHash);
+    snapshot = await reconcileRecoveryAction({ sessionId: snapshot.sessionId, sdkSessionId: snapshot.sdkSessionId,
+      epoch: snapshot.epoch, reviewAuthority: snapshot.reviewAuthority, ledgerDigest: snapshot.ledgerDigest,
+      actionHash: action.actionHash }, collection);
+  }
 }
 
 /** Caller holds the existing Session mutation lock and native signed-request admission. */
@@ -168,7 +198,9 @@ export async function reconcileRecoveryAction(request: RecoveryMutationRequest, 
   if (control) {
     if (!deps.startInvestigation || !deps.canInvestigate?.() || !snapshot.actions.some(action => action.actionHash === request.actionHash)) throw new Error('recovery_investigation_unavailable');
     await deps.startInvestigation();
-    return { ...snapshot, investigationAvailable: false };
+    // The original execution owner is now running the investigation. Do not
+    // present a stale user decision while its next turn is being scheduled.
+    return { ...snapshot, investigationAvailable: false, attention: undefined };
   }
   if (followup && 'text' in request) {
     if (!['note', 'defer'].includes(request.kind) || typeof request.text !== 'string' || request.text.length > 4000
@@ -216,8 +248,10 @@ export async function reconcileRecoveryAction(request: RecoveryMutationRequest, 
   await deps.save(next, snapshot.ledgerDigest, deps.isCurrent);
   if (!deps.isCurrent()) throw new Error('recovery_review_owner_changed');
   deps.adopt(receipt);
-  return { ...snapshot, ledgerDigest: recoveryLedgerDigest(next), resolvedCount: snapshot.resolvedCount + 1,
+  const result: RecoveryActionSnapshot = { ...snapshot, ledgerDigest: recoveryLedgerDigest(next), resolvedCount: snapshot.resolvedCount + 1,
     ...(receipt.kind !== 'native-completion-reviewed' ? { reviewed: [...(snapshot.reviewed ?? []), { ...snapshot.actions.find(action => action.actionHash === receipt.actionHash)!, eligible: false }] } : {}),
     ...(receipt.kind === 'native-completion-reviewed' ? { completed: [...(snapshot.completed ?? []), { ...snapshot.actions.find(action => action.actionHash === receipt.actionHash)!, eligible: false }] } : {}),
     actions: snapshot.actions.filter(action => action.actionHash !== receipt.actionHash) };
+  result.attention = recoveryAttention(result, deps.taskLedger?.());
+  return result;
 }

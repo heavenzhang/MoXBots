@@ -2491,6 +2491,7 @@
   "recoveryReview": {
     "checking": "正在检查中断结果",
     "unavailable": "恢复检查待处理",
-    "pending": "{{count}} 条结果待确认"
+    "pending": "{{count}} 条结果待确认",
+    "decision": "任务需要你处理"
   }
 }

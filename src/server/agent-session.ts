@@ -24,7 +24,7 @@ import { createBuiltinInterruptController } from './builtin-session/interrupt';
 import { contextRecoveryApiRoute, sessionContextBudget } from './builtin-session/context-recovery-config';
 import type { RecoveryMutationRequest, RecoveryActionSnapshot } from '../shared/recoveryReconciliation';
 import { checkRecoveryFile } from './builtin-session/recovery-file-check';
-import { inspectRecoveryActions, reconcileRecoveryAction, type RecoveryReviewDependencies } from './builtin-session/recovery-reconciliation';
+import { inspectRecoveryActions, reconcileRecoveryAction, reconcileAvailableRecoveryProof, type RecoveryReviewDependencies } from './builtin-session/recovery-reconciliation';
 import { readNativeRecoveryRecords } from './builtin-session/native-denial-review';
 import { reconcileKnownExecutionFailures, reconcileKnownExecutionCompletions } from './builtin-session/execution-failure-reconciliation';
 import { repairReviewedToolErrors } from './builtin-session/recovery-tool-errors';
@@ -10759,8 +10759,14 @@ async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies>
 export function reconcileBuiltinExecutionEvidence(): Promise<void> {
   return runSerializedSessionMutation(async () => {
     const deps = { ...await recoveryReviewDependencies(), observationDigest: executionToolObservationDigest, mutateLedger: mutateSessionTaskLedger };
-    await reconcileKnownExecutionFailures(deps);
-    await reconcileKnownExecutionCompletions(deps);
+    try {
+      await reconcileAvailableRecoveryProof(deps);
+    } finally {
+      // Independent native failure/completion repair still runs if optional
+      // proof collection cannot read history or commit its receipt.
+      await reconcileKnownExecutionFailures(deps);
+      await reconcileKnownExecutionCompletions(deps);
+    }
   });
 }
 export function inspectBuiltinRecoveryActions(): Promise<RecoveryActionSnapshot> {
