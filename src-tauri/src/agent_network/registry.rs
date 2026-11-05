@@ -5,7 +5,8 @@ use super::actor::{AgentNetwork, ManagedConnection, NetworkSnapshot};
 use super::identity::NetworkIdentity;
 use super::memory::MemoryBudget;
 use super::owned_account_desktop::{
-    CompletedLogin, LoginObservation, LoginProgress, OwnedLoginManager, StartedLogin,
+    CompletedLogin, LoginObservation, LoginProgress, OwnedLoginManager, PasswordCredentials,
+    StartedLogin,
 };
 use super::owned_login::OwnedInstance;
 use super::NetworkError;
@@ -715,6 +716,63 @@ impl NetworkRegistry {
         connection_id: &str,
         expected_revision: u64,
     ) -> Result<StartedLogin, NetworkError> {
+        self.owned_start_existing_inner(connection_id, expected_revision, None)
+            .await
+    }
+    pub(crate) async fn owned_start_password(
+        &self,
+        issuer: &str,
+        public_tls_ca_file: Option<&str>,
+        credentials: PasswordCredentials,
+        connection_id: Option<&str>,
+        expected_revision: Option<u64>,
+    ) -> Result<StartedLogin, NetworkError> {
+        match (connection_id, expected_revision) {
+            (Some(id), Some(revision)) => {
+                return self
+                    .owned_start_existing_inner(
+                        id,
+                        revision,
+                        Some((issuer, public_tls_ca_file, credentials)),
+                    )
+                    .await;
+            }
+            (None, None) => {}
+            _ => return Err(NetworkError::new("REVISION_CONFLICT")),
+        }
+        if !self.selfhost_enabled.load(Ordering::Acquire) {
+            return Err(NetworkError::new("NETWORK_FEATURE_DISABLED"));
+        }
+        let device = crate::device_identity::current_device_identity()
+            .map_err(|_| NetworkError::new("DEVICE_ID_UNAVAILABLE"))?;
+        let candidates = self
+            .owned_stored
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        let selected = self
+            .selected
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone();
+        self.owned_login
+            .start_password(
+                issuer,
+                &device.device_id,
+                public_tls_ca_file,
+                candidates,
+                selected,
+                None,
+                credentials,
+            )
+            .await
+    }
+    async fn owned_start_existing_inner(
+        &self,
+        connection_id: &str,
+        expected_revision: u64,
+        password: Option<(&str, Option<&str>, PasswordCredentials)>,
+    ) -> Result<StartedLogin, NetworkError> {
         let candidates = {
             let _mutation = self.mutation.lock().await;
             self.check_restore_boundary(expected_revision, &AtomicBool::new(false))?;
@@ -733,10 +791,23 @@ impl NetworkRegistry {
             .map_err(|_| NetworkError::new("DEVICE_ID_UNAVAILABLE"))?;
         // Discovery and PKCE startup may wait on a remote service. Never hold
         // the registry mutation lock while performing that network I/O.
-        let started = self
-            .owned_login
-            .start_existing(&device.device_id, record.clone(), candidates)
-            .await?;
+        let started = if let Some((issuer, ca_file, credentials)) = password {
+            self.owned_login
+                .start_password(
+                    issuer,
+                    &device.device_id,
+                    ca_file,
+                    candidates,
+                    record.id.clone(),
+                    Some(record.clone()),
+                    credentials,
+                )
+                .await?
+        } else {
+            self.owned_login
+                .start_existing(&device.device_id, record.clone(), candidates)
+                .await?
+        };
         let boundary = {
             let _mutation = self.mutation.lock().await;
             self.check_restore_boundary(expected_revision, &AtomicBool::new(false))
@@ -2372,6 +2443,66 @@ mod tests {
             removing: false,
         }
     }
+    #[tokio::test]
+    async fn native_password_existing_start_preserves_revision_and_feature_fences() {
+        let owner = NetworkRegistry::new();
+        let credentials = || {
+            PasswordCredentials::new(
+                "synthetic-user".into(),
+                Zeroizing::new("synthetic-password".into()),
+                true,
+            )
+            .unwrap()
+        };
+        let issuer = "https://owned.invalid";
+        assert_eq!(
+            owner
+                .owned_start_password(issuer, None, credentials(), Some("saved"), None)
+                .await
+                .err()
+                .unwrap()
+                .code,
+            "REVISION_CONFLICT"
+        );
+        assert_eq!(
+            owner
+                .owned_start_password(issuer, None, credentials(), None, Some(0))
+                .await
+                .err()
+                .unwrap()
+                .code,
+            "REVISION_CONFLICT"
+        );
+        assert_eq!(
+            owner
+                .owned_start_password(issuer, None, credentials(), Some("saved"), Some(0))
+                .await
+                .err()
+                .unwrap()
+                .code,
+            "NETWORK_FEATURE_DISABLED"
+        );
+        owner.selfhost_enabled.store(true, Ordering::Release);
+        assert_eq!(
+            owner
+                .owned_start_password(issuer, None, credentials(), Some("saved"), Some(1))
+                .await
+                .err()
+                .unwrap()
+                .code,
+            "REVISION_CONFLICT"
+        );
+        assert_eq!(
+            owner
+                .owned_start_password(issuer, None, credentials(), Some("saved"), Some(0))
+                .await
+                .err()
+                .unwrap()
+                .code,
+            "NETWORK_CONNECTION_NOT_FOUND"
+        );
+    }
+
     #[tokio::test]
     async fn cancelled_queued_background_read_never_authorizes_a_guard() {
         let owner = NetworkRegistry::new();

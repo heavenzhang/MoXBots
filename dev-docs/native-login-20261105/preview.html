@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MoXBots 原生登录隔离验收</title>
+  <div id="root"></div>
+  <script type="module">
+    import { injectIntoGlobalHook } from "/@react-refresh";
+    injectIntoGlobalHook(window);
+    window.$RefreshReg$ = () => {};
+    window.$RefreshSig$ = () => (type) => type;
+  </script>
+  <script type="module" src="./preview.tsx"></script>
+</html>

@@ -20,6 +20,7 @@ import {
   removeNetworkConnection,
   selectNetworkConnection,
   startOwnedNetworkLogin,
+  startOwnedNetworkPasswordLogin,
   startOwnedNetworkReauthentication,
   cancelOwnedNetworkLogin,
   retryOwnedNetworkLogin,
@@ -31,6 +32,8 @@ import {
 } from "@/features/agent-network/store";
 import { JoinNetworkDialog } from "@/features/agent-network/JoinNetworkDialog";
 import FeedbackDialog from "@/features/feedback/FeedbackDialog";
+import OwnedPasswordLoginDialog from "./OwnedPasswordLoginDialog";
+import type { OwnedLoginActions } from "@/features/agent-network/useOwnedLoginFlow";
 
 import {
   ownedAccountCandidates,
@@ -63,6 +66,9 @@ export default function OwnedAccountEntry({
   const snapshotAuthGeneration = owned?.snapshot.authGeneration ?? null;
   const snapshotErrorCode = owned?.snapshot.error?.code ?? null;
   const [loginOpen, setLoginOpen] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<"password" | "browser">(
+    "password",
+  );
   const [menuOpen, setMenuOpen] = useState(false);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [feedbackOpen, setFeedbackOpen] = useState(false);
@@ -181,6 +187,7 @@ export default function OwnedAccountEntry({
     if (!serviceUrl) return;
     generation.current += 1;
     openedLoginGeneration.current = generation.current;
+    setLoginMethod("password");
     setLoginOpen(true);
   };
   const closeLogin = () => {
@@ -248,6 +255,100 @@ export default function OwnedAccountEntry({
       ? { connectionId: owned.id, principalId, bindingId }
       : null;
 
+  const loginActions: OwnedLoginActions = {
+    onCancel: closeLogin,
+    onOwnedStart: async (issuer, ca) => {
+      const epoch = openedLoginGeneration.current;
+      // Reuse the selected account's native identity owner. Starting a
+      // generic login first consumes a temporary grant and then requires
+      // a second browser authorization to recover the saved device.
+      let attempt: OwnedLoginAttempt;
+      if (owned) {
+        if (typeof registry.revision !== "number")
+          throw new Error(t("ownedAccountEntry.failed"));
+        attempt = await startOwnedNetworkReauthentication(
+          owned.id,
+          registry.revision,
+        );
+      } else {
+        attempt = await startOwnedNetworkLogin(issuer, ca);
+      }
+      if (!loginEpochIsCurrent(epoch)) {
+        if (mounted.current) {
+          await cancelOwnedNetworkLogin(attempt.attemptId).catch(() => {});
+          throw new Error(t("ownedAccountEntry.failed"));
+        }
+        return attempt;
+      }
+      pendingAttemptId.current = attempt.attemptId;
+      completedAttempt.current = false;
+      return attempt;
+    },
+    onOwnedRetry: retryOwnedNetworkLogin,
+    onOwnedOpen: (attemptId) => openOwnedNetworkAuthorization(attemptId),
+    onOwnedCancel: async (attemptId) => {
+      if (pendingAttemptId.current === attemptId) {
+        generation.current += 1;
+        pendingAttemptId.current = null;
+      }
+      try {
+        await cancelOwnedNetworkLogin(attemptId);
+      } catch {
+        // End locally and allow a new attempt; the old server attempt expires on its own.
+      }
+    },
+    onOwnedPoll: async (attemptId) => {
+      const epoch = openedLoginGeneration.current;
+      const result = await pollOwnedNetworkLogin(attemptId);
+      if (!loginEpochIsCurrent(epoch)) return "pending";
+      if (result.status === "reauthorize") return result.authorization;
+      if (result.status !== "authenticated") return result;
+      const next = result.registry;
+      pendingAttemptId.current = null;
+      completedAttempt.current = true;
+      acceptNetworkRegistry(next);
+      const match = next.connections.find(
+        (connection) =>
+          connection.id === next.selected &&
+          !connection.official &&
+          !connection.removing &&
+          canonicalOwnedIssuer(connection.url) === serviceUrl,
+      );
+      if (match) {
+        const selected = await selectNetworkConnection(match.id);
+        if (loginEpochIsCurrent(epoch)) acceptNetworkRegistry(selected);
+      }
+      return "authenticated";
+    },
+  };
+  const startPasswordLogin = async (credentials: {
+    username: string;
+    password: string;
+    consentAccepted: boolean;
+  }) => {
+    const epoch = openedLoginGeneration.current;
+    if (owned && typeof registry.revision !== "number")
+      throw new Error(t("ownedAccountEntry.failed"));
+    const attempt = await startOwnedNetworkPasswordLogin({
+      issuer: serviceUrl!,
+      ...credentials,
+      ...(owned
+        ? {
+            connectionId: owned.id,
+            expectedRegistryRevision: registry.revision,
+          }
+        : {}),
+    });
+    if (!loginEpochIsCurrent(epoch)) {
+      if (mounted.current)
+        await cancelOwnedNetworkLogin(attempt.attemptId).catch(() => {});
+      throw new Error(t("ownedAccountEntry.failed"));
+    }
+    pendingAttemptId.current = attempt.attemptId;
+    completedAttempt.current = false;
+    return attempt;
+  };
+
   const label = chooseAccount
     ? t("community:chooseAccount")
     : state === "authenticated"
@@ -309,9 +410,9 @@ export default function OwnedAccountEntry({
               {owned?.name ?? t("ownedAccountEntry.instance")}
             </strong>
             {state === "authenticated" && (
-              <p className="text-xs text-[var(--ink-muted)]">
+              <p className="break-all text-xs text-[var(--ink-muted)]">
                 {t("ownedAccountEntry.accountId", {
-                  account: principalId.slice(0, 8),
+                  account: principalId,
                 })}
               </p>
             )}
@@ -411,82 +512,31 @@ export default function OwnedAccountEntry({
           onClose={() => setFeedbackOpen(false)}
         />
       )}
-      {loginOpen && state !== "authenticated" && serviceUrl && (
-        <JoinNetworkDialog
-          accountOnly
-          initialUrl={serviceUrl}
-          title={t("ownedAccountEntry.loginTitle")}
-          onCancel={closeLogin}
-          onConfirm={async () => {
-            throw new Error(t("ownedAccountEntry.failed"));
-          }}
-          onOwnedStart={async (issuer, ca) => {
-            const epoch = openedLoginGeneration.current;
-            // Reuse the selected account's native identity owner. Starting a
-            // generic login first consumes a temporary grant and then requires
-            // a second browser authorization to recover the saved device.
-            let attempt: OwnedLoginAttempt;
-            if (owned) {
-              if (typeof registry.revision !== "number")
-                throw new Error(t("ownedAccountEntry.failed"));
-              attempt = await startOwnedNetworkReauthentication(
-                owned.id,
-                registry.revision,
-              );
-            } else {
-              attempt = await startOwnedNetworkLogin(issuer, ca);
-            }
-            if (!loginEpochIsCurrent(epoch)) {
-              if (mounted.current) {
-                await cancelOwnedNetworkLogin(attempt.attemptId).catch(
-                  () => {},
-                );
-                throw new Error(t("ownedAccountEntry.failed"));
-              }
-              return attempt;
-            }
-            pendingAttemptId.current = attempt.attemptId;
-            completedAttempt.current = false;
-            return attempt;
-          }}
-          onOwnedRetry={retryOwnedNetworkLogin}
-          onOwnedOpen={(attemptId) => openOwnedNetworkAuthorization(attemptId)}
-          onOwnedCancel={async (attemptId) => {
-            if (pendingAttemptId.current === attemptId) {
-              generation.current += 1;
-              pendingAttemptId.current = null;
-            }
-            try {
-              await cancelOwnedNetworkLogin(attemptId);
-            } catch {
-              // End locally and allow a new attempt; the old server attempt expires on its own.
-            }
-          }}
-          onOwnedPoll={async (attemptId) => {
-            const epoch = openedLoginGeneration.current;
-            const result = await pollOwnedNetworkLogin(attemptId);
-            if (!loginEpochIsCurrent(epoch)) return "pending";
-            if (result.status === "reauthorize") return result.authorization;
-            if (result.status !== "authenticated") return result;
-            const next = result.registry;
-            pendingAttemptId.current = null;
-            completedAttempt.current = true;
-            acceptNetworkRegistry(next);
-            const match = next.connections.find(
-              (connection) =>
-                connection.id === next.selected &&
-                !connection.official &&
-                !connection.removing &&
-                canonicalOwnedIssuer(connection.url) === serviceUrl,
-            );
-            if (match) {
-              const selected = await selectNetworkConnection(match.id);
-              if (loginEpochIsCurrent(epoch)) acceptNetworkRegistry(selected);
-            }
-            return "authenticated";
-          }}
-        />
-      )}
+      {loginOpen &&
+        state !== "authenticated" &&
+        serviceUrl &&
+        loginMethod === "password" && (
+          <OwnedPasswordLoginDialog
+            {...loginActions}
+            serviceUrl={serviceUrl}
+            onPasswordStart={startPasswordLogin}
+            onBrowserLogin={() => setLoginMethod("browser")}
+          />
+        )}
+      {loginOpen &&
+        state !== "authenticated" &&
+        serviceUrl &&
+        loginMethod === "browser" && (
+          <JoinNetworkDialog
+            accountOnly
+            initialUrl={serviceUrl}
+            title={t("ownedAccountEntry.loginTitle")}
+            onConfirm={async () => {
+              throw new Error(t("ownedAccountEntry.failed"));
+            }}
+            {...loginActions}
+          />
+        )}
       {logoutOpen && owned && logoutBoundary.current === projectionBoundary && (
         <ConfirmDialog
           title={t("ownedAccountEntry.signOut")}

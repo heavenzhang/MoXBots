@@ -1248,3 +1248,10 @@ MB-RECOVERY-UX-20261102完整续接：用户要求补齐整个方案。原分支
 ### Root recovery UX release 0541 (MB-RECOVERY-UX-20261102)
 
 Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4 integrates exact producer 5cf4aac with main f719dad in codex/release-recovery-ux-0541-r1-20261103. Proposed immutable version 0.5.41/build541.1. Root lifecycle fence fix and 708 tests/typecheck passed; exact source CI/main, new artifact, fresh safe maintenance, signed native new UI and same-artifact 101 publication are pending. Prior 540.1 local acceptance/stable hold remains distinct. Other deployment owners and author workspaces are unchanged. Receipts: work/release-0541-20261103/owner.
+
+
+## MB-NATIVE-LOGIN-20261105 — 桌面客户端内账号密码登录
+
+隔离 `codex/native-login-20261105` 基于 main065f2b6c，复用既有服务 `/auth/login/password` 与原 Rust OwnedLoginManager/registry/session/identity store；原生表单显式基本身份/邮箱确认，瞬时密码、固定错误、防重、取消与手动浏览器备用。未退出日常账号、未读其密码、未改服务端或业务恢复。验收与真实隔离登录步骤见 `dev-docs/native-login-20261105/acceptance.md`，任务记录 `.agent-sync/tasks/codex-native-login-20261105-106ae3e5.md`。142项定向本地测试、完整Rust crate check、Clippy redline、前端类型/lint/build及独立源码审核通过；实际渲染、真实账号/持久化和正式制品仍分别待验。
+
+唯一 desktop/macOS-arm64/updater/sharedCI/main/版本/构建/签名/安装/发布 owner 保持 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，已回执纳入下一未冻结批。冻结542.1/PR246不包含本任务且不被改动；开发只提交精确SHA及证据，不独立触发PR/共享CI或正式打包。cloud auth/101 owner仍为`01a12b99-7b38-78b1-831f-9c60257d386a`，已只读确认原生密码接口启用、Dex local connector与原确认页策略保留，本轮无需服务代码发布，真实认证仍待验。无mobile/Host/website部署。源码/main、实际界面、真实登录/安全存储/恢复/退出、正式发行逐层追踪，不以模拟结果替代。

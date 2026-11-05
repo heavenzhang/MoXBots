@@ -24,6 +24,7 @@ export type OwnedLoginObservation =
   | OwnedLoginAttempt
   | { status: "pending"; phase?: OwnedLoginPhase };
 export interface OwnedLoginActions {
+  authorizationMode?: "browser" | "password";
   onOwnedStart: (issuer: string, ca?: string) => Promise<OwnedLoginAttempt>;
   onOwnedOpen: (id: string) => Promise<void>;
   onOwnedPoll: (id: string) => Promise<OwnedLoginObservation>;
@@ -70,9 +71,14 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
   const isCurrent = (generation: number) =>
     alive.current && epoch.current === generation && !cancelled.current;
   const failureText = (failure: unknown) =>
-    failure instanceof Error
+    latest.current.authorizationMode !== "password" && failure instanceof Error
       ? failure.message
       : latest.current.t(`agentNetwork.errors.${networkErrorKey(failure)}`);
+  const phaseNotice = (value: OwnedLoginPhase) =>
+    latest.current.authorizationMode === "password" &&
+    ["awaiting_authorization", "receiving_grant"].includes(value)
+      ? latest.current.t("ownedNativeLogin.checking")
+      : latest.current.t(`agentNetwork.ownedLogin.phases.${value}`);
   const hasReceivedGrant = () =>
     ["verifying_identity", "saving_session"].includes(nativePhaseRef.current);
   const expired = () =>
@@ -172,10 +178,20 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
         const nextPhase = result.phase ?? "awaiting_authorization";
         showNativePhase(nextPhase);
         armExpiry();
-        setNotice(
-          latest.current.t(`agentNetwork.ownedLogin.phases.${nextPhase}`),
-        );
+        setNotice(phaseNotice(nextPhase));
       } else if (typeof result === "object") {
+        if (latest.current.authorizationMode === "password") {
+          clearTimers();
+          paused.current = true;
+          setPhase("stopped");
+          setNotice(null);
+          setError(
+            latest.current.t(
+              "agentNetwork.errors.ownedNativeReauthenticationRequired",
+            ),
+          );
+          return;
+        }
         // The Rust owner may require confirmation of an existing device identity.
         // It supplies the next authorization; never create a separate login here.
         const changed =
@@ -193,7 +209,14 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
       } else if (expired()) {
         // Compatibility with older native replies that have no explicit phase.
         markExpired();
-      } else setNotice(latest.current.t("agentNetwork.ownedLogin.pending"));
+      } else
+        setNotice(
+          latest.current.t(
+            latest.current.authorizationMode === "password"
+              ? "ownedNativeLogin.checking"
+              : "agentNetwork.ownedLogin.pending",
+          ),
+        );
     } catch (failure) {
       if (isCurrent(generation)) {
         const issue =
@@ -227,7 +250,8 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
           );
           setNotice(null);
           setError(
-            issue.code === "OWNED_ACCOUNT_MISMATCH"
+            issue.code === "OWNED_ACCOUNT_MISMATCH" &&
+              latest.current.authorizationMode !== "password"
               ? latest.current.t(
                   "agentNetwork.ownedLogin.accountMismatchStopped",
                 )
@@ -255,7 +279,11 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
       }
     }
   }
-  async function start(issuer: string, ca?: string) {
+  async function start(
+    issuer: string,
+    ca?: string,
+    startAction = latest.current.onOwnedStart,
+  ) {
     if (flight.current || !issuer.trim()) return;
     const generation = ++epoch.current;
     cancelled.current = false;
@@ -271,10 +299,7 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
     setBrowserError(null);
     setNotice(null);
     try {
-      const started = await latest.current.onOwnedStart(
-        issuer.trim(),
-        ca?.trim() || undefined,
-      );
+      const started = await startAction(issuer.trim(), ca?.trim() || undefined);
       if (!isCurrent(generation)) {
         // Native owns an accepted attempt even when the view disappears.
         // Only an explicit cancellation or a live scope replacement revokes it.
@@ -287,8 +312,10 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
       showNativePhase(started.phase ?? "awaiting_authorization");
       armExpiry();
       if (hasReceivedGrant()) {
-        setNotice(latest.current.t(`agentNetwork.ownedLogin.phases.${nativePhaseRef.current}`));
-      } else await open(generation);
+        setNotice(phaseNotice(nativePhaseRef.current));
+      } else if (latest.current.authorizationMode !== "password")
+        await open(generation);
+      else setNotice(latest.current.t("ownedNativeLogin.checking"));
     } catch (failure) {
       if (isCurrent(generation)) {
         setError(failureText(failure));
@@ -299,7 +326,9 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
         flight.current = false;
         if (current.current) {
           if (!expired()) setPhase("waiting");
-          schedule();
+          schedule(
+            latest.current.authorizationMode === "password" ? 0 : POLL_DELAY,
+          );
         }
       }
     }
@@ -342,7 +371,10 @@ export function useOwnedLoginFlow(actions: OwnedLoginActions) {
     } catch (failure) {
       if (isCurrent(generation)) {
         setError(failureText(failure));
-        const issue = failure as { retryable?: boolean; details?: { canRetry?: boolean } } | null;
+        const issue = failure as {
+          retryable?: boolean;
+          details?: { canRetry?: boolean };
+        } | null;
         if (issue?.retryable === false && issue.details?.canRetry !== true)
           setPhase("stopped");
       }
