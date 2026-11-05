@@ -479,7 +479,11 @@ impl MobileConnection {
         } else {
             None
         };
-        let Some(saved) = self.saved.as_ref().or(parsed.as_ref()) else {
+        // A committed rotation may have retired the original bearer before a
+        // lost response. Use the confirmed candidate for endpoint cleanup;
+        // logout still attempts revocation of both tokens independently.
+        let renewed = self.renewal_notification_account().await.ok().flatten();
+        let Some(saved) = renewed.as_ref().or(self.saved.as_ref()).or(parsed.as_ref()) else {
             return Ok(());
         };
         let binding = Binding::from_saved(saved)?;

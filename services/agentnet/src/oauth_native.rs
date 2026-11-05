@@ -144,6 +144,7 @@ pub(super) async fn authorize(
             phase: Phase::Pending,
             browser_return_path: None,
             replayable_result: false,
+            native_session: false,
         },
     );
     let mut oauth = app.flow.oauth.lock().map_err(|_| ApiError::Internal)?;

@@ -89,7 +89,11 @@ async fn original_relay_service_fixture() {
         }}
     })).route("/auth/session", get({ let auth=auth.clone(); move |headers:HeaderMap| {let auth=auth.clone();async move {
         let token=headers.get(header::AUTHORIZATION).unwrap().to_str().unwrap().strip_prefix("Bearer ").unwrap();
-        match auth.validate_session(token) { Ok(s)=>(StatusCode::OK,Json(serde_json::json!({"principalId":s.account.principal_id,"networkId":s.account.network_id,"deviceId":s.device_id,"expiresAt":s.expires_at}))).into_response(),Err(_)=>StatusCode::UNAUTHORIZED.into_response() }
+        match auth.validate_session(token) { Ok(s)=>(StatusCode::OK,Json(serde_json::json!({"principalId":s.account.principal_id,"networkId":s.account.network_id,"deviceId":s.device_id,"expiresAt":s.expires_at}))).into_response(),Err(_)=>(StatusCode::UNAUTHORIZED,Json(serde_json::json!({"error":{"code":"OWNED_SESSION_INVALID"}}))).into_response() }
+    }} }).delete({ let auth=auth.clone(); move |headers:HeaderMap| {let auth=auth.clone();async move {
+        let token=headers.get(header::AUTHORIZATION).unwrap().to_str().unwrap().strip_prefix("Bearer ").unwrap();
+        auth.revoke_session(token).unwrap();
+        StatusCode::NO_CONTENT
     }}}));
     let router = assemble_feature_routes(
         login,
@@ -98,24 +102,38 @@ async fn original_relay_service_fixture() {
         Some(relay),
         &origin,
     );
-    let renewal_marker = root.join("renewal-observed.json");
+    let renewal_root = root.clone();
     let router = router
         .layer(axum::middleware::map_response(super::no_store))
         .layer(axum::middleware::from_fn(
             move |request: axum::extract::Request, next: axum::middleware::Next| {
-                let renewal_marker = renewal_marker.clone();
+                let renewal_root = renewal_root.clone();
                 async move {
                     // Synthetic loopback fixture only: retain failure provenance
                     // without bodies, credentials, query strings or headers.
                     let method = request.method().clone();
                     let path = request.uri().path().to_owned();
-                    let response = next.run(request).await;
+                    let mut response = next.run(request).await;
                     eprintln!(
                         "fixture-http method={method} path={path} status={}",
                         response.status().as_u16()
                     );
                     if path == "/v1/session/renew" && response.status().is_success() {
-                        private(&renewal_marker, &serde_json::json!({"status":200}));
+                        let (parts, body) = response.into_parts();
+                        let bytes = axum::body::to_bytes(body, 8192).await.unwrap();
+                        let value: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+                        let device = value["data"]["deviceId"].as_str().unwrap();
+                        assert_eq!(Uuid::parse_str(device).unwrap().to_string(), device);
+                        // Mobile and Host renew independently. Only the actual
+                        // Host response may open its new-Ready polling window.
+                        private(
+                            &renewal_root.join(format!("renewal-observed-{device}.json")),
+                            &serde_json::json!({"status":200,"deviceId":device}),
+                        );
+                        response = axum::response::Response::from_parts(
+                            parts,
+                            axum::body::Body::from(bytes),
+                        );
                     }
                     response
                 }

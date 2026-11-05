@@ -338,6 +338,7 @@ where
             phase: Phase::Ready(subject),
             browser_return_path: None,
             replayable_result: false,
+            native_session: true,
         },
     );
     Ok((
@@ -414,6 +415,28 @@ mod tests {
         serde_json::from_slice(&to_bytes(response.into_body(), 8192).await.unwrap()).unwrap()
     }
 
+    #[test]
+    fn password_request_cannot_choose_a_session_window() {
+        for field in [
+            "nativeSession",
+            "native_session",
+            "renewalTtlSeconds",
+            "renewal_ttl_seconds",
+        ] {
+            let mut value = serde_json::json!({
+                "deviceId": DEVICE,
+                "pkceChallenge": URL_SAFE_NO_PAD.encode(Sha256::digest(VERIFIER.as_bytes())),
+                "username": "synthetic@example.test", "password": "synthetic-password",
+                "consentAccepted": true
+            });
+            value[field] = serde_json::json!(true);
+            assert!(
+                serde_json::from_value::<PasswordRequest>(value).is_err(),
+                "{field}"
+            );
+        }
+    }
+
     #[tokio::test]
     async fn password_ready_uses_original_principal_network_and_one_time_pkce_poll() {
         let (app, _dir) = enabled();
@@ -456,7 +479,9 @@ mod tests {
         assert_eq!(reply["principalId"], existing.account.principal_id);
         assert_eq!(reply["networkId"], existing.account.network_id);
         let expiry = reply["expiresAt"].as_i64().unwrap();
-        assert!(expiry > unix_now().unwrap() + 3590 && expiry <= unix_now().unwrap() + 3600);
+        let ttl = crate::store::NATIVE_SESSION_TTL_SECONDS;
+        assert!(expiry > unix_now().unwrap() + ttl - 10 && expiry <= unix_now().unwrap() + ttl);
+        assert!(existing.expires_at <= unix_now().unwrap() + 3600);
         assert!(
             app.store
                 .validate_session(reply["accessToken"].as_str().unwrap())
@@ -1169,6 +1194,12 @@ mod tests {
         .await;
         assert_eq!(result["principalId"], existing.account.principal_id);
         assert_eq!(result["networkId"], existing.account.network_id);
+        let native_expiry = result["expiresAt"].as_i64().unwrap();
+        let native_ttl = crate::store::NATIVE_SESSION_TTL_SECONDS;
+        assert!(
+            native_expiry > unix_now().unwrap() + native_ttl - 10
+                && native_expiry <= unix_now().unwrap() + native_ttl
+        );
         assert!(
             app.store
                 .validate_session(result["accessToken"].as_str().unwrap())

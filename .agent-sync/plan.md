@@ -1255,3 +1255,12 @@ Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd
 隔离 `codex/native-login-20261105` 基于 main065f2b6c，复用既有服务 `/auth/login/password` 与原 Rust OwnedLoginManager/registry/session/identity store；原生表单显式基本身份/邮箱确认，瞬时密码、固定错误、防重、取消与手动浏览器备用。未退出日常账号、未读其密码、未改服务端或业务恢复。验收与真实隔离登录步骤见 `dev-docs/native-login-20261105/acceptance.md`，任务记录 `.agent-sync/tasks/codex-native-login-20261105-106ae3e5.md`。142项定向本地测试、完整Rust crate check、Clippy redline、前端类型/lint/build及独立源码审核通过；实际渲染、真实账号/持久化和正式制品仍分别待验。
 
 唯一 desktop/macOS-arm64/updater/sharedCI/main/版本/构建/签名/安装/发布 owner 保持 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，已回执纳入下一未冻结批。冻结542.1/PR246不包含本任务且不被改动；开发只提交精确SHA及证据，不独立触发PR/共享CI或正式打包。cloud auth/101 owner仍为`01a12b99-7b38-78b1-831f-9c60257d386a`，已只读确认原生密码接口启用、Dex local connector与原确认页策略保留，本轮无需服务代码发布，真实认证仍待验。无mobile/Host/website部署。源码/main、实际界面、真实登录/安全存储/恢复/退出、正式发行逐层追踪，不以模拟结果替代。
+## MB-MOBILE-AUTH-20261105 — 手机长期登录与一次登录操作
+
+用户要求按已诊断问题修复频繁退登/额外确认。隔离codex/mobile-auth-20261105基于main065f2b6c8；mobile原生owner以独立加密pending记录、同设备既有key证明和读回确认实现安全续期/冷恢复，旧account JSON保持三字段以兼容原包。真实401投影expired并退役旧连接，网络错误保留账号；退出同时处理原/候选token，清理远端设总预算。原生password在AuthStore获内部30天滑动策略，可空TTL列兼容迁移；旧Web/Host/OAuth不追溯扩权。登录授权说明并入同意并登录，立即消费Ready事务，保留旧poll恢复与密码不重放。
+
+部署单元与归属不变：sharedCI/main唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；cloud AgentNet与mobile iOS/Android唯一01a12b99-7b38-78b1-831f-9c60257d386a。先cloud兼容服务及有效DB备份/回滚，再手机唯一owner分配下一未冻结包；不覆盖build9/10或旧tag，不操作日常Mac或替代Xu设备。历史session不追溯赋30天，升级后可有一次正常重登。桌面源码helper语义保持，不单独请求桌面发布。
+
+实现/本地策略与原生回归/真实本地TLS+设备证明链/main/云发布/手机包/真机分别追踪；内置浏览器被Work设置禁用，Chrome独立会话授权仍待用户答复，页面实测不冒充通过。Kevin不可用，不发业务消息或重置账号。任务.agent-sync/tasks/codex-mobile-auth-20261105-84ad7697.md，契约、稳定ToDo与命令证据dev-docs/mobile-auth-20261105/{PLAN,acceptance}.md。完整候选与兼容顺序交既有owner，不自行触发共享CI。
+
+Root main intake 2026-11-05 integrates producer702a08a and mobile-owner explicit-consent94c9050 with current mainfcf06ff. Only plan append conflict resolved by retaining both desktop-native-login and mobile-auth records. Root sharedCI/main owner remains01a12bc2, cloud/mobile deployment remains01a12b99. Candidate/CI and production acceptance are separate.
