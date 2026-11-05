@@ -104,6 +104,8 @@ struct Pending {
     phase: Phase,
     browser_return_path: Option<&'static str>,
     replayable_result: bool,
+    /// Set only after verified native password login, never deserialized.
+    native_session: bool,
 }
 type ServiceClient = CoreClient<
     EndpointSet,
@@ -799,6 +801,7 @@ async fn start(
             phase: Phase::Pending,
             browser_return_path,
             replayable_result: req.replayable_result,
+            native_session: false,
         },
     );
     Ok((
@@ -1225,7 +1228,11 @@ async fn poll(
         Phase::Ready(s) => s,
         _ => return Err(ApiError::Busy),
     };
-    let result = app.store.issue_session(&subject, &device);
+    let result = if p.native_session {
+        app.store.issue_native_session(&subject, &device)
+    } else {
+        app.store.issue_session(&subject, &device)
+    };
     // Legacy transactions remain one-shot. Opted-in transactions retain their
     // exact issued response until ACK or expiry so a lost HTTP response can be
     // recovered without minting another bearer.
@@ -2407,6 +2414,26 @@ mod tests {
         ));
     }
 
+    #[test]
+    fn login_requests_cannot_select_the_native_session_policy() {
+        for field in [
+            "nativeSession",
+            "native_session",
+            "renewalTtlSeconds",
+            "renewal_ttl_seconds",
+        ] {
+            let mut value = serde_json::json!({
+                "deviceId": TEST_DEVICE,
+                "pkceChallenge": URL_SAFE_NO_PAD.encode(Sha256::digest(TEST_VERIFIER.as_bytes()))
+            });
+            value[field] = serde_json::json!(true);
+            assert!(
+                serde_json::from_value::<StartRequest>(value).is_err(),
+                "{field}"
+            );
+        }
+    }
+
     fn login_test_router(app: Arc<App>) -> Router {
         Router::new()
             .route("/auth/login/poll", post(poll))
@@ -2519,6 +2546,8 @@ mod tests {
         let second_body: serde_json::Value =
             serde_json::from_slice(&to_bytes(second.into_body(), 4096).await.unwrap()).unwrap();
         assert_eq!(first_body, second_body);
+        let expiry = first_body["expiresAt"].as_i64().unwrap();
+        assert!(expiry > unix_now().unwrap() + 3590 && expiry <= unix_now().unwrap() + 3600);
         let bearer = first_body["accessToken"].as_str().unwrap();
         assert!(app.store.validate_session(bearer).is_ok());
         assert_eq!(session_row_count(&dir), 1);
@@ -2926,6 +2955,10 @@ mod tests {
         assert_eq!(value["token_type"], "Bearer");
         let bearer = value["access_token"].as_str().unwrap();
         let session = app.store.validate_session(bearer).unwrap();
+        assert!(
+            session.expires_at > unix_now().unwrap() + 3590
+                && session.expires_at <= unix_now().unwrap() + 3600
+        );
         assert_eq!(session.device_id, TEST_DEVICE);
         assert_eq!(
             session.account.network_id,

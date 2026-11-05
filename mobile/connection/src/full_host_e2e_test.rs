@@ -760,6 +760,164 @@ async fn attachment_continuation(
         json!({"sessionId":session_id,"operationId":operation_id,"assets":2,"terminal":"complete","duplicateIntent":"MOBILE_RECEIPT_REQUIRED","receiptRecovered":true})
     );
 }
+struct FailedRenewalStore {
+    original: Arc<dyn SecureStore>,
+    discard: bool,
+}
+impl IdentityStore for FailedRenewalStore {
+    fn load(&self, s: &KeyScope) -> Result<DevicePrivateKey, CryptoError> {
+        self.original.load(s)
+    }
+    fn save_pending(&self, s: &KeyScope, k: &DevicePrivateKey) -> Result<(), CryptoError> {
+        self.original.save_pending(s, k)
+    }
+    fn delete(&self, s: &KeyScope) -> Result<(), CryptoError> {
+        self.original.delete(s)
+    }
+}
+impl SecureStore for FailedRenewalStore {
+    fn read_record(&self, s: &str, r: &str) -> Result<Option<Zeroizing<Vec<u8>>>, String> {
+        self.original.read_record(s, r)
+    }
+    fn write_record(&self, s: &str, r: &str, v: &[u8]) -> Result<(), String> {
+        if r == "account-renewal" {
+            if self.discard {
+                return Ok(());
+            }
+            return Err("synthetic pending storage failure".into());
+        }
+        self.original.write_record(s, r, v)
+    }
+    fn remove_record(&self, s: &str, r: &str) -> Result<(), String> {
+        self.original.remove_record(s, r)
+    }
+}
+
+async fn verify_mobile_renewal_restart(native: &mut MobileConnection) {
+    assert!(
+        native
+            .store
+            .read_record(&native.config.issuer, "account-renewal-clock")
+            .unwrap()
+            .is_some(),
+        "first enrolled connection must renew through real device proof"
+    );
+    let principal = native.saved.as_ref().unwrap().session.principal_id.clone();
+    let device = native.saved.as_ref().unwrap().device_id.clone();
+    // Preserve the service's 15-second rotation guard. This is an
+    // explicit synthetic loopback acceptance, never a production retry.
+    let previous_expiry = native.saved.as_ref().unwrap().session.expires_at;
+    let wait = previous_expiry.saturating_sub(jsonwebtoken::get_current_timestamp() + 15);
+    tokio::time::sleep(Duration::from_secs(wait)).await;
+    let (identity, transport) = native.account_identity(true).await.unwrap();
+    let old_scope = identity.scope.clone();
+    let original_store = native.store.clone();
+    for discard in [false, true] {
+        native.store = Arc::new(FailedRenewalStore {
+            original: original_store.clone(),
+            discard,
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let probe = NetworkTransport::new_with_public_ca(
+            &format!("https://{}", listener.local_addr().unwrap()),
+            identity.device_key(),
+            MemoryBudget::default(),
+            None,
+        )
+        .unwrap();
+        let failure = native
+            .renew_account(&identity, &probe)
+            .await
+            .expect_err("pending durability must precede HTTP");
+        assert_eq!(failure.code, "MOBILE_SECURE_STORE_UNAVAILABLE");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), listener.accept())
+                .await
+                .is_err(),
+            "failed pending write or readback must send zero HTTP/TCP requests"
+        );
+    }
+    native.store = original_store;
+    eprintln!("actual-mobile-renewal-stage-failure={{\"writeFailureRequests\":0,\"readbackFailureRequests\":0}}");
+    let pending = native.stage_account_renewal(&identity).unwrap();
+    let bytes = Zeroizing::new(serde_json::to_vec(&pending).unwrap());
+    let staged: Value = serde_json::from_slice(&bytes).unwrap();
+    let candidate = Zeroizing::new(staged["candidate"].as_str().unwrap().to_owned());
+    let renewed = transport
+        .renew_session(&identity.token, &candidate)
+        .await
+        .unwrap();
+    assert_eq!(renewed.session_handle, identity.access.session_handle);
+    assert!(renewed.expires_at > previous_expiry);
+    let wait = previous_expiry
+        .saturating_add(1)
+        .saturating_sub(jsonwebtoken::get_current_timestamp());
+    tokio::time::sleep(Duration::from_secs(wait)).await;
+    assert!(previous_expiry <= jsonwebtoken::get_current_timestamp());
+    // Simulate a process dying after the server commits, before local
+    // account publication. Restart the original native owner/store.
+    let config = NativeConfig {
+        issuer: native.config.issuer.clone(),
+        public_tls_ca: native.config.public_tls_ca.clone(),
+    };
+    let store = native.store.clone();
+    native.active.store(false, Ordering::Release);
+    let mut cold = MobileConnection::new(config, store).unwrap();
+    let status = ok(cold
+        .request(json!({"version":1,"kind":"account.status"}))
+        .await);
+    assert_eq!(status["state"], "signed-in");
+    let saved = cold.saved.as_ref().unwrap();
+    assert!(
+        saved.session.access_token == candidate.as_str(),
+        "recovered native credential must equal the committed candidate"
+    );
+    assert_eq!(saved.session.principal_id, principal);
+    assert_eq!(saved.device_id, device);
+    assert!(cold
+        .store
+        .read_record(&cold.config.issuer, "account-renewal")
+        .unwrap()
+        .is_none());
+    let (recovered, _) = cold.account_identity(true).await.unwrap();
+    assert!(
+        serde_json::to_value(&recovered.scope).unwrap()
+            == serde_json::to_value(&old_scope).unwrap(),
+        "cold renewal must preserve the actual existing device key generation"
+    );
+    assert_eq!(
+        recovered.access.session_handle,
+        identity.access.session_handle
+    );
+    eprintln!("actual-mobile-renewal-cold-proof={{\"sameDeviceScope\":true,\"sameSessionHandle\":true,\"candidateRecovered\":true,\"pendingRemoved\":true}}");
+    // Recreate the crash journal after successful adoption to verify
+    // logout when the old alias has really expired in AuthStore.
+    cold.store
+        .write_record(&cold.config.issuer, "account-renewal", &bytes)
+        .unwrap();
+    let logout = ok(cold
+        .request(json!({"version":1,"kind":"account.logout"}))
+        .await);
+    assert_eq!(logout["state"], "signed-out");
+    let client = OwnedClient::pinned(
+        native.instance.as_ref().unwrap().clone(),
+        cold.config.public_tls_ca.as_deref(),
+    )
+    .unwrap();
+    assert!(client
+        .inspect_session_candidate(&device, &candidate)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(cold
+        .store
+        .read_record(&cold.config.issuer, "account")
+        .unwrap()
+        .is_none());
+    eprintln!("actual-mobile-renewal-expired-alias-logout={{\"candidateRevoked\":true,\"accountRemoved\":true}}");
+    *native = cold;
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 #[ignore = "explicit full chain: requires original service/headless test binaries and Node24; bounded loopback only"]
 async fn original_mobile_wss_host_chain() {
@@ -782,12 +940,12 @@ async fn original_mobile_wss_host_chain() {
         let key=rcgen::KeyPair::generate().unwrap();let cert=rcgen::CertificateParams::new(vec!["localhost".into()]).unwrap().self_signed(&key).unwrap();
         let tls=rustls::ServerConfig::builder_with_provider(Arc::new(rustls::crypto::ring::default_provider())).with_safe_default_protocol_versions().unwrap().with_no_client_auth().with_single_cert(vec![cert.der().clone()],rustls::pki_types::PrivatePkcs8KeyDer::from(key.serialize_der()).into()).unwrap();
         let public=tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();let issuer=format!("https://localhost:{}",public.local_addr().unwrap().port());
-        fs::write(root.join("public-ca.pem"),cert.pem()).unwrap();fs::set_permissions(root.join("public-ca.pem"),fs::Permissions::from_mode(0o600)).unwrap();private(&root.join("config.json"),&json!({"issuer":issuer,"shortRenewal":std::env::var("MOXBOTS_FULL_MODE").as_deref()==Ok("renewal")}));
+        fs::write(root.join("public-ca.pem"),cert.pem()).unwrap();fs::set_permissions(root.join("public-ca.pem"),fs::Permissions::from_mode(0o600)).unwrap();private(&root.join("config.json"),&json!({"issuer":issuer,"shortRenewal":matches!(std::env::var("MOXBOTS_FULL_MODE").as_deref(),Ok("renewal"|"mobile-renewal"))}));
         let service=std::env::var("MOXBOTS_FULL_SERVICE_TEST_BIN").expect("build service test binary first");spawn(&mut children,&root,&service,&["server::mobile_full_e2e_fixture::original_relay_service_fixture","--ignored","--exact","--nocapture"],"service");
         let ready=wait_json(&root.join("service-ready.json")).await;let address=ready["address"].as_str().unwrap().to_owned();let acceptor=tokio_rustls::TlsAcceptor::from(Arc::new(tls));
         tasks.spawn(async move{let mut connections=tokio::task::JoinSet::new();loop{let (tcp,_)=public.accept().await.unwrap();let acceptor=acceptor.clone();let address=address.clone();connections.spawn(async move{if let Ok(mut tls)=acceptor.accept(tcp).await{if let Ok(mut service)=tokio::net::TcpStream::connect(address).await{let _=tokio::io::copy_bidirectional(&mut tls,&mut service).await;}}});}});
-        let mode=std::env::var("MOXBOTS_FULL_MODE").unwrap_or_else(|_|"text".into());assert!(["text","assets","ffi","renewal"].contains(&mode.as_str()));
-        let node=std::env::var("MOXBOTS_FULL_NODE").unwrap_or_else(|_|"node".into());let helper=repo.join("scripts/fixtures/mobile-full-e2e-host.ts");spawn(&mut children,&root,&node,&["--import","tsx",helper.to_str().unwrap(),root.to_str().unwrap(),if mode=="ffi"||mode=="renewal" {"text"} else {&mode}],"node");
+        let mode=std::env::var("MOXBOTS_FULL_MODE").unwrap_or_else(|_|"text".into());assert!(["text","assets","ffi","renewal","mobile-renewal"].contains(&mode.as_str()));
+        let node=std::env::var("MOXBOTS_FULL_NODE").unwrap_or_else(|_|"node".into());let helper=repo.join("scripts/fixtures/mobile-full-e2e-host.ts");spawn(&mut children,&root,&node,&["--import","tsx",helper.to_str().unwrap(),root.to_str().unwrap(),if mode=="ffi"||mode=="renewal"||mode=="mobile-renewal" {"text"} else {&mode}],"node");
         let host_ready=wait_json(&root.join("host-ready.json")).await;
         let host=std::env::var("MOXBOTS_FULL_HOST_TEST_BIN").expect("build headless test binary first");spawn(&mut children,&root,&host,&["agent_network::connector::mobile_full_e2e_fixture::original_headless_connector_fixture","--ignored","--exact","--nocapture"],"headless");
         let status=std::time::Instant::now();loop{let v=wait_json(&root.join("headless-status.json")).await;if v["ready"]==true{break;}assert!(status.elapsed()<Duration::from_secs(35),"headless not ready: {v}");tokio::time::sleep(Duration::from_millis(100)).await;}
@@ -803,6 +961,14 @@ async fn original_mobile_wss_host_chain() {
         let disabled=ok(owner.request(json!({"version":1,"kind":"targets.list"})).await);eprintln!("actual-default-mobile-targets={disabled}");assert!(disabled["items"].as_array().unwrap().is_empty());
         assert!(std::env::var("MOXBOTS_FULL_KEEP_MOUNT_DISABLED").as_deref()!=Ok("1"),"ORIGINAL_HOST_MOUNT_DISABLED: real catalog present; explicit synthetic-user mount authorization intentionally withheld");
         owner.mount(host_device,true).await;
+        if mode == "mobile-renewal" {
+            let FixtureOwner::Direct(native) = &mut owner else { panic!("native mobile renewal owner required") };
+            Box::pin(verify_mobile_renewal_restart(native)).await;
+            // This mode accepts authentication through real device proof and
+            // logout. Run the original text mode separately in a fresh fixture:
+            // logout intentionally leaves the old joined device offline.
+            return;
+        }
         // Keep the second device's admission/connect future out of this
         // already deep orchestration future. It uses the same runtime and
         // original mobile owner implementation, but the setup-only future

@@ -657,6 +657,17 @@ impl OwnedClient {
         device: &str,
         token: &str,
     ) -> Result<OwnedSession, NetworkError> {
+        self.inspect_session_candidate(device, token)
+            .await?
+            .ok_or_else(|| NetworkError::new("OWNED_SESSION_INVALID"))
+    }
+    /// A confirmed 401 is distinct from a malformed/foreign successful reply.
+    /// Native crash recovery may discard a dead candidate only in the former case.
+    pub(crate) async fn inspect_session_candidate(
+        &self,
+        device: &str,
+        token: &str,
+    ) -> Result<Option<OwnedSession>, NetworkError> {
         if !uuid(device)
             || token.len() != 43
             || !token
@@ -674,6 +685,9 @@ impl OwnedClient {
             Some(token),
         )
         .await?;
+        if status == StatusCode::UNAUTHORIZED {
+            return Ok(None);
+        }
         if status != StatusCode::OK {
             return Err(NetworkError::new("OWNED_SESSION_INVALID"));
         }
@@ -689,7 +703,7 @@ impl OwnedClient {
             network_id: inspected.network_id,
         };
         session.validate(&self.instance)?;
-        Ok(session)
+        Ok(Some(session))
     }
     pub(crate) async fn community_request(
         &self,

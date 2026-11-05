@@ -4,6 +4,8 @@ mod drafts;
 mod notifications;
 #[path = "peer.rs"]
 mod peer;
+#[path = "renewal.rs"]
+mod renewal;
 use crate::agent_network::{
     account::{NetworkAccountSession, OwnedAccount},
     connection::{initial_hello, send},
@@ -34,6 +36,11 @@ use std::{
 };
 use tokio_tungstenite::tungstenite::Message;
 use zeroize::Zeroizing;
+
+#[cfg(not(test))]
+const LOGOUT_CLEANUP_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(test)]
+const LOGOUT_CLEANUP_TIMEOUT: Duration = Duration::from_millis(100);
 
 /// Only the native application may construct this configuration. Trust is an
 /// installed product configuration, never JavaScript input or discovered UI text.
@@ -89,6 +96,7 @@ pub struct MobileConnection {
     client: Option<OwnedClient>,
     instance: Option<OwnedInstance>,
     saved: Option<SavedAccount>,
+    account_rejected: bool,
     display_name: Option<String>,
     pending: Option<PendingLogin>,
     active: Arc<AtomicBool>,
@@ -120,6 +128,7 @@ impl MobileConnection {
             client: None,
             instance: None,
             saved: None,
+            account_rejected: false,
             display_name: None,
             pending: None,
             active: Arc::new(AtomicBool::new(true)),
@@ -132,7 +141,10 @@ impl MobileConnection {
     }
     /// JS receives only closed projections. Secrets stay in this native owner.
     pub async fn request(&mut self, intent: Value) -> Value {
-        match tokio::time::timeout(Duration::from_secs(90), self.request_inner(intent)).await {
+        // Device proof, TLS and cold recovery share this serialized owner.
+        // Keep their large nested futures off the native caller's stack.
+        let operation = Box::pin(self.request_inner(intent));
+        match tokio::time::timeout(Duration::from_secs(90), operation).await {
             Ok(Ok(v)) => json!({"ok":true,"value":v}),
             Ok(Err(e)) => {
                 if e.code != "MOBILE_TARGET_SNAPSHOT_UNAVAILABLE" {
@@ -159,15 +171,14 @@ impl MobileConnection {
         Ok(())
     }
     fn account_view(&self) -> Value {
-        let saved = self
-            .saved
-            .as_ref()
-            .filter(|s| s.session.expires_at > jsonwebtoken::get_current_timestamp());
+        let saved = self.saved.as_ref().filter(|s| {
+            !self.account_rejected && s.session.expires_at > jsonwebtoken::get_current_timestamp()
+        });
         json!({"kind":"account","state":if self.pending.is_some(){"authenticating"}else if saved.is_some(){"signed-in"}else if self.saved.is_some(){"expired"}else{"signed-out"},"displayName":saved.and(self.display_name.as_deref()),"principalId":saved.map(|s|s.session.principal_id.as_str())})
     }
     async fn restore(&mut self) -> Result<(), NetworkError> {
         if self.saved.is_some() {
-            return Ok(());
+            return self.recover_account_renewal().await;
         }
         let Some(bytes) = self
             .store
@@ -183,17 +194,29 @@ impl MobileConnection {
             .as_ref()
             .unwrap()
             .ensure_same_trust(&saved.instance)?;
-        if saved.session.expires_at > jsonwebtoken::get_current_timestamp() {
-            self.client
-                .as_ref()
-                .unwrap()
-                .validate_session(&saved.device_id, &saved.session)
-                .await?;
-            self.display_name = self.load_saved_display_name(&saved);
-        } else {
-            self.display_name = None;
-        }
         self.saved = Some(saved);
+        let result = async {
+            self.recover_account_renewal().await?;
+            let saved = self.saved.as_ref().unwrap();
+            if saved.session.expires_at > jsonwebtoken::get_current_timestamp() {
+                self.client
+                    .as_ref()
+                    .unwrap()
+                    .validate_session(&saved.device_id, &saved.session)
+                    .await?;
+                self.display_name = self.load_saved_display_name(saved);
+            } else {
+                self.display_name = None;
+            }
+            Ok(())
+        }
+        .await;
+        if let Err(error) = result {
+            // A failed cold validation must not become a warm signed-in cache.
+            self.saved = None;
+            self.display_name = None;
+            return Err(error);
+        }
         Ok(())
     }
     async fn cancel(&mut self) -> Result<(), NetworkError> {
@@ -261,6 +284,8 @@ impl MobileConnection {
             "draft.write" => self.draft(&intent, true),
             "account.status" => {
                 self.restore().await?;
+                self.validate_current_account().await?;
+                self.maintain_account().await?;
                 Ok(self.account_view())
             }
             "account.login.start" | "account.login.password" => {
@@ -296,11 +321,13 @@ impl MobileConnection {
                     None
                 };
                 self.restore().await?;
-                if self
-                    .saved
-                    .as_ref()
-                    .is_some_and(|s| s.session.expires_at <= jsonwebtoken::get_current_timestamp())
-                {
+                if self.saved.is_none() {
+                    self.revoke_pending_account_renewal().await?;
+                }
+                if self.saved.as_ref().is_some_and(|s| {
+                    self.account_rejected
+                        || s.session.expires_at <= jsonwebtoken::get_current_timestamp()
+                }) {
                     self.saved = None;
                     self.display_name = None;
                     self.store
@@ -386,13 +413,30 @@ impl MobileConnection {
                 Ok(self.account_view())
             }
             "account.logout" => {
+                // Deactivate immutable snapshots before either bearer is
+                // revoked. Keep pending proof until remote revocation succeeds.
+                self.active.store(false, Ordering::Release);
                 let disk = self
                     .store
                     .read_record(&self.config.issuer, "account")
                     .map_err(store_error)?;
-                let notification_logout = self
-                    .notification_logout(disk.as_ref().map(|b| b.as_slice()))
-                    .await;
+                // Bound all pre-clear remote cleanup below the outer request
+                // deadline. Cancellation cannot strand a signed-in disk record.
+                let cleanup = tokio::time::timeout(LOGOUT_CLEANUP_TIMEOUT, async {
+                    let notification = self
+                        .notification_logout(disk.as_ref().map(|b| b.as_slice()))
+                        .await;
+                    let renewal = self.revoke_pending_account_renewal().await;
+                    (notification, renewal)
+                })
+                .await;
+                let (notification_logout, renewal_logout) = match cleanup {
+                    Ok(results) => results,
+                    Err(_) => (
+                        Err(err("MOBILE_NOTIFICATIONS_UNCONFIRMED")),
+                        Err(err("MOBILE_LOGOUT_UNCONFIRMED")),
+                    ),
+                };
                 let saved = match self.clear_local_identity() {
                     Some(saved) => Ok(Some(saved)),
                     None => disk
@@ -428,6 +472,7 @@ impl MobileConnection {
                 };
                 canceled?;
                 logout?;
+                renewal_logout?;
                 notification_logout?;
                 Ok(self.account_view())
             }
@@ -494,6 +539,7 @@ impl MobileConnection {
             }
         }
         self.saved = Some(saved);
+        self.account_rejected = false;
         self.pending = None;
         self.active = Arc::new(AtomicBool::new(true));
         Ok(())
@@ -611,60 +657,32 @@ impl MobileConnection {
     }
     async fn new_connection(&mut self) -> Result<Connected, NetworkError> {
         self.restore().await?;
+        self.maintain_account().await?;
         let saved = self
             .saved
             .as_ref()
             .ok_or_else(|| err("OWNED_LOGIN_REQUIRED"))?;
-        self.client
-            .as_ref()
-            .unwrap()
-            .validate_session(&saved.device_id, &saved.session)
-            .await?;
-        let active = self.active.clone();
-        let guard = active.clone();
-        let account = NetworkAccountSession::Owned(Arc::new(OwnedAccount {
-            binding_id: uuid::Uuid::new_v4().to_string(),
-            connection_id: uuid::Uuid::new_v4().to_string(),
-            device_id: saved.device_id.clone(),
-            session_bound: true,
-            descriptor: saved.instance.clone(),
-            active,
-            session: saved.session.clone(),
-            public_tls_ca: self.config.public_tls_ca.clone(),
-            join_authorized: AtomicBool::new(false),
-            guard: Arc::new(move || {
-                if guard.load(Ordering::Acquire) {
-                    Ok(())
-                } else {
-                    Err(err("ACCOUNT_BINDING_CHANGED"))
-                }
-            }),
-        }));
-        let identity =
-            NetworkIdentity::initialize_with_store(account, None, self.store.clone()).await?;
-        let transport = NetworkTransport::new_with_public_ca(
-            &identity.network_url,
-            identity.device_key(),
-            MemoryBudget::default(),
-            identity.account.public_tls_ca(),
-        )?;
+        let device_id = saved.device_id.clone();
+        let (mut identity, mut transport) = self.account_identity(false).await?;
         // Login is explicit mobile enrollment consent. The grant is consumed once;
         // reconnect never automatically replays a membership mutation.
         let grant = self
             .store
-            .read_record(&self.config.issuer, &format!("joined:{}", saved.device_id))
+            .read_record(&self.config.issuer, &format!("joined:{}", device_id))
             .map_err(store_error)?
             .is_none();
         if grant {
             self.store
                 .write_record(
                     &self.config.issuer,
-                    &format!("joined:{}", saved.device_id),
+                    &format!("joined:{}", device_id),
                     b"attempted",
                 )
                 .map_err(store_error)?;
         }
         crate::agent_network::owned_admission::enroll(&identity, &transport, grant).await?;
+        self.renew_enrolled_account(&mut identity, &mut transport)
+            .await?;
         let mut socket = transport.websocket(&identity.token).await?;
         send(
             &mut socket,
