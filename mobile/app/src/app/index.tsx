@@ -27,6 +27,8 @@ import { BotProfileSheet } from '../BotProfileSheet';
 import { ApprovalFlights, approvalFlightKey } from '../approvalFlight';
 import { BotAvatar } from '../BotAvatar';
 import { SessionHomeScreen } from '../SessionHomeScreen';
+import { ConversationWorkPanel } from '../ConversationWorkPanel';
+import type { WorkAction } from '../conversationWork';
 import { MobileSheet } from '../MobileSheet';
 import { mobileTheme } from '../mobileTheme';
 import { conversationStyles } from '../conversationStyles';
@@ -186,6 +188,8 @@ function AppBody() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const passwordInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
+  const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
+  const requestAnchorRef = useRef<{ epoch: number; y: number } | null>(null);
   const blocksMutation = blocksMutationForScope(pending, target?.targetId ?? null, snapshot?.sessionId ?? null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView> | null>(null);
   const followTranscriptRef = useRef(true);
@@ -1610,6 +1614,34 @@ function AppBody() {
     router.push({ pathname: '/artifacts', params: { targetId: target.targetId, sessionId: snapshot.sessionId } });
   };
 
+  const revealLatest = () => {
+    if (ownerRef.current.epoch !== ownerEpoch || ownerRef.current.screen !== 'chat') return;
+    followTranscriptRef.current = true;
+    userScrolledTranscriptRef.current = false;
+    setShowTranscriptBottom(false);
+    scrollRef.current?.scrollToEnd({ animated: true });
+  };
+  const actOnWork = (action: WorkAction) => {
+    if (ownerRef.current.epoch !== ownerEpoch || ownerRef.current.screen !== 'chat') return;
+    setComposerMenuOpen(false);
+    if (action === 'query') {
+      if (chatPendingReceipt && canQueryChatReceipt) void run('receipt', () => queryPending(chatPendingReceipt));
+    } else if (action === 'read') {
+      if (!target?.online || loading) return;
+      if (awaitingSnapshot) void run('snapshot', retrySnapshot);
+      else if (snapshot) void run('snapshot', () => openSnapshot({ sessionId: snapshot.sessionId, title: snapshot.title, preview: '', updatedAt: '', runtime: snapshot.runtime }));
+    } else if (action === 'requests') {
+      if (!sessionSnapshotReady(ownerRef.current, snapshotRef.current) || snapshotRef.current?.state !== 'waiting_user_action') return;
+      const anchor = requestAnchorRef.current;
+      if (anchor?.epoch === ownerEpoch) {
+        followTranscriptRef.current = false;
+        userScrolledTranscriptRef.current = true;
+        setShowTranscriptBottom(true);
+        scrollRef.current?.scrollTo({ y: Math.max(0, anchor.y - 8), animated: true });
+      } else revealLatest();
+    } else if (!sending && !hideSubmittedDraft) composerInputRef.current?.focus();
+  };
+
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><StatusBar style="dark"/><KeyboardAvoidingView style={[styles.fill, styles.appFrame]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
     {isFixtureMode && <View accessibilityRole="alert" style={styles.fixtureBanner}><Text style={styles.fixtureText}>演示夹具 · 合成数据 · 草稿为浏览器模拟存储</Text><Pressable accessibilityRole="button" accessibilityLabel="选择 QA 演示场景" onPress={() => setQaMenuOpen((value) => !value)} style={styles.qaScenarioToggle}><Text style={styles.fixtureText}>场景</Text></Pressable>{qaMenuOpen && <View style={styles.qaScenarioOptions}>{qaScenarioOptions.map((item) => <Pressable key={item.id} accessibilityRole="button" onPress={() => void chooseQaScenario(item.id)} style={styles.qaScenarioOption}><Text style={styles.qaScenarioText}>{item.label}</Text></Pressable>)}</View>}</View>}
     {screen === 'login' && <View style={styles.loginPage}>
@@ -1645,6 +1677,7 @@ function AppBody() {
       search={sessionSearch} searchOpen={sessionSearchOpen} onSearch={setSessionSearch} onSearchOpen={setSessionSearchOpen}
       busy={loading || recentBusy || directory.loading} unavailableDeviceCount={unavailableDeviceCount} syncIssueCount={recentErrorCount}
       onAccount={() => router.push('/account')}
+      statusReading={directory.loading} onReadStatuses={directory.readMore}
       onRefresh={() => {setRecentRefresh(value => value + 1);void loadAccount(ownerRef.current).catch((error) => say(error instanceof Error ? error.message : 'ACCOUNT_LOAD_FAILED', 'error'));}}
       onNew={(selected) => {moveOwner('chat',selected,null);setNotice(null);void loadMobileCatalog(selected);}}
       onOpen={(item) => {
@@ -1665,6 +1698,12 @@ function AppBody() {
         <Pressable accessibilityRole="button" accessibilityLabel="查看会话成果" disabled={!snapshot?.sessionId || awaitingSnapshot} accessibilityState={{ disabled: !snapshot?.sessionId || awaitingSnapshot }} onPress={openArtifacts} style={[styles.toolbarAction, (!snapshot?.sessionId || awaitingSnapshot) && { opacity: 0.35 }]}><FileText size={20} color={C.ink}/></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="更多会话信息" onPress={() => setMenuOpen((value) => !value)} style={styles.toolbarAction}><MoreHorizontal size={22} color={C.ink}/></Pressable>
       </View>
+      <ConversationWorkPanel key={`${account?.principalId ?? ''}:${ownerEpoch}`}
+        target={target} snapshot={!awaitingSnapshot && snapshot?.agentId === target?.agentId ? snapshot : null}
+        awaiting={awaitingSnapshot} reading={snapshotStatus === 'pending'} sending={sending}
+        receipt={chatPendingReceipt ? receiptStates[chatPendingReceipt.operationId] === 'processing' || chatPendingReceipt.status === 'processing' ? 'processing' : 'unknown' : null}
+        busy={!!loading} canQuery={canQueryChatReceipt} canCompose={!sending && !hideSubmittedDraft}
+        onAction={actOnWork} onArtifacts={openArtifacts} onLatest={revealLatest}/>
       <BotProfileSheet target={botProfileOpen ? target : null} onClose={() => setBotProfileOpen(false)} onConversations={(selected) => {setFocusBot({key:botKey(selected),serial:Date.now()});moveOwner('sessions',selected,null);}} onNew={(selected) => {moveOwner('chat',selected,null);void loadMobileCatalog(selected);}}/>
       <MobileSheet title="会话信息" visible={menuOpen} onClose={() => setMenuOpen(false)}>
         <Text style={[styles.chatTitle, { marginBottom: 18 }]}>{snapshot?.title || (awaitingSnapshot ? '读取已有会话' : '新会话')}</Text>
@@ -1673,7 +1712,7 @@ function AppBody() {
         <Text style={[styles.caption, { marginBottom: 20 }]}>运行时：{snapshot?.runtime ?? target?.runtime ?? '未提供'} · {target?.online ? '在线' : '离线'}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="在会话信息中查看成果" disabled={!snapshot?.sessionId || awaitingSnapshot} onPress={openArtifacts} style={styles.secondaryButton}><Text style={styles.secondaryText}>查看会话成果</Text></Pressable>
       </MobileSheet>
-      {chatNotice && <NoticeView notice={chatNotice} action={chatPendingReceipt ? { label: loading ? '正在查询…' : target?.online ? '查询状态' : '设备离线', accessibilityLabel: '查询这条消息的操作状态', accessibilityHint: '只查询原操作回执，不会重新发送消息', disabled: !canQueryChatReceipt, onPress: () => void run('receipt', () => queryPending(chatPendingReceipt)) } : retryNotificationAction} onDismiss={chatPendingReceipt ? undefined : dismissNotification}/>}
+      {chatNotice && <NoticeView notice={chatNotice} action={chatPendingReceipt ? undefined : retryNotificationAction} onDismiss={chatPendingReceipt ? undefined : dismissNotification}/>}
       {chatPendingReceipt?.submittedText && !snapshot?.messages.some((message) => message.role === 'user' && message.content === chatPendingReceipt.submittedText) && <View style={styles.pendingBox}><Text style={styles.pendingTitle}>待确认消息 · 原文已保留</Text><Text selectable numberOfLines={4} style={styles.body}>{chatPendingReceipt.submittedText}</Text></View>}
       <ScrollView accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} ref={scrollRef} accessibilityLabel="聊天消息" style={styles.transcript} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" scrollEventThrottle={32}
         onTouchStart={() => { userScrolledTranscriptRef.current = true; }}
@@ -1702,7 +1741,7 @@ function AppBody() {
         {transcript?.messages.map((item) => <View key={item.id} style={[styles.messageRow, item.role === 'user' && styles.userMessageRow]}><View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>{item.role !== 'user' && target && <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:8}}><BotAvatar target={target} size={24}/><Text style={styles.messageMeta}>{target.name}</Text></View>}{item.role === 'user' ? <Text selectable style={[styles.messageText, styles.userText]}>{item.content}</Text> : <MessageContent content={item.content}/>}{item.truncated && <Text style={styles.messageMeta}>内容已截断</Text>}{item.tools.map((tool) => <ToolResult key={`${item.id}:${tool.id}`} tool={tool}/>)}</View><Text style={styles.messageTimestamp}>{formatMessageTime(item.timestamp)}</Text></View>)}
         {snapshot?.state === 'running' && <View style={styles.thinking}><ActivityIndicator color={C.green}/><Text style={styles.caption}>正在处理…</Text></View>}
         {approvalSubmitting && <Text accessibilityLiveRegion="polite" style={styles.caption}>正在核对并提交当前请求…</Text>}
-        {snapshot?.state === 'waiting_user_action' && snapshot.interactions.map((item) => <ApprovalCard key={`${item.generation}:${item.turnId}:${item.requestId}`} item={item} onRespond={respond} disabled={sending || approvalSubmitting || blocksMutation}/>) }
+        {snapshot?.state === 'waiting_user_action' && <View onLayout={(event) => { requestAnchorRef.current = { epoch: ownerEpoch, y: event.nativeEvent.layout.y }; }}>{snapshot.interactions.map((item) => <ApprovalCard key={`${item.generation}:${item.turnId}:${item.requestId}`} item={item} onRespond={respond} disabled={sending || approvalSubmitting || blocksMutation}/>)}</View>}
       </ScrollView>
       {composerMenuOpen && <Pressable accessibilityRole="button" accessibilityLabel="关闭更多操作" onPress={() => setComposerMenuOpen(false)} style={styles.composerMenuBackdrop}/>}
       <View style={styles.composerArea}>
@@ -1745,7 +1784,7 @@ function AppBody() {
         </ScrollView>}
         <View pointerEvents={composerMenuOpen ? 'none' : 'auto'} accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} style={styles.composer}>
           <Pressable ref={composerMenuTriggerRef} accessibilityRole="button" accessibilityLabel="更多操作：附件、语音和建议" accessibilityState={{ expanded: composerMenuOpen }} onPress={() => { Keyboard.dismiss(); setComposerMenuOpen((value) => !value); }} style={styles.plusButton}><Plus size={21} color={C.ink}/></Pressable>
-          <TextInput accessibilityLabel="消息输入框" value={composerDraft} editable={!sending && !hideSubmittedDraft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, draftOwnerEpochAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder={mobileMode === 'legacy' ? '发送纯文本消息…' : '发送消息…'} placeholderTextColor="#929893" multiline maxLength={mobileMode === 'supported' ? 16000 : 8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
+          <TextInput ref={composerInputRef} accessibilityLabel="消息输入框" value={composerDraft} editable={!sending && !hideSubmittedDraft} onChangeText={(value) => saveDraftFor(draftKeyAtRender, draftOwnerEpochAtRender, value)} onLayout={onComposerInputLayout} rows={1} placeholder={mobileMode === 'legacy' ? '发送纯文本消息…' : '发送消息…'} placeholderTextColor="#929893" multiline maxLength={mobileMode === 'supported' ? 16000 : 8000} returnKeyType="default" blurOnSubmit={false} style={[styles.input, { height: composerInputHeight }]}/>
           {composerDraft.trim() || attachments.length > 0 || sending || hideSubmittedDraft ? <Pressable accessibilityRole="button" accessibilityLabel={sending ? '正在提交' : '发送消息'} accessibilityHint={awaitingSnapshot ? '请先重试读取已有会话，草稿会保留。' : !target?.online ? '设备离线，草稿会保留，连接后再发送。' : blocksMutation ? '请先查询待确认操作状态。' : sendAvailability === 'blocked' ? '请等待所有附件就绪，或检查当前设备支持的发送能力。' : undefined} accessibilityState={{ disabled: !canSubmit }} disabled={!canSubmit} onPress={sendDraft} style={[styles.sendButton, !canSubmit && styles.sendDisabled]}>{sending ? <ActivityIndicator color="#fff" size="small"/> : <ArrowUp size={21} color="#fff" strokeWidth={2.5}/>}</Pressable> : <Pressable accessibilityRole="button" accessibilityLabel={speechPreparing ? '正在准备语音输入' : speech.state === 'recording' ? '停止语音输入' : speech.state === 'transcribing' ? '正在识别语音' : '开始语音输入'} disabled={speechPreparing || speech.state === 'transcribing'} onPress={() => speech.state === 'recording' ? void stopSpeech() : speech.state === 'transcribing' ? undefined : void startSpeech()} style={styles.micButton}><Mic size={20} color={speech.state === 'recording' ? C.green : C.muted}/></Pressable>}
           {composerTextWidth > 0 && <Text accessibilityElementsHidden importantForAccessibility="no-hide-descendants" aria-hidden={true} accessible={false} pointerEvents="none" onLayout={onComposerMeasureLayout} style={[styles.inputMeasure, { width: composerTextWidth }]}>{composerDraft ? `${composerDraft}\u200B` : '\u200B'}</Text>}
         </View>

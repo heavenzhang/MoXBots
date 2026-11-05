@@ -20,11 +20,14 @@ const deliveryOperations = new Map<string, PendingOperation>();
 const deliveryResultSessions = new Map<string, string>();
 let deliveryQueries = 0;
 let directoryQueries = 0;
+const statusReadAttempts = new Set<string>();
 let sessions: { sessionId: string; title: string; updatedAt: string; preview: string; runtime: string }[] = [{ sessionId: 'qa-session-1', title: '产品方案讨论', updatedAt: new Date().toISOString(), preview: '梳理移动端的会话体验', runtime: 'codex' }];
 
 export function selectScenario(next: QaScenario): void {
   scenario = next; snapshots.clear();
   sessions = next === 'directory-layout' || next === 'bot-work' ? directoryLayoutRows() : [{sessionId:'qa-session-1',title:'产品方案讨论',updatedAt:new Date().toISOString(),preview:'梳理移动端的会话体验',runtime:'codex'}];
+  if (next === 'bot-work') sessions.push(...Array.from({ length: 12 }, (_, i) => ({ sessionId: `qa-session-${i + 7}`, title: `持续工作 ${i + 7}`, preview: '超过首批状态读取预算，必须明确提示尚未同步。', updatedAt: new Date(Date.now() - (i + 10) * 86400000).toISOString(), runtime: 'codex' })));
+  statusReadAttempts.clear();
   readCount = 0; historyFailed = false;
   active = null; deliveryOperations.clear(); deliveryResultSessions.clear(); deliveryQueries = 0; directoryQueries = 0;
   staleApprovalNextRead = false;
@@ -303,6 +306,10 @@ function sessionReply(request: SessionRequest): unknown {
   if (request.kind === 'list') return { kind: 'list', agentId: request.agentId, items: request.agentId === secondTarget.agentId ? [{ sessionId: 'qa-second-session', title: '第二个 Bot 的最近会话', updatedAt: '2026-11-01T00:00:00Z', preview: '跨 Bot 保持原会话归属', runtime: 'codex' }] : sessions, hasMore: false, nextBefore: null };
   if (request.kind === 'get') {
     if (request.limit === 1) {
+      if (scenario === 'bot-work' && request.sessionId === 'qa-session-2' && !statusReadAttempts.has(request.sessionId)) {
+        statusReadAttempts.add(request.sessionId);
+        return { kind: 'error', code: 'TARGET_OWNER_UNAVAILABLE' };
+      }
       if (active && active.agentId === request.agentId && active.sessionId === request.sessionId) return active;
       const needs=scenario === 'approval' || scenario === 'stale-approval' || scenario === 'bot-work' && request.agentId === target.agentId;
       return makeSnapshot(request.sessionId,request.agentId,needs?'waiting_user_action':scenario==='bot-work'?'running':'idle','qa-generation-1',needs?'qa-turn-1':null,needs);
@@ -327,6 +334,7 @@ function sessionReply(request: SessionRequest): unknown {
     if (!active || active.sessionId !== request.sessionId) {
       const approval = scenario === 'approval' || scenario === 'stale-approval' || scenario === 'bot-work' && request.agentId === target.agentId;
       active = makeSnapshot(request.sessionId, request.agentId, approval ? 'waiting_user_action' : scenario === 'bot-work' ? 'running' : 'idle', 'qa-generation-1', approval ? 'qa-turn-1' : null, approval);
+      if (scenario === 'bot-work') active.messages.push(...Array.from({ length: 20 }, (_, i) => ({ id: `qa-work-${i}`, role: 'assistant' as const, timestamp: '', content: `工作记录 ${i + 1}\n\n已整理当前方案，等待你核对文件读取请求。继续时保留原会话和已有成果。`, truncated: false, tools: [] })));
     }
     return active;
   }

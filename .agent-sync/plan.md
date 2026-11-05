@@ -1264,3 +1264,12 @@ Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd
 实现/本地策略与原生回归/真实本地TLS+设备证明链/main/云发布/手机包/真机分别追踪；内置浏览器被Work设置禁用，Chrome独立会话授权仍待用户答复，页面实测不冒充通过。Kevin不可用，不发业务消息或重置账号。任务.agent-sync/tasks/codex-mobile-auth-20261105-84ad7697.md，契约、稳定ToDo与命令证据dev-docs/mobile-auth-20261105/{PLAN,acceptance}.md。完整候选与兼容顺序交既有owner，不自行触发共享CI。
 
 Root main intake 2026-11-05 integrates producer702a08a and mobile-owner explicit-consent94c9050 with current mainfcf06ff. Only plan append conflict resolved by retaining both desktop-native-login and mobile-auth records. Root sharedCI/main owner remains01a12bc2, cloud/mobile deployment remains01a12b99. Candidate/CI and production acceptance are separate.
+## MB-MOBILE-CONTINUE-02 · 原会话继续工作的深度优化 · 2026-11-03
+
+用户已授权下一轮只聚焦最重要功能。功能源分支 codex/mobile-continue-02-20261103，基线 f719dad17191fc9ea260e8775be85c143af36f1d；同Bot/Session固定工作进展、最近要求/回复、原请求定位、原成果与原草稿入口；首页状态未知显式提示并主动分批读取（12条/3并发），不新增协议/执行owner/Task账本或依赖。类型/全mobile lint通过、124 policy通过；主审及非实现者320/390合成组件走查与边界审阅见 dev-docs/mobile-continue-02/acceptance.md、INDEPENDENT-REVIEW.md。真实账号切换竞态/原生键盘/Host另验，不把模拟当生产验收。
+
+原sharedCI/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4；原mobile版本/签名/安装owner 01a12b99-7b38-78b1-831f-9c60257d386a。mobile owner已预留0.3.0-rc.1/build10并保留build9回退；等功能提交通过后合并其版本材料为一个固定候选，再由原sharedCI/main owner统一CI和主干集成。未运行共享CI/正式构建/发布，未安装；当前手机是否可装以owner实时核实与有效授权为准。完整项目组织、发送提案、成果版本谱系后续处理。
+
+## MB-MOBILE-CONTINUE-02 · original mobile release build10
+
+Originalmobileowner01a12b99 combines reviewed45d474c6 with0.3.0-rc.1/iOS0.3.0/build10/Android10 metadata; compatible new work overview/status coverage, resolveddependencies unchanged. OriginalsharedCI/mainowner01a12bc2 reviews/runs onefinalcandidate thenmain; no prematurefeatureCI/parallelPR. Freeze acceptedsource and buildnewnative+JS signedartifact with immutabletag/hash/rollback9; Kevin unavailable so prepareinternalIPA/nativeverification, retainphysicalpending, noXu substitution/dailyMac/101change. Recorddev-docs/mobile-continue-02/release10.md and taskcodex-mobile-build10-20261103-58f39586.md. Source/synthetic/native/main/package/physical/business separate.
