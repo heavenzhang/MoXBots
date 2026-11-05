@@ -60,6 +60,7 @@ function formatElapsedTime(totalSeconds: number, t: TFunction<'chat'>): string {
 }
 
 interface MessageListProps {
+  revealTurnProcess?: boolean;
   /** Transport-owned history/status and interaction slots, with no local Session authority. */
   headerContent?: React.ReactNode;
   footerContent?: React.ReactNode;
@@ -361,6 +362,7 @@ type FooterProps = {
 };
 
 interface MessageListContext extends MessageActionContext {
+  revealTurnProcess?: boolean;
   headerContent?: React.ReactNode;
   footer: FooterProps;
   streamingMessage: MessageType | null;
@@ -390,7 +392,7 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
 }: FooterProps) {
   const spacerHeight = composerPlacement === 'flow' ? 16 : resolveChatBottomSpacerPx(bottomSpacerPx);
   return (
-    <div className="mx-auto max-w-3xl px-3">
+    <div className="mx-auto max-w-[824px] px-4">
       {pendingPermission && onPermissionDecision && (
         <div className="py-2">
           <PermissionPrompt
@@ -448,7 +450,7 @@ function MessageListFooter({ context }: { context?: MessageListContext }) {
   return context ? <VirtuosoFooter {...context.footer} /> : null;
 }
 function MessageListHeader({ context }: { context?: MessageListContext }) {
-  return context?.headerContent ? <div className="mx-auto max-w-3xl px-3">{context.headerContent}</div> : null;
+  return context?.headerContent ? <div className="mx-auto max-w-[824px] px-4">{context.headerContent}</div> : null;
 }
 const VIRTUOSO_COMPONENTS = { Header: MessageListHeader, Footer: MessageListFooter };
 
@@ -461,6 +463,7 @@ const MessageList = memo(function MessageList({
   headerContent,
   footerContent,
   composerPlacement = 'overlay',
+  revealTurnProcess,
   messages,
   streamingMessage,
   isLoading,
@@ -799,7 +802,7 @@ const MessageList = memo(function MessageList({
         // measurement fix without the clipping.
         return (
           <div
-            className="mx-auto max-w-3xl px-3 py-1 flow-root"
+            className="mx-auto max-w-[824px] px-4 py-2 flow-root"
             data-chat-search-scope=""
             data-message-id={message.id}
           >
@@ -809,6 +812,7 @@ const MessageList = memo(function MessageList({
             >
               <Message
                 message={message}
+                revealTurnProcess={actionContext.revealTurnProcess}
                 citationSources={actionContext.citationSources.get(citationScope(message))}
                 isLoading={isStreamingMsg && actionContext.isLoading}
                 onRewind={canRewind ? actionContext.onRewind : undefined}
@@ -841,6 +845,7 @@ const MessageList = memo(function MessageList({
   const listContext = useMemo<MessageListContext>(
     () => ({
       ...messageActionContext,
+      revealTurnProcess,
       headerContent,
       streamingMessage,
       isLoading,
@@ -868,6 +873,7 @@ const MessageList = memo(function MessageList({
     }),
     [
       messageActionContext,
+      revealTurnProcess,
       headerContent,
       footerContent,
       composerPlacement,

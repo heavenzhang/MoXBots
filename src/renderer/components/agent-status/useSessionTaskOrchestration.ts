@@ -47,10 +47,8 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     planSupport?: SessionTaskSnapshot['planSupport']; executionRecovery?: SessionExecutionRecoveryProjection; runtimeKey: string } | null>(null);
   const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null);
   const [refresh, setRefresh] = useState(0);
-  const [recoveryReview, setRecoveryReview] = useState<{ sessionId: string; count: number; checking: boolean; failed: boolean; open: () => void }>();
-  const publishRecoveryReview = useCallback((value: { sessionId: string; count: number; checking: boolean; failed: boolean; open: () => void } | undefined) => {
-    setRecoveryReview(value);
-  }, []);
+  type RecoveryReview = { sessionId: string; count: number; checking: boolean; failed: boolean; inline: boolean; open: () => void };
+  const [recoveryReview, publishRecoveryReview] = useState<RecoveryReview>();
   const planSupport = snapshot?.sessionId === sessionId && snapshot.runtimeKey === runtimeKey
     && !tab?.isSessionLoading && failure?.sessionId !== sessionId ? snapshot.planSupport : undefined;
   const currentSupport = useRef(planSupport);

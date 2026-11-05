@@ -323,6 +323,8 @@ describe('applyCodexSubAgentActivity (Codex 0.144.1 multi-agent v2)', () => {
     notify('item/completed', { item: { id: 'partial', type: 'agentMessage', phase: 'partial_answer', text: 'First result.' } });
     expect(emitted).toContainEqual({ kind: 'text_stop', nativeText: 'First result.', traceId: 'main::partial' });
     expect(runtime.canSteerMessage(correlation as never)).toBe(true);
+    notify('item/completed', { item: { id: 'progress', type: 'agentMessage', phase: 'commentary', text: 'Checking.' } });
+    expect(emitted).toContainEqual({ kind: 'text_stop', nativeText: 'Checking.', traceId: 'main::progress', textPhase: 'commentary' });
 
     notify('item/started', { item: { id: 'command', type: 'commandExecution', command: 'check', cwd: '/workspace' } });
     notify('item/completed', { item: { id: 'command', type: 'commandExecution', command: 'check', aggregatedOutput: 'checked', exitCode: 0 } });
@@ -330,7 +332,7 @@ describe('applyCodexSubAgentActivity (Codex 0.144.1 multi-agent v2)', () => {
 
     notify('item/agentMessage/delta', { itemId: 'final', delta: 'Final result.' });
     notify('item/completed', { item: { id: 'final', type: 'agentMessage', phase: 'final_answer', text: 'Final result.' } });
-    expect(emitted).toContainEqual({ kind: 'text_stop', nativeText: 'Final result.', traceId: 'main::final' });
+    expect(emitted).toContainEqual({ kind: 'text_stop', nativeText: 'Final result.', traceId: 'main::final', textPhase: 'final_answer' });
     expect(emitted.filter(event => event.kind === 'turn_complete')).toEqual([]);
     expect(runtime.canSteerMessage(correlation as never)).toBe(true);
 

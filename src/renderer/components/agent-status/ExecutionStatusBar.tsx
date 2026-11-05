@@ -108,7 +108,7 @@ export default memo(function ExecutionStatusBar({
   };
   const executionPresentation = useSessionExecutionPresentation(executionProps);
   const recoveryReview = orchestration.recoveryReview;
-  const hasRecoveryReview = !!recoveryReview && (recoveryReview.count > 0 || recoveryReview.failed);
+  const hasRecoveryReview = !!recoveryReview && !recoveryReview.inline && (recoveryReview.count > 0 || recoveryReview.failed);
   const hasExecution = Boolean(executionPresentation);
   const hasAgents = Boolean(
     activity && (agents.length || background.length || tab?.hasMoreBefore),

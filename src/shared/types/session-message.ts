@@ -4,6 +4,8 @@ import type { AsyncQuestionReply } from '../asyncUserQuestions';
 /**
  * Attachment info for messages
  */
+export type AssistantTextPhase = 'commentary' | 'final_answer';
+
 export interface MessageAttachment {
     id: string;
     name: string;

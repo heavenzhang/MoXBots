@@ -5258,6 +5258,7 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
               onRestartAndUpdate={() => void handleRestartAndUpdate()}
             >
               <CurrentPageHeader
+                hideTitle={activeTab?.view === 'chat'}
                 chrome={activeTab ? resolveTabChrome(builtinTabModules, activeTab, { t }) : { title: '' }}
                 onClose={tabs.length === 1 && activeTab?.view === 'launcher' ? undefined : closeCurrentTab}
               />

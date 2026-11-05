@@ -14,6 +14,7 @@ it('only renders retry when the caller supplies the capability and updates memoi
  expect(screen.queryByRole('button',{name:label})).toBeNull();
  expect(document.querySelector<HTMLElement>('[data-chat-footer-spacer]')?.style.height).toBe('16px');
  view.rerender(<MessageList {...props} onRetry={retry}/>);
+ fireEvent.click(screen.getByRole('button',{name:'更多操作'}));
  fireEvent.click(screen.getByRole('button',{name:label}));expect(retry).toHaveBeenCalledWith('a');
  view.rerender(<MessageList {...props}/>);expect(screen.queryByRole('button',{name:label})).toBeNull();
 });

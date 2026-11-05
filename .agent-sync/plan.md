@@ -1264,3 +1264,7 @@ Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd
 实现/本地策略与原生回归/真实本地TLS+设备证明链/main/云发布/手机包/真机分别追踪；内置浏览器被Work设置禁用，Chrome独立会话授权仍待用户答复，页面实测不冒充通过。Kevin不可用，不发业务消息或重置账号。任务.agent-sync/tasks/codex-mobile-auth-20261105-84ad7697.md，契约、稳定ToDo与命令证据dev-docs/mobile-auth-20261105/{PLAN,acceptance}.md。完整候选与兼容顺序交既有owner，不自行触发共享CI。
 
 Root main intake 2026-11-05 integrates producer702a08a and mobile-owner explicit-consent94c9050 with current mainfcf06ff. Only plan append conflict resolved by retaining both desktop-native-login and mobile-auth records. Root sharedCI/main owner remains01a12bc2, cloud/mobile deployment remains01a12b99. Candidate/CI and production acceptance are separate.
+
+## Root MB-CHAT-STYLE-20261104 main intake 20261105
+
+Root desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates producerb506b852 with current main39b34476 in codex/chat-style-main-20261105. Native commentary/final_answer is optional transcript metadata; terminal closeout gates whole-turn folding, pending/failed/unknown/results retain visible paths. Root search regression propagates reveal through outer and inner process groups. Combined local106DOM/145unit/255simulatedintegration, type/lint/diff PASS. Exact sourceCI/main pending, then next unfrozen desktop version and real signed long-session UI acceptance. Existing native-login/mobile-auth source and production owners remain authoritative, no separate publisher is created. Record .agent-sync/tasks/codex-chat-style-main-20261105-17f98569.md.
