@@ -12,7 +12,7 @@
 - `CARGO_TARGET_DIR=/tmp/moxbots-mobile-auth-agentnet-target cargo test --manifest-path services/agentnet/Cargo.toml --locked --lib --no-fail-fast`：217 PASS / 8 原有 ignored；只允许verified native password选择30天，Web/Host/OAuth隔离、兼容DB重开、幂等、撤销、过期和同设备proof HTTP测试通过。
 - `CARGO_TARGET_DIR=/tmp/moxbots-mobile-auth-headless-target cargo test --manifest-path src-tauri/headless-network/Cargo.toml --locked --lib`：226 PASS / 2 原有 ignored，含共享owned_client恢复/撤销。
 - Node24 `npm run test:policy`：117 PASS；`npm run typecheck`、全mobile `npm run lint -- --no-cache`通过。
-- 服务 `cargo clippy --locked --lib --tests --no-deps -- -D warnings`通过。最终mobile Clippy等待完整链运行释放target锁后执行。
+- 服务 `cargo clippy --locked --lib --tests --no-deps -- -D warnings`通过。最终mobile Clippy同参数通过（1.84s），最终155项原生重跑通过（1.76s）。主Agent额外复核service native关键回归25 PASS / 1 原有Dex ignored（5.09s）。
 - 独立审阅mobile_auth_review只读复核生产diff：4项初稿安全缺陷修复后未见P1/P2。实际修复为候选必须原key/handle证明、冷验证失败不留已验证缓存、仅真实401可判死、退出远端清理总预算小于外层截止。该审阅未操作UI/CI/部署。
 
 ## 可观察行为与兼容
@@ -30,7 +30,11 @@
 
 使用原AuthStore、真实TLS/WSS与设备key，SSO身份为隔离合成身份，OS为原EncryptedIdentityStore测试KEK；不等于真实Dex、手机Keychain或生产Host验收。分别运行mobile-renewal（真实等待old expiry并验candidate恢复/撤销）和text（原业务/会话链，新环境），避免把主动logout留下的joined旧设备套用原single-offline-peer断言。
 
-已保留红运行：第一次证明候选恢复后发现大async future栈溢出，修serialized request为Box::pin；第二次因对已enabled mount重复调用default-disabled fixture断言失败；第三次退出后额外offline设备使旧单offline断言循环并触及原proof容量。没有扩大proof配额、删除回归或清生产状态；按不同场景独立生命周期运行。最终PASS回执待本节补充。
+已保留红运行：第一次证明候选恢复后发现大async future栈溢出，修serialized request为Box::pin；第二次因对已enabled mount重复调用default-disabled fixture断言失败；第三次退出后额外offline设备使旧单offline断言循环并触及原proof容量。没有扩大proof配额、删除回归或清生产状态；按不同场景独立生命周期运行。最终实际回执：mobile-renewal **1 PASS，69.20s**，等待真实old expiry后，原device scope/sessionHandle保持、candidate冷恢复、pending清除、expired old alias下candidate撤销通过；pending写失败与假成功读回均观察到0条TCP/HTTP。text独立新环境 **1 PASS，12.32s**，原TLS/WSS、同账号权限、离线设备、真实原Host/SessionEngine接收、原会话snapshot与terminal complete通过。SSO/供应商仍为隔离合成fixture，不能据此宣称真实手机/生产。
+
+完整移动request future现为224字节，保留原timeout和串行owner，未改变业务重放规则。最终仅格式化新fixture helper并用等价expect_err满足Clippy，功能源未再改。额外一次短TTL测试因恢复后立即符合下一次维护条件而正常再轮换，测试改在旧期限前15s发起，以保留candidate观测窗口；不打印测试token。
+
+持久日志在本机工作区 `work/MB-MOBILE-AUTH-20261105/evidence/`，包括红运行与绿运行；复制时脱敏测试凭据。原token、密码、私钥、OS记录和fixture私有状态不进入Git。
 
 ## 页面与外部门禁
 

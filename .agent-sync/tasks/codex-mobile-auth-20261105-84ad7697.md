@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=ced0423f7346b9e152b66f393c97c756b1beab27d1fc9a0ec6dbd77f12570ada -->
+<!-- git-project-sync-task:source-digest=d5b2219a24abf078d240dbb64e079d9ac0ee736f734b07a51cbd30779e90d209 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=fad661ad-f4bc-41a3-ae69-52437adf1c4a -->
 <!-- git-project-sync-task:branch=codex/mobile-auth-20261105 -->
@@ -25,9 +25,11 @@
 
 ## Verification
 
+- Source digest: `d5b2219a24abf078d240dbb64e079d9ac0ee736f734b07a51cbd30779e90d209`; native155 PASS; policy117 PASS; service217 PASS and primary native25 PASS; headless226 PASS; auth fullchain1 PASS 69.20s; original text fullchain1 PASS 12.32s; typecheck/lint/strict clippy PASS; actual browser UI and physical/production gates pending
+
 - Source digest: `ced0423f7346b9e152b66f393c97c756b1beab27d1fc9a0ec6dbd77f12570ada`; mobile native 155 passed/1 existing ignored; policy117 pass; service217 passed/8 ignored; headless226 passed/2 ignored; typecheck/lint and service Clippy pass; full signed candidate recovery/expiry/logout fixture final run pending; browser/native production acceptance not performed
 
-- mobile原生155通过/1既有ignored；mobile policy117通过；服务217通过/8既有ignored；Headless226通过/2既有ignored。typecheck与全mobile lint通过；service strict Clippy通过；最终mobile Clippy与完整本地证明链见acceptance.md后续实际回执。
+- mobile原生155通过/1既有ignored；mobile policy117通过；服务217通过/8既有ignored；Headless226通过/2既有ignored。typecheck与全mobile lint通过；service strict Clippy通过；完整本地证明链mobile-renewal 1 PASS/69.20s，text 1 PASS/12.32s；实际页面/main/生产仍未验。最终Clippy见acceptance.md。
 - 独立静态安全评审最终未发现P1/P2；不是UI或生产验收。
 
 ## Blockers and unknowns
@@ -39,9 +41,9 @@
 - Required: cloud AuthStore/native-password service 与 mobile iOS/Android，需要先兼容服务端、后手机包。
 - Handoff: this remote branch and task record; report the resulting head SHA outside this file.
 - Evidence and dependencies: dev-docs/mobile-auth-20261105/{PLAN,acceptance}.md；旧account JSON格式保留，新续期记录独立；服务新增可空TTL列，旧包/服务能读取原字段，已签包不覆盖。
-- Status: not submitted; track code/main delivery, each unit rollout, and production acceptance separately.
+- Status: source committed/pushed; final evidence update pending exact-head verification and owner handoff. main/cloud/mobile/native gates remain open.
 - Owners: sharedCI/main 01a12bc2-907a-7702-b6dd-788225c5dfe4；cloud/mobile 01a12b99-7b38-78b1-831f-9c60257d386a；本会话开发集成与验收，不接管部署。
 
 ## Next step
 
-- 核对完整TLS/同设备证明链最终结果，冻结精确源码并推送交原owner完成CI/main；页面及真机条件满足后由原owner按cloud→mobile顺序验收发布。
+- 原sharedCI/main owner核对最终远端SHA并接收，按既有流程完成CI/main；页面及真机条件满足后由原cloud/mobile owner先服务后手机验收发布。

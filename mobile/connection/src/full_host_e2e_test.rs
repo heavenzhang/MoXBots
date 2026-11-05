@@ -760,80 +760,162 @@ async fn attachment_continuation(
         json!({"sessionId":session_id,"operationId":operation_id,"assets":2,"terminal":"complete","duplicateIntent":"MOBILE_RECEIPT_REQUIRED","receiptRecovered":true})
     );
 }
-struct FailedRenewalStore { original: Arc<dyn SecureStore>, discard: bool }
+struct FailedRenewalStore {
+    original: Arc<dyn SecureStore>,
+    discard: bool,
+}
 impl IdentityStore for FailedRenewalStore {
-    fn load(&self, s: &KeyScope) -> Result<DevicePrivateKey, CryptoError> { self.original.load(s) }
-    fn save_pending(&self, s: &KeyScope, k: &DevicePrivateKey) -> Result<(), CryptoError> { self.original.save_pending(s,k) }
-    fn delete(&self, s: &KeyScope) -> Result<(), CryptoError> { self.original.delete(s) }
+    fn load(&self, s: &KeyScope) -> Result<DevicePrivateKey, CryptoError> {
+        self.original.load(s)
+    }
+    fn save_pending(&self, s: &KeyScope, k: &DevicePrivateKey) -> Result<(), CryptoError> {
+        self.original.save_pending(s, k)
+    }
+    fn delete(&self, s: &KeyScope) -> Result<(), CryptoError> {
+        self.original.delete(s)
+    }
 }
 impl SecureStore for FailedRenewalStore {
-    fn read_record(&self, s:&str,r:&str)->Result<Option<Zeroizing<Vec<u8>>>,String>{self.original.read_record(s,r)}
-    fn write_record(&self,s:&str,r:&str,v:&[u8])->Result<(),String>{
-        if r=="account-renewal" { if self.discard { return Ok(()) } return Err("synthetic pending storage failure".into()) }
-        self.original.write_record(s,r,v)
+    fn read_record(&self, s: &str, r: &str) -> Result<Option<Zeroizing<Vec<u8>>>, String> {
+        self.original.read_record(s, r)
     }
-    fn remove_record(&self,s:&str,r:&str)->Result<(),String>{self.original.remove_record(s,r)}
+    fn write_record(&self, s: &str, r: &str, v: &[u8]) -> Result<(), String> {
+        if r == "account-renewal" {
+            if self.discard {
+                return Ok(());
+            }
+            return Err("synthetic pending storage failure".into());
+        }
+        self.original.write_record(s, r, v)
+    }
+    fn remove_record(&self, s: &str, r: &str) -> Result<(), String> {
+        self.original.remove_record(s, r)
+    }
 }
 
 async fn verify_mobile_renewal_restart(native: &mut MobileConnection) {
-            assert!(native.store.read_record(&native.config.issuer, "account-renewal-clock").unwrap().is_some(), "first enrolled connection must renew through real device proof");
-            let principal = native.saved.as_ref().unwrap().session.principal_id.clone();
-            let device = native.saved.as_ref().unwrap().device_id.clone();
-            // Preserve the service's 15-second rotation guard. This is an
-            // explicit synthetic loopback acceptance, never a production retry.
-            let previous_expiry = native.saved.as_ref().unwrap().session.expires_at;
-            let wait = previous_expiry.saturating_sub(jsonwebtoken::get_current_timestamp() + 15);
-            tokio::time::sleep(Duration::from_secs(wait)).await;
-            let (identity, transport) = native.account_identity(true).await.unwrap();
-            let old_scope = identity.scope.clone();
-            let original_store = native.store.clone();
-            for discard in [false,true] {
-                native.store = Arc::new(FailedRenewalStore { original: original_store.clone(), discard });
-                let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-                let probe = NetworkTransport::new_with_public_ca(&format!("https://{}",listener.local_addr().unwrap()),identity.device_key(),MemoryBudget::default(),None).unwrap();
-                let failure = native.renew_account(&identity,&probe).await.err().expect("pending durability must precede HTTP");
-                assert_eq!(failure.code,"MOBILE_SECURE_STORE_UNAVAILABLE");
-                assert!(tokio::time::timeout(Duration::from_millis(50),listener.accept()).await.is_err(), "failed pending write or readback must send zero HTTP/TCP requests");
-            }
-            native.store = original_store;
-            eprintln!("actual-mobile-renewal-stage-failure={{\"writeFailureRequests\":0,\"readbackFailureRequests\":0}}");
-            let pending = native.stage_account_renewal(&identity).unwrap();
-            let bytes = Zeroizing::new(serde_json::to_vec(&pending).unwrap());
-            let staged: Value = serde_json::from_slice(&bytes).unwrap();
-            let candidate = Zeroizing::new(staged["candidate"].as_str().unwrap().to_owned());
-            let renewed = transport.renew_session(&identity.token, &candidate).await.unwrap();
-            assert_eq!(renewed.session_handle, identity.access.session_handle);
-            assert!(renewed.expires_at > previous_expiry);
-            let wait = previous_expiry.saturating_add(1).saturating_sub(jsonwebtoken::get_current_timestamp());
-            tokio::time::sleep(Duration::from_secs(wait)).await;
-            assert!(previous_expiry <= jsonwebtoken::get_current_timestamp());
-            // Simulate a process dying after the server commits, before local
-            // account publication. Restart the original native owner/store.
-            let config = NativeConfig { issuer: native.config.issuer.clone(), public_tls_ca: native.config.public_tls_ca.clone() };
-            let store = native.store.clone();
-            native.active.store(false, Ordering::Release);
-            let mut cold = MobileConnection::new(config, store).unwrap();
-            let status = ok(cold.request(json!({"version":1,"kind":"account.status"})).await);
-            assert_eq!(status["state"], "signed-in");
-            let saved = cold.saved.as_ref().unwrap();
-            assert!(saved.session.access_token == candidate.as_str(), "recovered native credential must equal the committed candidate");
-            assert_eq!(saved.session.principal_id, principal);
-            assert_eq!(saved.device_id, device);
-            assert!(cold.store.read_record(&cold.config.issuer, "account-renewal").unwrap().is_none());
-            let (recovered, _) = cold.account_identity(true).await.unwrap();
-            assert!(serde_json::to_value(&recovered.scope).unwrap() == serde_json::to_value(&old_scope).unwrap(), "cold renewal must preserve the actual existing device key generation");
-            assert_eq!(recovered.access.session_handle, identity.access.session_handle);
-            eprintln!("actual-mobile-renewal-cold-proof={{\"sameDeviceScope\":true,\"sameSessionHandle\":true,\"candidateRecovered\":true,\"pendingRemoved\":true}}");
-            // Recreate the crash journal after successful adoption to verify
-            // logout when the old alias has really expired in AuthStore.
-            cold.store.write_record(&cold.config.issuer, "account-renewal", &bytes).unwrap();
-            let logout = ok(cold.request(json!({"version":1,"kind":"account.logout"})).await);
-            assert_eq!(logout["state"], "signed-out");
-            let client = OwnedClient::pinned(native.instance.as_ref().unwrap().clone(), cold.config.public_tls_ca.as_deref()).unwrap();
-            assert!(client.inspect_session_candidate(&device, &candidate).await.unwrap().is_none());
-            assert!(cold.store.read_record(&cold.config.issuer, "account").unwrap().is_none());
-            eprintln!("actual-mobile-renewal-expired-alias-logout={{\"candidateRevoked\":true,\"accountRemoved\":true}}");
-            *native = cold;
+    assert!(
+        native
+            .store
+            .read_record(&native.config.issuer, "account-renewal-clock")
+            .unwrap()
+            .is_some(),
+        "first enrolled connection must renew through real device proof"
+    );
+    let principal = native.saved.as_ref().unwrap().session.principal_id.clone();
+    let device = native.saved.as_ref().unwrap().device_id.clone();
+    // Preserve the service's 15-second rotation guard. This is an
+    // explicit synthetic loopback acceptance, never a production retry.
+    let previous_expiry = native.saved.as_ref().unwrap().session.expires_at;
+    let wait = previous_expiry.saturating_sub(jsonwebtoken::get_current_timestamp() + 15);
+    tokio::time::sleep(Duration::from_secs(wait)).await;
+    let (identity, transport) = native.account_identity(true).await.unwrap();
+    let old_scope = identity.scope.clone();
+    let original_store = native.store.clone();
+    for discard in [false, true] {
+        native.store = Arc::new(FailedRenewalStore {
+            original: original_store.clone(),
+            discard,
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let probe = NetworkTransport::new_with_public_ca(
+            &format!("https://{}", listener.local_addr().unwrap()),
+            identity.device_key(),
+            MemoryBudget::default(),
+            None,
+        )
+        .unwrap();
+        let failure = native
+            .renew_account(&identity, &probe)
+            .await
+            .expect_err("pending durability must precede HTTP");
+        assert_eq!(failure.code, "MOBILE_SECURE_STORE_UNAVAILABLE");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), listener.accept())
+                .await
+                .is_err(),
+            "failed pending write or readback must send zero HTTP/TCP requests"
+        );
+    }
+    native.store = original_store;
+    eprintln!("actual-mobile-renewal-stage-failure={{\"writeFailureRequests\":0,\"readbackFailureRequests\":0}}");
+    let pending = native.stage_account_renewal(&identity).unwrap();
+    let bytes = Zeroizing::new(serde_json::to_vec(&pending).unwrap());
+    let staged: Value = serde_json::from_slice(&bytes).unwrap();
+    let candidate = Zeroizing::new(staged["candidate"].as_str().unwrap().to_owned());
+    let renewed = transport
+        .renew_session(&identity.token, &candidate)
+        .await
+        .unwrap();
+    assert_eq!(renewed.session_handle, identity.access.session_handle);
+    assert!(renewed.expires_at > previous_expiry);
+    let wait = previous_expiry
+        .saturating_add(1)
+        .saturating_sub(jsonwebtoken::get_current_timestamp());
+    tokio::time::sleep(Duration::from_secs(wait)).await;
+    assert!(previous_expiry <= jsonwebtoken::get_current_timestamp());
+    // Simulate a process dying after the server commits, before local
+    // account publication. Restart the original native owner/store.
+    let config = NativeConfig {
+        issuer: native.config.issuer.clone(),
+        public_tls_ca: native.config.public_tls_ca.clone(),
+    };
+    let store = native.store.clone();
+    native.active.store(false, Ordering::Release);
+    let mut cold = MobileConnection::new(config, store).unwrap();
+    let status = ok(cold
+        .request(json!({"version":1,"kind":"account.status"}))
+        .await);
+    assert_eq!(status["state"], "signed-in");
+    let saved = cold.saved.as_ref().unwrap();
+    assert!(
+        saved.session.access_token == candidate.as_str(),
+        "recovered native credential must equal the committed candidate"
+    );
+    assert_eq!(saved.session.principal_id, principal);
+    assert_eq!(saved.device_id, device);
+    assert!(cold
+        .store
+        .read_record(&cold.config.issuer, "account-renewal")
+        .unwrap()
+        .is_none());
+    let (recovered, _) = cold.account_identity(true).await.unwrap();
+    assert!(
+        serde_json::to_value(&recovered.scope).unwrap()
+            == serde_json::to_value(&old_scope).unwrap(),
+        "cold renewal must preserve the actual existing device key generation"
+    );
+    assert_eq!(
+        recovered.access.session_handle,
+        identity.access.session_handle
+    );
+    eprintln!("actual-mobile-renewal-cold-proof={{\"sameDeviceScope\":true,\"sameSessionHandle\":true,\"candidateRecovered\":true,\"pendingRemoved\":true}}");
+    // Recreate the crash journal after successful adoption to verify
+    // logout when the old alias has really expired in AuthStore.
+    cold.store
+        .write_record(&cold.config.issuer, "account-renewal", &bytes)
+        .unwrap();
+    let logout = ok(cold
+        .request(json!({"version":1,"kind":"account.logout"}))
+        .await);
+    assert_eq!(logout["state"], "signed-out");
+    let client = OwnedClient::pinned(
+        native.instance.as_ref().unwrap().clone(),
+        cold.config.public_tls_ca.as_deref(),
+    )
+    .unwrap();
+    assert!(client
+        .inspect_session_candidate(&device, &candidate)
+        .await
+        .unwrap()
+        .is_none());
+    assert!(cold
+        .store
+        .read_record(&cold.config.issuer, "account")
+        .unwrap()
+        .is_none());
+    eprintln!("actual-mobile-renewal-expired-alias-logout={{\"candidateRevoked\":true,\"accountRemoved\":true}}");
+    *native = cold;
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
