@@ -1248,3 +1248,12 @@ MB-RECOVERY-UX-20261102完整续接：用户要求补齐整个方案。原分支
 ### Root recovery UX release 0541 (MB-RECOVERY-UX-20261102)
 
 Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4 integrates exact producer 5cf4aac with main f719dad in codex/release-recovery-ux-0541-r1-20261103. Proposed immutable version 0.5.41/build541.1. Root lifecycle fence fix and 708 tests/typecheck passed; exact source CI/main, new artifact, fresh safe maintenance, signed native new UI and same-artifact 101 publication are pending. Prior 540.1 local acceptance/stable hold remains distinct. Other deployment owners and author workspaces are unchanged. Receipts: work/release-0541-20261103/owner.
+
+
+## MB-MOBILE-AUTH-20261105 — 手机长期登录与一次登录操作
+
+用户要求按已诊断问题修复频繁退登/额外确认。隔离codex/mobile-auth-20261105基于main065f2b6c8；mobile原生owner以独立加密pending记录、同设备既有key证明和读回确认实现安全续期/冷恢复，旧account JSON保持三字段以兼容原包。真实401投影expired并退役旧连接，网络错误保留账号；退出同时处理原/候选token，清理远端设总预算。原生password在AuthStore获内部30天滑动策略，可空TTL列兼容迁移；旧Web/Host/OAuth不追溯扩权。登录授权说明并入同意并登录，立即消费Ready事务，保留旧poll恢复与密码不重放。
+
+部署单元与归属不变：sharedCI/main唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；cloud AgentNet与mobile iOS/Android唯一01a12b99-7b38-78b1-831f-9c60257d386a。先cloud兼容服务及有效DB备份/回滚，再手机唯一owner分配下一未冻结包；不覆盖build9/10或旧tag，不操作日常Mac或替代Xu设备。历史session不追溯赋30天，升级后可有一次正常重登。桌面源码helper语义保持，不单独请求桌面发布。
+
+实现/本地策略与原生回归/真实本地TLS+设备证明链/main/云发布/手机包/真机分别追踪；内置浏览器被Work设置禁用，Chrome独立会话授权仍待用户答复，页面实测不冒充通过。Kevin不可用，不发业务消息或重置账号。任务.agent-sync/tasks/codex-mobile-auth-20261105-84ad7697.md，契约、稳定ToDo与命令证据dev-docs/mobile-auth-20261105/{PLAN,acceptance}.md。完整候选与兼容顺序交既有owner，不自行触发共享CI。

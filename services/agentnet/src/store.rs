@@ -11,6 +11,8 @@ use uuid::Uuid;
 use zeroize::Zeroizing;
 
 const MAX_SESSION_ROTATIONS: i64 = 65_536;
+/// Only verified native password transactions can select this sliding window.
+pub(crate) const NATIVE_SESSION_TTL_SECONDS: i64 = 30 * 24 * 60 * 60;
 
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum AuthError {
@@ -175,6 +177,24 @@ impl AuthStore {
         subject: &VerifiedSubject,
         device_id: &str,
     ) -> Result<IssuedSession, AuthError> {
+        self.issue_session_with_renewal_ttl(subject, device_id, None)
+    }
+
+    /// Internal policy selection; HTTP request fields cannot opt into this TTL.
+    pub(crate) fn issue_native_session(
+        &self,
+        subject: &VerifiedSubject,
+        device_id: &str,
+    ) -> Result<IssuedSession, AuthError> {
+        self.issue_session_with_renewal_ttl(subject, device_id, Some(NATIVE_SESSION_TTL_SECONDS))
+    }
+
+    fn issue_session_with_renewal_ttl(
+        &self,
+        subject: &VerifiedSubject,
+        device_id: &str,
+        renewal_ttl_seconds: Option<i64>,
+    ) -> Result<IssuedSession, AuthError> {
         let device_id = canonical_uuid(device_id).ok_or(AuthError::LoginTransaction)?;
         if subject.issuer().is_empty()
             || subject.issuer().len() > 2048
@@ -187,7 +207,7 @@ impl AuthStore {
         let token_hash = Sha256::digest(token.as_bytes()).to_vec();
         let now = unix_seconds()?;
         let expires_at = now
-            .checked_add(self.session_ttl_seconds)
+            .checked_add(renewal_ttl_seconds.unwrap_or(self.session_ttl_seconds))
             .ok_or(AuthError::Storage)?;
         let mut connection = self.connection.lock().map_err(|_| AuthError::Storage)?;
         let transaction = connection
@@ -223,9 +243,9 @@ impl AuthStore {
         }
         transaction
             .execute(
-                "INSERT INTO sessions(token_hash,principal_id,device_id,created_at,expires_at,session_handle)
-                 VALUES(?1,?2,?3,?4,?5,?6)",
-                params![token_hash, account.principal_id, device_id, now, expires_at, Uuid::new_v4().to_string()],
+                "INSERT INTO sessions(token_hash,principal_id,device_id,created_at,expires_at,session_handle,renewal_ttl_seconds)
+                 VALUES(?1,?2,?3,?4,?5,?6,?7)",
+                params![token_hash, account.principal_id, device_id, now, expires_at, Uuid::new_v4().to_string(), renewal_ttl_seconds],
             )
             .map_err(|_| AuthError::Storage)?;
         transaction.commit().map_err(|_| AuthError::Storage)?;
@@ -449,11 +469,11 @@ impl AuthStore {
         if session.expires_at <= now {
             return Err(AuthError::SessionRejected.into());
         }
-        let previous_hash: Vec<u8> = tx
+        let (previous_hash, renewal_ttl_seconds): (Vec<u8>, Option<i64>) = tx
             .query_row(
-                "SELECT token_hash FROM sessions WHERE session_handle=?1",
+                "SELECT token_hash,renewal_ttl_seconds FROM sessions WHERE session_handle=?1",
                 params![handle],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .map_err(|_| E::from(AuthError::Storage))?;
         // The same persisted candidate is an idempotent retry. Retired hashes
@@ -487,9 +507,12 @@ impl AuthStore {
             if rotations >= MAX_SESSION_ROTATIONS {
                 return Err(AuthError::SessionRenewalExhausted.into());
             }
-            if session.expires_at - now <= self.session_ttl_seconds / 2 {
+            // Native sessions slide on each new authorized candidate. Legacy
+            // sessions retain their configured half-window renewal behavior.
+            let ttl = renewal_ttl_seconds.unwrap_or(self.session_ttl_seconds);
+            if renewal_ttl_seconds.is_some() || session.expires_at - now <= ttl / 2 {
                 session.expires_at = session.expires_at.max(
-                    now.checked_add(self.session_ttl_seconds)
+                    now.checked_add(ttl)
                         .ok_or_else(|| E::from(AuthError::Storage))?,
                 );
             }
@@ -553,27 +576,37 @@ impl AuthStore {
     }
 }
 
-/// Preserve pre-handle authentication databases. Serialize migration across
-/// service instances and assign independent random handles, never token digests.
+/// Preserve existing authentication databases. Serialize additive migrations
+/// across service instances; NULL renewal TTL keeps the legacy configured policy.
+/// Independent random handles are never derived from token digests.
 fn migrate_session_handles(connection: &mut Connection) -> Result<(), AuthError> {
     let tx = connection
         .transaction_with_behavior(TransactionBehavior::Immediate)
         .map_err(|_| AuthError::Storage)?;
-    let has_column = {
+    let (has_handle, has_renewal_ttl) = {
         let mut statement = tx
             .prepare("PRAGMA table_info(sessions)")
             .map_err(|_| AuthError::Storage)?;
         let names = statement
             .query_map([], |row| row.get::<_, String>(1))
             .map_err(|_| AuthError::Storage)?;
-        let mut found = false;
+        let mut has_handle = false;
+        let mut has_renewal_ttl = false;
         for name in names {
-            found |= name.map_err(|_| AuthError::Storage)? == "session_handle";
+            match name.map_err(|_| AuthError::Storage)?.as_str() {
+                "session_handle" => has_handle = true,
+                "renewal_ttl_seconds" => has_renewal_ttl = true,
+                _ => {}
+            }
         }
-        found
+        (has_handle, has_renewal_ttl)
     };
-    if !has_column {
+    if !has_handle {
         tx.execute_batch("ALTER TABLE sessions ADD COLUMN session_handle TEXT;")
+            .map_err(|_| AuthError::Storage)?;
+    }
+    if !has_renewal_ttl {
+        tx.execute_batch("ALTER TABLE sessions ADD COLUMN renewal_ttl_seconds INTEGER CHECK(renewal_ttl_seconds IS NULL OR renewal_ttl_seconds=2592000);")
             .map_err(|_| AuthError::Storage)?;
     }
     let hashes = {
@@ -742,6 +775,159 @@ mod migration_tests {
             }
         }
         (state, config, store, handles, bearers)
+    }
+
+    #[test]
+    fn native_session_window_is_isolated_durable_and_slides_before_the_half_window() {
+        let (state, mut config, store, _, _) = pair_fixture();
+        let subject = VerifiedSubject::from_verified_claims(
+            "https://native.example.test".into(),
+            "native-subject".into(),
+        )
+        .unwrap();
+        let device = Uuid::new_v4().to_string();
+        let now = unix_seconds().unwrap();
+        let web = store.issue_session(&subject, &device).unwrap();
+        let native = store.issue_native_session(&subject, &device).unwrap();
+        assert!((now + 3600..=unix_seconds().unwrap() + 3600).contains(&web.expires_at));
+        assert!(
+            (now + NATIVE_SESSION_TTL_SECONDS
+                ..=unix_seconds().unwrap() + NATIVE_SESSION_TTL_SECONDS)
+                .contains(&native.expires_at)
+        );
+        let native_token = native.into_token();
+        let original = store.validate_session(&native_token).unwrap();
+        let web_token = web.into_token();
+        let web_projection = store.validate_session(&web_token).unwrap();
+        let shortened = now + NATIVE_SESSION_TTL_SECONDS - 3600;
+        store
+            .set_session_expiry_for_test(&native_token, shortened)
+            .unwrap();
+        drop(store);
+
+        // The per-session policy survives restart and a different global TTL.
+        config.session_ttl = Duration::from_secs(60);
+        let reopened = AuthStore::open(state.path(), &config).unwrap();
+        let candidate = URL_SAFE_NO_PAD.encode([73_u8; 32]);
+        let renewed = reopened
+            .renew_session_handle::<AuthError>(&original.session_handle, &candidate, |_| Ok(()))
+            .unwrap();
+        assert!(renewed.expires_at >= now + NATIVE_SESSION_TTL_SECONDS);
+        assert!(renewed.expires_at > shortened);
+        assert_eq!(renewed.account, original.account);
+        assert_eq!(renewed.device_id, device);
+        assert_eq!(renewed.session_handle, original.session_handle);
+        assert_eq!(
+            reopened.validate_session(&native_token),
+            Err(AuthError::SessionRejected)
+        );
+        assert_eq!(
+            reopened.renew_session_handle::<AuthError>(
+                &original.session_handle,
+                &candidate,
+                |_| Ok(())
+            ),
+            Ok(renewed.clone())
+        );
+        assert_eq!(
+            reopened.renew_session_handle::<AuthError>(
+                &original.session_handle,
+                &URL_SAFE_NO_PAD.encode([74_u8; 32]),
+                |_| Ok(())
+            ),
+            Err(AuthError::SessionRenewalLimited)
+        );
+        let web_renewed = reopened
+            .renew_session_handle::<AuthError>(
+                &web_projection.session_handle,
+                &URL_SAFE_NO_PAD.encode([75_u8; 32]),
+                |_| Ok(()),
+            )
+            .unwrap();
+        assert_eq!(web_renewed.expires_at, web_projection.expires_at);
+
+        // Same-candidate retry cannot slide again, even after a restart.
+        let retry_expiry = renewed.expires_at - 60;
+        reopened
+            .set_session_expiry_for_test(&candidate, retry_expiry)
+            .unwrap();
+        drop(reopened);
+        let reopened = AuthStore::open(state.path(), &config).unwrap();
+        assert_eq!(
+            reopened
+                .renew_session_handle::<AuthError>(&original.session_handle, &candidate, |_| Ok(()))
+                .unwrap()
+                .expires_at,
+            retry_expiry
+        );
+        reopened
+            .connection
+            .lock()
+            .unwrap()
+            .execute(
+                "UPDATE session_revocation_tokens SET created_at=?1",
+                params![now - 16],
+            )
+            .unwrap();
+        // A retired candidate cannot become active again after the throttle clears.
+        assert_eq!(
+            reopened.renew_session_handle::<AuthError>(
+                &original.session_handle,
+                &native_token,
+                |_| Ok(())
+            ),
+            Err(AuthError::SessionRejected)
+        );
+        // The old token remains a bounded logout alias, never an authenticator.
+        reopened.revoke_session(&native_token).unwrap();
+        assert_eq!(
+            reopened.renew_session_handle::<AuthError>(
+                &original.session_handle,
+                &candidate,
+                |_| Ok(())
+            ),
+            Err(AuthError::SessionRejected)
+        );
+    }
+
+    #[test]
+    fn native_session_expiry_and_authorization_rejections_never_extend_or_resurrect() {
+        let (_state, _config, store, _, _) = pair_fixture();
+        let subject = VerifiedSubject::from_verified_claims(
+            "https://native.example.test".into(),
+            "native-subject".into(),
+        )
+        .unwrap();
+        let device = Uuid::new_v4().to_string();
+        let issued = store.issue_native_session(&subject, &device).unwrap();
+        let token = issued.into_token();
+        let original = store.validate_session(&token).unwrap();
+        let candidate = URL_SAFE_NO_PAD.encode([76_u8; 32]);
+        assert_eq!(
+            store.renew_session_handle::<AuthError>(
+                &original.session_handle,
+                &candidate,
+                |session| {
+                    assert_eq!(session.device_id, device);
+                    Err(AuthError::SessionRejected)
+                }
+            ),
+            Err(AuthError::SessionRejected)
+        );
+        assert_eq!(store.validate_session(&token).unwrap(), original);
+        store.expire_session_for_test(&token).unwrap();
+        assert_eq!(
+            store.renew_session_handle::<AuthError>(
+                &original.session_handle,
+                &candidate,
+                |_| panic!("expired session reached authorization")
+            ),
+            Err(AuthError::SessionRejected)
+        );
+        assert_eq!(
+            store.validate_session(&candidate),
+            Err(AuthError::SessionRejected)
+        );
     }
 
     #[test]
@@ -1314,6 +1500,23 @@ mod migration_tests {
                 )
                 .unwrap();
             assert_eq!(count, 2);
+            let policy_count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sessions WHERE renewal_ttl_seconds IS NOT NULL",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(policy_count, 0);
+            // Previous service builds use explicit legacy columns, which remain writable.
+            conn.execute(
+                "UPDATE sessions SET expires_at=?2 WHERE token_hash=?1",
+                params![
+                    Sha256::digest(valid.as_bytes()).to_vec(),
+                    projection.expires_at
+                ],
+            )
+            .unwrap();
             assert!(conn.execute("INSERT INTO sessions(token_hash,principal_id,device_id,created_at,expires_at) VALUES(?1,?2,?3,?4,?5)",
                 params![vec![0_u8;32], principal, device, now, now+3600]).is_err());
         }

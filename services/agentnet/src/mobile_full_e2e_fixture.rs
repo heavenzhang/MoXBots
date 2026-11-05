@@ -89,7 +89,11 @@ async fn original_relay_service_fixture() {
         }}
     })).route("/auth/session", get({ let auth=auth.clone(); move |headers:HeaderMap| {let auth=auth.clone();async move {
         let token=headers.get(header::AUTHORIZATION).unwrap().to_str().unwrap().strip_prefix("Bearer ").unwrap();
-        match auth.validate_session(token) { Ok(s)=>(StatusCode::OK,Json(serde_json::json!({"principalId":s.account.principal_id,"networkId":s.account.network_id,"deviceId":s.device_id,"expiresAt":s.expires_at}))).into_response(),Err(_)=>StatusCode::UNAUTHORIZED.into_response() }
+        match auth.validate_session(token) { Ok(s)=>(StatusCode::OK,Json(serde_json::json!({"principalId":s.account.principal_id,"networkId":s.account.network_id,"deviceId":s.device_id,"expiresAt":s.expires_at}))).into_response(),Err(_)=>(StatusCode::UNAUTHORIZED,Json(serde_json::json!({"error":{"code":"OWNED_SESSION_INVALID"}}))).into_response() }
+    }} }).delete({ let auth=auth.clone(); move |headers:HeaderMap| {let auth=auth.clone();async move {
+        let token=headers.get(header::AUTHORIZATION).unwrap().to_str().unwrap().strip_prefix("Bearer ").unwrap();
+        auth.revoke_session(token).unwrap();
+        StatusCode::NO_CONTENT
     }}}));
     let router = assemble_feature_routes(
         login,

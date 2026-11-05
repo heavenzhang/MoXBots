@@ -841,14 +841,18 @@ pub(crate) mod tests {
             self.oidc.subject(label)
         }
         pub(crate) fn device(&self, subject: &str) -> Device {
+            self.device_with_session_policy(subject, false)
+        }
+        pub(super) fn device_with_session_policy(&self, subject: &str, native: bool) -> Device {
             let id = Uuid::new_v4().to_string();
-            let account_token = Zeroizing::new(
+            let issued = if native {
                 self.auth
-                    .issue_session(&self.oidc.subject(subject), &id)
-                    .unwrap()
-                    .into_token()
-                    .to_string(),
-            );
+                    .issue_native_session(&self.oidc.subject(subject), &id)
+            } else {
+                self.auth.issue_session(&self.oidc.subject(subject), &id)
+            }
+            .unwrap();
+            let account_token = issued.into_token();
             let session = self.auth.validate_session(&account_token).unwrap();
             let context = SessionContext {
                 principal_id: session.account.principal_id,
@@ -1424,6 +1428,55 @@ pub(crate) mod tests {
             StatusCode::UNAUTHORIZED
         );
         let expired = f.device("expired-renew-owner");
+        f.auth
+            .expire_session_for_test(&expired.account_token)
+            .unwrap();
+        assert_eq!(
+            f.request(&expired, "POST", "/v1/session/renew", "").await.0,
+            StatusCode::UNAUTHORIZED
+        );
+    }
+
+    #[tokio::test]
+    async fn native_session_renewal_preserves_device_expiry_and_revocation_guards() {
+        let f = Fixture::new();
+        let a = f.device_with_session_policy("native-renew-owner", true);
+        let before = f.auth.validate_session(&a.account_token).unwrap();
+        let now = jsonwebtoken::get_current_timestamp() as i64;
+        let ttl = crate::store::NATIVE_SESSION_TTL_SECONDS;
+        f.auth
+            .set_session_expiry_for_test(&a.account_token, now + ttl - 3600)
+            .unwrap();
+        let mut wrong_device = f.device("other-device");
+        wrong_device.access = Zeroizing::new(a.access.to_string());
+        assert_eq!(
+            f.request(&wrong_device, "POST", "/v1/session/renew", "")
+                .await
+                .0,
+            StatusCode::UNAUTHORIZED
+        );
+        assert_eq!(
+            f.auth
+                .validate_session(&a.account_token)
+                .unwrap()
+                .expires_at,
+            now + ttl - 3600
+        );
+        let (status, first, _) = f.request(&a, "POST", "/v1/session/renew", "").await;
+        assert_eq!(status, StatusCode::OK);
+        assert!(first["data"]["expiresAt"].as_i64().unwrap() >= now + ttl);
+        assert_eq!(first["data"]["sessionHandle"], before.session_handle);
+        assert_eq!(
+            f.request(&a, "POST", "/v1/session/renew", "").await.1,
+            first
+        );
+        assert!(f.auth.validate_session(&a.account_token).is_err());
+        f.auth.revoke_session(&a.account_token).unwrap();
+        assert_eq!(
+            f.request(&a, "POST", "/v1/session/renew", "").await.0,
+            StatusCode::UNAUTHORIZED
+        );
+        let expired = f.device_with_session_policy("expired-native-renew-owner", true);
         f.auth
             .expire_session_for_test(&expired.account_token)
             .unwrap();

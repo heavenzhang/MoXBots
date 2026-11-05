@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { router, useFocusEffect } from 'expo-router';
 import { ActivityIndicator, AppState, BackHandler, Keyboard, KeyboardAvoidingView, Image, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { ArrowLeft, ArrowUp, ArrowUpRight, Check, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
+import { ArrowLeft, ArrowUp, ArrowUpRight, CircleUserRound, FileText, Image as ImageIcon, Mic, MoreHorizontal, Paperclip, Pause, Play, Plus, RefreshCw, Sparkles, X } from 'lucide-react-native';
 import { Account, Interaction, NativeAttachment, NativeAttachmentUpload, PendingOperation, QaScenario, RemoteMobileRequest, SessionRequest, Snapshot, SpeechReply, Target, armQaStaleApproval, isFixtureMode, loginWithPassword, parseSessionReply, qaScenarioOptions, requestMobile, requestNative, selectQaScenario, subscribeAttachmentUploadChanges, subscribeSpeechChanges } from '../native';
 import { approvalStillCurrent, commitIfViewOwned, createPollFlightGate, createRouteFocusGate, createSingleFlightPoll, draftKey, viewStillOwned, ViewOwner } from '../operationPolicy';
 import { DraftPersistence, DraftUpdate, type SubmittedDraft } from '../draftPersistence';
@@ -68,7 +68,8 @@ const errorMessages: Record<string, string> = {
   ACCOUNT_REPLY_INVALID: '无法读取登录状态，请稍后刷新。',
   OWNED_PASSWORD_LOGIN_RATE_LIMITED: '尝试次数较多，请稍后再试。',
   OWNED_CREDENTIALS_INVALID: '账号或密码不正确，请重新输入。',
-  OWNED_NATIVE_CONSENT_REQUIRED: '请先确认账号信息授权。',
+  OWNED_NATIVE_CONSENT_REQUIRED: '请点击“同意并登录”继续。',
+  MOBILE_LOGOUT_UNCONFIRMED: '本机已退出，云端退出结果待确认。请连接网络后重试。',
   OWNED_PASSWORD_LOGIN_UNAVAILABLE: '账号服务尚未启用手机直接登录，请联系管理员更新服务。',
   ACCOUNT_LOGIN_PAUSED: '登录已暂停，请回到 App 后重试。',
   ACCOUNT_NETWORK_ACCESS_DENIED: '请在 iPhone 设置中允许 MoXBots 使用无线数据，然后重试。',
@@ -183,7 +184,6 @@ function AppBody() {
   const [speechPreparing, setSpeechPreparing] = useState(false);
   const [loginStarted, setLoginStarted] = useState(false);
   const [username, setUsername] = useState('');
-  const [loginConsent, setLoginConsent] = useState(false);
   const [password, setPassword] = useState('');
   const passwordInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
   const blocksMutation = blocksMutationForScope(pending, target?.targetId ?? null, snapshot?.sessionId ?? null);
@@ -1422,7 +1422,6 @@ function AppBody() {
   };
 
   const startLogin = async () => {
-    if (!loginConsent) { say('请先确认账号信息授权。', 'error'); return; }
     const epoch = loginAttemptGate.beginStart();
     if (epoch === null) return;
     setNotice(null);
@@ -1430,11 +1429,17 @@ function AppBody() {
     setLoginAction('start');
     const submittedPassword = password;
     setPassword('');
-    setLoginConsent(false);
     try {
-      const reply = await loginWithPassword(username.trim(), submittedPassword, true);
+      let reply = await loginWithPassword(username.trim(), submittedPassword, true);
       if (!loginAttemptGate.isCurrent(epoch)) return;
       if (reply.kind === 'error') throw new Error(reply.code);
+      if (reply.state === 'authenticating') {
+        const confirmed = await requestNative({ version: 1, kind: 'account.login.poll' });
+        if (!loginAttemptGate.isCurrent(epoch)) return;
+        if (confirmed.kind === 'error') throw new Error(confirmed.code);
+        if (confirmed.kind !== 'account') throw new Error('ACCOUNT_REPLY_INVALID');
+        reply = confirmed;
+      }
       if (!loginAttemptGate.observe(epoch, reply.state)) return;
       accountRef.current = reply; setAccount(reply);
       setLoginStarted(loginNeedsPolling(reply.state)); setCancelUnconfirmed(false);
@@ -1618,18 +1623,18 @@ function AppBody() {
           <Text style={styles.fieldLabel}>账号</Text>
           <TextInput accessibilityLabel="账号" placeholder="输入账号" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="username" textContentType="username" returnKeyType="next" onSubmitEditing={() => passwordInputRef.current?.focus()} editable={loginAction === null} style={styles.loginInput}/>
           <Text style={styles.fieldLabel}>密码</Text>
-          <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType={loginConsent ? 'go' : 'done'} editable={loginAction === null} onSubmitEditing={() => { Keyboard.dismiss(); if (username.trim() && password && loginConsent && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
-          <Pressable accessibilityRole="checkbox" accessibilityLabel="允许 MoXBots 使用我的账号标识、名称和邮箱来关联设备与会话" accessibilityState={{ checked: loginConsent, disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => setLoginConsent((value) => !value)} style={styles.consentRow}><View style={[styles.consentBox, loginConsent && styles.consentBoxChecked]}>{loginConsent && <Check size={14} color="#fff"/>}</View><Text style={styles.consentLabel}>允许 MoXBots 使用我的账号标识、名称和邮箱，关联设备与会话。</Text></Pressable>
+          <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="go" editable={loginAction === null} onSubmitEditing={() => { Keyboard.dismiss(); if (username.trim() && password && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
+          <Text style={styles.consentLabel}>点击“同意并登录”，即允许 MoXBots 使用你的账号标识、名称和邮箱，关联设备与会话。</Text>
         </View>}
 
         {account?.state === 'authenticating' || loginStarted || cancelUnconfirmed ? <View style={styles.pendingLogin}>
           {!cancelUnconfirmed && <ActivityIndicator color={C.green}/>}
-          <Text style={styles.body}>{cancelUnconfirmed ? '取消登录尚未确认' : '正在确认登录…'}</Text>
-          <Text style={styles.caption}>{cancelUnconfirmed ? '请重试取消，收到明确确认后才能重新登录。' : '登录成功后自动进入会话列表。'}</Text>
+          <Text style={styles.body}>{cancelUnconfirmed ? '取消登录尚未确认' : '正在登录…'}</Text>
+          <Text style={styles.caption}>{cancelUnconfirmed ? '请重试取消，收到明确确认后才能重新登录。' : '即将进入会话列表，请稍候。'}</Text>
           <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null }} disabled={loginAction !== null} onPress={() => void run('login_cancel', cancelLogin)} style={styles.secondaryButton}>
             <Text style={styles.secondaryText}>{loginAction === 'cancel' ? '正在取消…' : cancelUnconfirmed ? '重试取消登录' : '取消登录'}</Text>
           </Pressable>
-        </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null || !username.trim() || !password || !loginConsent }} disabled={loginAction !== null || !username.trim() || !password || !loginConsent} onPress={() => void run('login', startLogin)} style={[styles.primaryButton, (!username.trim() || !password || !loginConsent) && { opacity: 0.5 }]}><Text style={styles.primaryText}>{loginAction === 'start' ? '正在登录…' : '同意并登录'}</Text></Pressable>}
+        </View> : <Pressable accessibilityRole="button" accessibilityState={{ disabled: loginAction !== null || !username.trim() || !password }} disabled={loginAction !== null || !username.trim() || !password} onPress={() => void run('login', startLogin)} style={[styles.primaryButton, (!username.trim() || !password) && { opacity: 0.5 }]}><Text style={styles.primaryText}>{loginAction === 'start' ? '正在登录…' : '同意并登录'}</Text></Pressable>}
         {loading && <ActivityIndicator style={{ marginTop: 16 }} color={C.green}/>}
         {loginAction === null && !cancelUnconfirmed && <Text style={styles.caption}>使用与桌面版相同的账号，无需单独登录管理后台。</Text>}
       </View></ScrollView>
