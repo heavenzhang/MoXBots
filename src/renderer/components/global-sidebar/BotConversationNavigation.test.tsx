@@ -275,4 +275,33 @@ describe("Bot conversation sidebar usability", () => {
     );
     expect(onCreateBot).toHaveBeenCalledTimes(1);
   });
+  it.each([false, true])("restores focus to the same conversation after pinned=%s changes its section", pinned => {
+    const current = session("move", pinned ? { pinnedAt: at } : {});
+    const { container, props, rerender } = setup([current, session("other")]);
+    const original = container.querySelector<HTMLButtonElement>('[data-conversation-row="move"] [data-conversation-menu-trigger]')!;
+    original.focus();
+    rerender(<BotConversationNavigation {...props} data={{ ...props.data, sessions: [{ ...current, pinnedAt: pinned ? undefined : at }, session("other")] }} />);
+    const replacement = container.querySelector<HTMLButtonElement>('[data-conversation-row="move"] [data-conversation-menu-trigger]')!;
+    expect(original.isConnected).toBe(false);
+    expect(replacement).toHaveFocus();
+  });
+
+  it("restores a stable history entry after archiving the focused conversation", () => {
+    const current = session("archive");
+    const { container, props, rerender } = setup([current]);
+    container.querySelector<HTMLButtonElement>("[data-conversation-menu-trigger]")!.focus();
+    rerender(<BotConversationNavigation {...props} data={{ ...props.data, sessions: [{ ...current, archived: true }] }} />);
+    expect(container.querySelector("[data-conversation-id]")).toBeNull();
+    expect(screen.getByRole("button", { name: i18n.t("app:botExperience.manageHistory") })).toHaveFocus();
+  });
+
+  it("does not steal focus from another control when a conversation disappears", () => {
+    const current = session("archive");
+    const { container, props, rerender } = setup([current]);
+    container.querySelector<HTMLButtonElement>("[data-conversation-menu-trigger]")!.focus();
+    const outside = document.createElement("button"); document.body.append(outside); outside.focus();
+    rerender(<BotConversationNavigation {...props} data={{ ...props.data, sessions: [{ ...current, archived: true }] }} />);
+    expect(outside).toHaveFocus(); outside.remove();
+  });
+
 });

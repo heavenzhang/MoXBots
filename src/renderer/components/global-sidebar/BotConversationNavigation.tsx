@@ -4,6 +4,7 @@ import { isImeComposingEvent } from "@/utils/imeKeyboard";
 import CustomSelect from "@/components/CustomSelect";
 import {
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -93,6 +94,7 @@ function ConversationMenuRow({
       {children}
       <button
         ref={anchorRef}
+        data-conversation-menu-trigger
         type="button"
         title={t("rightRail.more")}
         aria-label={t("rightRail.more")}
@@ -167,6 +169,30 @@ export default function BotConversationNavigation({
 }) {
   const { t } = useTranslation("app");
   const [filter, setFilter] = useState("");
+  const navigationRef = useRef<HTMLDivElement | null>(null);
+  const historyRef = useRef<HTMLButtonElement | null>(null);
+  const focusedRowRef = useRef<{ id: string; element: HTMLElement } | null>(
+    null,
+  );
+  // Pinning moves a row between sections; archiving removes it. Restore only
+  // focus lost with that DOM node, never focus now owned by another control.
+  useLayoutEffect(() => {
+    const previous = focusedRowRef.current;
+    if (!previous || previous.element.isConnected) return;
+    focusedRowRef.current = null;
+    if (document.activeElement !== document.body) return;
+    const rows = navigationRef.current?.querySelectorAll<HTMLElement>(
+      "[data-conversation-row]",
+    );
+    const replacement = Array.from(rows ?? []).find(
+      (row) => row.dataset.conversationRow === previous.id,
+    );
+    const target =
+      replacement?.querySelector<HTMLButtonElement>(
+        "[data-conversation-menu-trigger]",
+      ) ?? historyRef.current;
+    target?.focus();
+  });
   const allConversations = useMemo(
     () =>
       projectBotConversations({
@@ -292,6 +318,15 @@ export default function BotConversationNavigation({
     <div
       className="flex h-full min-h-0 flex-col px-2"
       data-bot-navigation={view}
+      ref={navigationRef}
+      onFocusCapture={(event) => {
+        const element = event.target as HTMLElement;
+        if (!event.currentTarget.contains(element)) return;
+        const row = element.closest<HTMLElement>("[data-conversation-row]");
+        focusedRowRef.current = row?.dataset.conversationRow
+          ? { id: row.dataset.conversationRow, element }
+          : null;
+      }}
     >
       {view === "conversations" && (
         <label className="mb-1 flex items-center gap-2 px-2 text-xs text-[var(--ink-muted)]">
@@ -478,6 +513,7 @@ export default function BotConversationNavigation({
         <button
           type="button"
           className="compact-action text-xs text-[var(--ink-muted)]"
+          ref={historyRef}
           onClick={onManageHistory}
         >
           {t("botExperience.manageHistory")}

@@ -489,7 +489,7 @@ User authorized nine upstream repairs and consumed-settings-navigation state onl
 
 ## MOXBOTS-BACKEND-RECOVERY-20261017
 
-User authorized owned relay terminal recovery first, then DSH child approval guidance, real-chain acceptance and main delivery. Existing metadata/relay owners enforce explicit same-account mount policy, fresh permits and bounded return recovery with immutable original admission epochs; clients preserve management and never replay original operations. Independent review repaired deadline, identity, management cleanup/late-control and busy-pair retry defects. Source31 return-state tests and6 actual AuthStore/DPoP/HTTP/WebSocket/mTLS socket tests pass. DSH source9f98b281 preserves two original lock authorities and105 accepted native packages; exact reproduction, full source871 unit passes/2 conditional skips and four-platform native/aggregate CI pass. Fixed resources atdsh-v0.1.18-moxbots.1 (recipe713958e1) are published, all nine asset digests verified and four archives anonymously reacquired. Exact CI and public-release-source Host17/2 each pass; formal selector source9f98 and24 resource tests are accepted. Current mainfa63b5d4 is normally merged. Final head CI, normal PR101/main integration and remote inclusion proof remain tracked in `.agent-sync/tasks/codex-backend-recovery-20261017-f4ab0756.md` and `dev-docs/backend-recovery-20261017/acceptance.md`; those premerge records defer subsequent merge/check state to PR101/canonical refs. Signed App/deployed-service acceptance remains separate; existing deployment ownership is preserved.
+User authorized owned relay terminal recovery first, then DSH child approval guidance, real-chain acceptance and main delivery. Existing metadata/relay owners enforce explicit same-account mount policy, fresh permits and bounded return recovery with immutable original admission epochs; clients preserve management and never replay original operations. Independent review repaired deadline, identity, management cleanup/late-control and busy-pair retry defects. Source31 return-state tests and6 actual AuthStore/DPoP/HTTP/WebSocket/mTLS socket tests pass. DSH source9f98b281 preserves two original lock authorities and109 accepted native packages; exact reproduction, full source871 unit passes/2 conditional skips and four-platform native/aggregate CI pass. Fixed resources atdsh-v0.1.18-moxbots.1 (recipe713958e1) are published, all nine asset digests verified and four archives anonymously reacquired. Exact CI and public-release-source Host17/2 each pass; formal selector source9f98 and24 resource tests are accepted. Current mainfa63b5d4 is normally merged. Final head CI, normal PR101/main integration and remote inclusion proof remain tracked in `.agent-sync/tasks/codex-backend-recovery-20261017-f4ab0756.md` and `dev-docs/backend-recovery-20261017/acceptance.md`; those premerge records defer subsequent merge/check state to PR101/canonical refs. Signed App/deployed-service acceptance remains separate; existing deployment ownership is preserved.
 
 ## MOXBOTS-BROWSER-001 — 2026-10-17
 
@@ -987,7 +987,7 @@ The human requested all listed unpackaged improvements. Same sole desktop/macOS-
 
 0.5.23/build523.1已完成本地Applications安装及正式更新通道发布。受测9c104fd3e5f256b0d88bb3e67949da0f5c1defb6，普通PR206/mainc5fd489b56d2eb2f19923d9dddc5cb6097cd439f，原CI40123195499与main40124544381均成功。不可变v0.5.23对象d2be5a29a494f6b788a0d74b82d98e33e46397ce指向c5fd；TAR301705060B/SHA4d26b0922d3fa554a357190a81b6c48b5f353b8aae3b92ba9f2b5d14b6557255，原Apple1ecc3e4b-e691-4fc4-979d-b464c8999f77 Accepted。一次完整正常TLS外部GET/生产签名、stable23及Range/隐藏路径复核成功，自己ownedlock已释放；21与更旧回滚原件保持。
 
-该批完整unitDOM10027、builtin252、externalDSH292、scripts344+14平台skip及类型/lint通过；实际有限原生Write1/Read1、新对话、暖owner预建任务ID/进度、排队晋级后Stop持久暂停及正常退出/重开已核。105原history JSONL前缀、原草稿文件及全部20Agent/非Agent配置恢复精确，memory100暂停例外保持。冷分类未确认、Haiku utility温度兼容、全部任务评审完成与AUTO2/双端不冒称通过；新源码另批处理。旧522候选封存，不再重建/公证/下载本版。详见dev-docs/releases/0.5.23-delivery.md。
+该批完整unitDOM10027、builtin252、externalDSH292、scripts344+14平台skip及类型/lint通过；实际有限原生Write1/Read1、新对话、暖owner预建任务ID/进度、排队晋级后Stop持久暂停及正常退出/重开已核。109原history JSONL前缀、原草稿文件及全部20Agent/非Agent配置恢复精确，memory100暂停例外保持。冷分类未确认、Haiku utility温度兼容、全部任务评审完成与AUTO2/双端不冒称通过；新源码另批处理。旧522候选封存，不再重建/公证/下载本版。详见dev-docs/releases/0.5.23-delivery.md。
 
 ## MB-BRAND-PROMPTS-20261025 — 模型身份与产品说明
 
@@ -1250,24 +1250,24 @@ MB-RECOVERY-UX-20261102完整续接：用户要求补齐整个方案。原分支
 Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4 integrates exact producer 5cf4aac with main f719dad in codex/release-recovery-ux-0541-r1-20261103. Proposed immutable version 0.5.41/build541.1. Root lifecycle fence fix and 708 tests/typecheck passed; exact source CI/main, new artifact, fresh safe maintenance, signed native new UI and same-artifact 101 publication are pending. Prior 540.1 local acceptance/stable hold remains distinct. Other deployment owners and author workspaces are unchanged. Receipts: work/release-0541-20261103/owner.
 
 
-## MB-NATIVE-LOGIN-20261105 — 桌面客户端内账号密码登录
+## MB-NATIVE-LOGIN-20261109 — 桌面客户端内账号密码登录
 
-隔离 `codex/native-login-20261105` 基于 main065f2b6c，复用既有服务 `/auth/login/password` 与原 Rust OwnedLoginManager/registry/session/identity store；原生表单显式基本身份/邮箱确认，瞬时密码、固定错误、防重、取消与手动浏览器备用。未退出日常账号、未读其密码、未改服务端或业务恢复。验收与真实隔离登录步骤见 `dev-docs/native-login-20261105/acceptance.md`，任务记录 `.agent-sync/tasks/codex-native-login-20261105-106ae3e5.md`。142项定向本地测试、完整Rust crate check、Clippy redline、前端类型/lint/build及独立源码审核通过；实际渲染、真实账号/持久化和正式制品仍分别待验。
+隔离 `codex/native-login-20261109` 基于 main065f2b6c，复用既有服务 `/auth/login/password` 与原 Rust OwnedLoginManager/registry/session/identity store；原生表单显式基本身份/邮箱确认，瞬时密码、固定错误、防重、取消与手动浏览器备用。未退出日常账号、未读其密码、未改服务端或业务恢复。验收与真实隔离登录步骤见 `dev-docs/native-login-20261109/acceptance.md`，任务记录 `.agent-sync/tasks/codex-native-login-20261109-106ae3e5.md`。142项定向本地测试、完整Rust crate check、Clippy redline、前端类型/lint/build及独立源码审核通过；实际渲染、真实账号/持久化和正式制品仍分别待验。
 
 唯一 desktop/macOS-arm64/updater/sharedCI/main/版本/构建/签名/安装/发布 owner 保持 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，已回执纳入下一未冻结批。冻结542.1/PR246不包含本任务且不被改动；开发只提交精确SHA及证据，不独立触发PR/共享CI或正式打包。cloud auth/101 owner仍为`01a12b99-7b38-78b1-831f-9c60257d386a`，已只读确认原生密码接口启用、Dex local connector与原确认页策略保留，本轮无需服务代码发布，真实认证仍待验。无mobile/Host/website部署。源码/main、实际界面、真实登录/安全存储/恢复/退出、正式发行逐层追踪，不以模拟结果替代。
-## MB-MOBILE-AUTH-20261105 — 手机长期登录与一次登录操作
+## MB-MOBILE-AUTH-20261109 — 手机长期登录与一次登录操作
 
-用户要求按已诊断问题修复频繁退登/额外确认。隔离codex/mobile-auth-20261105基于main065f2b6c8；mobile原生owner以独立加密pending记录、同设备既有key证明和读回确认实现安全续期/冷恢复，旧account JSON保持三字段以兼容原包。真实401投影expired并退役旧连接，网络错误保留账号；退出同时处理原/候选token，清理远端设总预算。原生password在AuthStore获内部30天滑动策略，可空TTL列兼容迁移；旧Web/Host/OAuth不追溯扩权。登录授权说明并入同意并登录，立即消费Ready事务，保留旧poll恢复与密码不重放。
+用户要求按已诊断问题修复频繁退登/额外确认。隔离codex/mobile-auth-20261109基于main065f2b6c8；mobile原生owner以独立加密pending记录、同设备既有key证明和读回确认实现安全续期/冷恢复，旧account JSON保持三字段以兼容原包。真实401投影expired并退役旧连接，网络错误保留账号；退出同时处理原/候选token，清理远端设总预算。原生password在AuthStore获内部30天滑动策略，可空TTL列兼容迁移；旧Web/Host/OAuth不追溯扩权。登录授权说明并入同意并登录，立即消费Ready事务，保留旧poll恢复与密码不重放。
 
 部署单元与归属不变：sharedCI/main唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；cloud AgentNet与mobile iOS/Android唯一01a12b99-7b38-78b1-831f-9c60257d386a。先cloud兼容服务及有效DB备份/回滚，再手机唯一owner分配下一未冻结包；不覆盖build9/10或旧tag，不操作日常Mac或替代Xu设备。历史session不追溯赋30天，升级后可有一次正常重登。桌面源码helper语义保持，不单独请求桌面发布。
 
-实现/本地策略与原生回归/真实本地TLS+设备证明链/main/云发布/手机包/真机分别追踪；内置浏览器被Work设置禁用，Chrome独立会话授权仍待用户答复，页面实测不冒充通过。Kevin不可用，不发业务消息或重置账号。任务.agent-sync/tasks/codex-mobile-auth-20261105-84ad7697.md，契约、稳定ToDo与命令证据dev-docs/mobile-auth-20261105/{PLAN,acceptance}.md。完整候选与兼容顺序交既有owner，不自行触发共享CI。
+实现/本地策略与原生回归/真实本地TLS+设备证明链/main/云发布/手机包/真机分别追踪；内置浏览器被Work设置禁用，Chrome独立会话授权仍待用户答复，页面实测不冒充通过。Kevin不可用，不发业务消息或重置账号。任务.agent-sync/tasks/codex-mobile-auth-20261109-84ad7697.md，契约、稳定ToDo与命令证据dev-docs/mobile-auth-20261109/{PLAN,acceptance}.md。完整候选与兼容顺序交既有owner，不自行触发共享CI。
 
 Root main intake 2026-11-05 integrates producer702a08a and mobile-owner explicit-consent94c9050 with current mainfcf06ff. Only plan append conflict resolved by retaining both desktop-native-login and mobile-auth records. Root sharedCI/main owner remains01a12bc2, cloud/mobile deployment remains01a12b99. Candidate/CI and production acceptance are separate.
 
 
-## MB-SESSION-MENU-20261105 — 恢复新版会话右键菜单
+## MB-SESSION-MENU-20261109 — 恢复新版会话右键菜单
 
-用户明确要求合入主干并上线。隔离codex/session-menu-20261105基于main39b344765：BotConversationNavigation复用原SessionContextMenu和GlobalSidebar mutation/删除owner，恢复右键、⋯、键盘入口及Escape层级焦点。105定向DOM、type/lint、classification、依赖契约、renderer编译通过。真实渲染与正式原生持久化尚待验，IAB及用户授权的Chrome均被Work设置禁用。详见dev-docs/session-menu-20261105/acceptance.md与.agent-sync/tasks/codex-session-menu-20261105-b841b6de.md。
+用户明确要求合入主干并上线。隔离codex/session-menu-20261109基于main39b344765：BotConversationNavigation复用原SessionContextMenu和GlobalSidebar mutation/删除owner，恢复右键、⋯、键盘入口及Escape层级焦点。109定向DOM、type/lint、classification、依赖契约、renderer编译通过。真实渲染与正式原生持久化尚待验，IAB及用户授权的Chrome均被Work设置禁用。详见dev-docs/session-menu-20261109/acceptance.md与.agent-sync/tasks/codex-session-menu-20261109-b841b6de.md。
 
 部署单元desktop/macOS-arm64/updater/sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；已回执下一未冻结桌面批次，冻结542.1不覆盖。开发只保存精确源、测试与交接；该owner统一PR/CI/main、版本、签名、上线及回滚。无其他单元发布或迁移。源码、main、正式发行和真实验收继续分开追踪。

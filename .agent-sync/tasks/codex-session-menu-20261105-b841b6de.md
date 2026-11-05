@@ -1,9 +1,9 @@
 <!-- git-project-sync-task:version=1 -->
-<!-- git-project-sync-task:branch=codex/session-menu-20261105 -->
+<!-- git-project-sync-task:branch=codex/session-menu-20261109 -->
 <!-- git-project-sync-task:base=39b3447659dd92e71f9bb86bf12f2326bb3e5fcd -->
 <!-- git-project-sync-task:status=in-progress -->
 
-# Task: MB-SESSION-MENU-20261105 恢复新版会话菜单并上线
+# Task: MB-SESSION-MENU-20261109 恢复新版会话菜单并上线
 
 ## Objective
 
@@ -19,12 +19,12 @@
 ## Completed
 
 - 新入口复用SessionContextMenu；新增菜单状态与卸载清理，修正侧栏Escape嵌套层关闭顺序。
-- 合成UI fixture与9项新DOM行为回归。详见dev-docs/session-menu-20261105/acceptance.md。
+- 合成UI fixture与13项新DOM行为回归。详见dev-docs/session-menu-20261109/acceptance.md。
 
 ## Verification
 
-- Node24：105 DOM tests、tsc、定向ESLint、classification、协议/依赖补丁校验、Vite renderer build、diff check通过。
-- Root自审，无独立reviewer；真实渲染未通过。
+- Node24：109 DOM tests、tsc、定向ESLint、classification、协议/依赖补丁校验、Vite renderer build、diff check通过。
+- Root自审及独立源码复核通过；焦点P2已关闭。真实渲染未通过。
 
 ## Blockers and unknowns
 
