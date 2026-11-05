@@ -25,6 +25,6 @@
 
 ## 交付与后续门禁
 
-源码提交/远端handoff待保存，main/共享CI/签名制品/安装/生产验收未完成。部署单元desktop/macOS-arm64/updater/sharedCI/main仍由01a12bc2-907a-7702-b6dd-788225c5dfe4唯一负责；不改变已安装542.2、稳定0.5.36及既有冻结制品，不分配正式版本。无cloud/mobile/Host/website及迁移依赖。
+产品实现提交78ec0b50d03df5db77e00336f99991629f2ea1ed已同步远端任务分支，handoff通过且工作树干净。文档收尾不改变验证过的产品字节。main/共享CI/签名制品/安装/生产验收未完成。部署单元desktop/macOS-arm64/updater/sharedCI/main仍由01a12bc2-907a-7702-b6dd-788225c5dfe4唯一负责；不改变已安装542.2、稳定0.5.36及既有冻结制品，不分配正式版本。无cloud/mobile/Host/website及迁移依赖。
 
 下一步：保存远端精确SHA并handoff，交原owner选择集成首批与本批、核对最新主干和原生阅读/真实文件路径。UX-07/08及UX-10完整结果消息等后续清单保持在PLAN中，不冒称18项全部完成。
