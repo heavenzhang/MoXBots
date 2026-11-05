@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=c5ec82dfeafb08d762447a25d6dfa5e6715a5ff5865c6f0e83aa24429b521ad5 -->
+<!-- git-project-sync-task:source-digest=2143afc960f1e17aadc544ab29e7791f7509b06ad88fbff8efe21dfa2f998c0e -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=a0f3e616-909f-4180-9a3b-55f3be989860 -->
 <!-- git-project-sync-task:branch=codex/simple-ux-results-20261106 -->
@@ -27,6 +27,8 @@
 - IAB实际组件页1280/390/320与浅深、搜索/委托/分页/焦点通过；数据和预览回调为合成，不冒称真实文件IO。
 
 ## Verification
+
+- Source digest: `2143afc960f1e17aadc544ab29e7791f7509b06ad88fbff8efe21dfa2f998c0e`; Docs only; preserve independent owner acceptance/main/release gate, product bytes unchanged
 
 - Source digest: `c5ec82dfeafb08d762447a25d6dfa5e6715a5ff5865c6f0e83aa24429b521ad5`; Docs only; product bytes unchanged from verified78ec0b5; prior handoff PASS; source/native/main/release gates kept separate
 
