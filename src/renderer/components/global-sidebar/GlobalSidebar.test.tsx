@@ -2415,3 +2415,102 @@ describe('GlobalSidebar width resize', () => {
     expect(screen.queryByRole('separator')).not.toBeInTheDocument();
   });
 });
+
+
+describe('MoXBots conversation resource menu', () => {
+  const current = { id: 'menu-session', agentDir: '/synthetic/menu', title: 'Menu target',
+    createdAt: '2026-11-05T00:00:00Z', lastActiveAt: '2026-11-05T00:00:00Z' };
+  const label = (key: string) => String(i18n.t(`launcher:rightRail.${key}`));
+  beforeEach(async () => {
+    vi.useRealTimers(); vi.clearAllMocks(); window.localStorage.clear();
+    mocks.buildProfile = 'moxbot'; mocks.forcedRail = true; mocks.configError = null;
+    mocks.config.projectSpaces = [];
+    mocks.config.agents = [{ id: 'bot', name: 'Menu Bot', enabled: true, permissionMode: 'plan', channels: [] }];
+    mocks.projects = [{ id: 'menu-project', name: 'Menu project', path: current.agentDir, agentId: 'bot' }];
+    mocks.taskData.sessions = [current];
+    mocks.taskData.deleteProtectedSessionIds.clear();
+    mocks.taskData.workspaceSessionStates.clear();
+    mocks.updateSession.mockReset();
+    mocks.taskData.actions.beginSessionMetadataMutation.mockReturnValue(7);
+    mocks.taskData.actions.applySessionMetadata.mockReturnValue(true);
+    mocks.taskData.actions.setSessionFavorite.mockResolvedValue(true);
+    mocks.taskData.actions.deleteSession.mockResolvedValue({ deleted: true });
+    Object.defineProperty(navigator, 'clipboard', { configurable: true, value: { writeText: vi.fn().mockResolvedValue(undefined) } });
+    await i18n.changeLanguage('zh-CN');
+  });
+  afterEach(() => { mocks.buildProfile = 'myagents'; });
+  function openSidebar(overrides: Partial<SidebarProps> = {}) {
+    const onOpenSession = vi.fn(async () => true);
+    const view = renderSidebar({ onOpenSession, ...overrides });
+    fireEvent.click(screen.getByRole('button', { name: '我的 Bots' }));
+    const row = screen.getByText(current.title).closest<HTMLElement>('[data-conversation-row]')!;
+    return { ...view, row, onOpenSession, more: within(row).getByRole('button', { name: label('more') }) };
+  }
+  it.each(['right-click', 'more', 'keyboard'] as const)('opens the complete shared menu through %s without opening the conversation', async entry => {
+    const { row, more, onOpenSession } = openSidebar();
+    if (entry === 'right-click') {
+      const event = new MouseEvent('contextmenu', { bubbles: true, cancelable: true, button: 2 });
+      fireEvent(row, event); expect(event.defaultPrevented).toBe(true);
+    } else if (entry === 'more') fireEvent.click(more);
+    else fireEvent.keyDown(within(row).getByRole('button', { name: /Menu target/ }), { key: 'F10', shiftKey: true });
+    for (const key of ['copySessionId', 'rename', 'pin', 'favorite', 'viewStats', 'archive', 'delete']) {
+      expect(screen.getByRole('button', { name: label(key) })).toBeInTheDocument();
+    }
+    expect(onOpenSession).not.toHaveBeenCalled();
+    expect(more).toHaveAttribute('aria-expanded', 'true');
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await vi.waitFor(() => expect(screen.queryByRole('button', { name: label('rename') })).not.toBeInTheDocument());
+    expect(more).toHaveFocus();
+  });
+  it('renames the selected conversation using the original dialog and App callback', async () => {
+    const updated = { ...current, title: 'Renamed target' };
+    const onRenameSession = vi.fn(async () => updated);
+    const { row } = openSidebar({ onRenameSession });
+    fireEvent.contextMenu(row); fireEvent.click(screen.getByRole('button', { name: label('rename') }));
+    const input = screen.getByLabelText(label('renameDialogLabel'));
+    expect(input).toHaveValue(current.title);
+    fireEvent.change(input, { target: { value: updated.title } });
+    fireEvent.click(screen.getByRole('button', { name: String(i18n.t('common:actions.save')) }));
+    await vi.waitFor(() => expect(onRenameSession).toHaveBeenCalledWith(current.id, updated.title));
+    await vi.waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+  it.each(['pin', 'archive'] as const)('persists %s through the existing metadata owner', async key => {
+    const updated = { ...current, ...(key === 'pin' ? { pinnedAt: current.createdAt } : { archived: true }) };
+    mocks.updateSession.mockResolvedValue(updated);
+    const { row } = openSidebar(); fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole('button', { name: label(key) }));
+    await vi.waitFor(() => expect(mocks.taskData.actions.applySessionMetadata).toHaveBeenCalledWith(updated, 7));
+    expect(mocks.updateSession).toHaveBeenCalledExactlyOnceWith(current.id, key === 'pin' ? { pinned: true } : { archived: true });
+    expect(mocks.taskData.actions.deleteSession).not.toHaveBeenCalled();
+  });
+  it('uses the original favorite owner and copies only the selected ID', async () => {
+    const { row } = openSidebar(); fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole('button', { name: label('favorite') }));
+    expect(mocks.taskData.actions.setSessionFavorite).toHaveBeenCalledExactlyOnceWith(current.id, true);
+    fireEvent.contextMenu(row); fireEvent.click(screen.getByRole('button', { name: label('copySessionId') }));
+    await vi.waitFor(() => expect(navigator.clipboard.writeText).toHaveBeenCalledExactlyOnceWith(`SessionID: ${current.id}`));
+  });
+  it('retains archive failure feedback and permits retry without applying unsaved metadata', async () => {
+    mocks.updateSession.mockRejectedValueOnce(new Error('synthetic disk failure'));
+    const { row } = openSidebar(); fireEvent.contextMenu(row);
+    fireEvent.click(screen.getByRole('button', { name: label('archive') }));
+    await vi.waitFor(() => expect(mocks.toast.error).toHaveBeenCalledWith(label('archiveFailedRetry')));
+    expect(mocks.taskData.actions.applySessionMetadata).not.toHaveBeenCalled();
+    expect(screen.getByRole('button', { name: label('archive') })).toBeEnabled();
+  });
+  it('keeps delete behind the original confirmation and respects an in-use owner refusal', async () => {
+    mocks.taskData.deleteProtectedSessionIds.add(current.id);
+    const { row } = openSidebar(); fireEvent.contextMenu(row);
+    const remove = screen.getByRole('button', { name: label('delete') });
+    expect(remove).toHaveAttribute('title', label('deleteBlockedByOwner'));
+    fireEvent.click(remove);
+    expect(screen.getByText(label('deleteDialogTitle'))).toBeInTheDocument();
+    expect(mocks.deleteSession).not.toHaveBeenCalled();
+    mocks.deleteSession.mockResolvedValueOnce({ deleted: false, reason: 'in-use' });
+    fireEvent.click(screen.getByRole('button', { name: label('delete') }));
+    await vi.waitFor(() => expect(mocks.deleteSession).toHaveBeenCalledExactlyOnceWith(current.id));
+    expect(mocks.toast.warning).toHaveBeenCalledWith(label('deleteBlockedByOwner'));
+    expect(screen.getByText(current.title)).toBeInTheDocument();
+    expect(mocks.taskData.actions.deleteSession).not.toHaveBeenCalled();
+  });
+});

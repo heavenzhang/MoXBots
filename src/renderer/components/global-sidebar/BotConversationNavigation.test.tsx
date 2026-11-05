@@ -96,6 +96,8 @@ function setup(
     onCreateBot,
     onCreateProject,
     onManageHistory: vi.fn(),
+    renderSessionMenu: () => null,
+    onMenuOpenChange: vi.fn(),
     ...extra,
   };
   const result = render(<BotConversationNavigation {...props} />);

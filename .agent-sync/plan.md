@@ -1264,3 +1264,10 @@ Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd
 实现/本地策略与原生回归/真实本地TLS+设备证明链/main/云发布/手机包/真机分别追踪；内置浏览器被Work设置禁用，Chrome独立会话授权仍待用户答复，页面实测不冒充通过。Kevin不可用，不发业务消息或重置账号。任务.agent-sync/tasks/codex-mobile-auth-20261105-84ad7697.md，契约、稳定ToDo与命令证据dev-docs/mobile-auth-20261105/{PLAN,acceptance}.md。完整候选与兼容顺序交既有owner，不自行触发共享CI。
 
 Root main intake 2026-11-05 integrates producer702a08a and mobile-owner explicit-consent94c9050 with current mainfcf06ff. Only plan append conflict resolved by retaining both desktop-native-login and mobile-auth records. Root sharedCI/main owner remains01a12bc2, cloud/mobile deployment remains01a12b99. Candidate/CI and production acceptance are separate.
+
+
+## MB-SESSION-MENU-20261105 — 恢复新版会话右键菜单
+
+用户明确要求合入主干并上线。隔离codex/session-menu-20261105基于main39b344765：BotConversationNavigation复用原SessionContextMenu和GlobalSidebar mutation/删除owner，恢复右键、⋯、键盘入口及Escape层级焦点。105定向DOM、type/lint、classification、依赖契约、renderer编译通过。真实渲染与正式原生持久化尚待验，IAB及用户授权的Chrome均被Work设置禁用。详见dev-docs/session-menu-20261105/acceptance.md与.agent-sync/tasks/codex-session-menu-20261105-b841b6de.md。
+
+部署单元desktop/macOS-arm64/updater/sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；已回执下一未冻结桌面批次，冻结542.1不覆盖。开发只保存精确源、测试与交接；该owner统一PR/CI/main、版本、签名、上线及回滚。无其他单元发布或迁移。源码、main、正式发行和真实验收继续分开追踪。
