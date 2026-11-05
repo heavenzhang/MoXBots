@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=92c04bff68f921ce32487f9e597411bc69144eefe12ea6865d667734600855aa -->
+<!-- git-project-sync-task:source-digest=0e682c8d3b920e281785faee5777af4fc17c430a28ad045e8d8e98f0711bdf43 -->
 <!-- git-project-sync-task:id=c5e972be-3a7c-4fb0-9715-6085d7f1026c -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:branch=codex/simple-ux-20261105 -->
@@ -19,10 +19,14 @@
 
 ## Completed
 
+- 实现提交ac3aa8c已推送远端任务分支，handoff通过，工作树干净；源码/本地层完成，main和发行另待owner。
+
 - UX-01/02/05 源码修改与相应测试，UX-03/04/06 复用现有实现且关键行为回归通过。
 - 本地228项布局/DOM回归、8项主题；类型和修改文件lint通过；moxbot renderer构建通过。未声称真实UI或原生完成。
 
 ## Verification
+
+- Source digest: `0e682c8d3b920e281785faee5777af4fc17c430a28ad045e8d8e98f0711bdf43`; Documentation only; product bytes unchanged from tested ac3aa8c; prior handoff PASS; real UI and main/release remain pending original owner
 
 - Source digest: `92c04bff68f921ce32487f9e597411bc69144eefe12ea6865d667734600855aa`; 228 targeted unit/DOM +8 theme PASS; 26 review-fix DOM PASS; tsc and changed ESLint PASS; classification PASS; deps 0 errors/20 warnings; moxbot renderer build PASS; independent P2 closed; actual UI blocked by Work browser settings
 
