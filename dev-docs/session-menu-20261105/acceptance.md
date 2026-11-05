@@ -1,4 +1,4 @@
-# MB-SESSION-MENU-20261109 验收记录
+# MB-SESSION-MENU-20261105 验收记录
 
 新版 MoXBots 对话列表未接入 SessionContextMenu，右键退回系统网页菜单。恢复原菜单并增加常驻低对比度 ⋯ 和 ContextMenu/Shift+F10 键盘入口，仍以会话主题为主标题。更多按钮是独立兄弟按钮，预留宽度；右键不选中文字、不打开会话。原共享菜单提供复制ID、重命名、置顶、收藏、标签、统计、归档和删除。
 
@@ -18,7 +18,7 @@ GlobalSidebar 保留原 metadata mutation sequence、收藏与App重命名回调
 
 合成页面 `src/renderer/__fixtures__/session-menu.html` 直接加载实际导航、共享菜单及主题，网络写入只处理内存中的fixture-menu IDs，其余请求拒绝；不使用真实业务数据或模型。用Vite本机服务访问 `/__fixtures__/session-menu.html`。其他历史导航fixture保持原展示范围，不将其空菜单回调作为此功能验收。
 
-本机原始日志：工作区 `work/MB-SESSION-MENU-20261109/evidence/{dom,typecheck,lint,renderer-build}.log`。本记录不把DOM/编译结果当真实原生验收。
+本机原始日志：工作区 `work/MB-SESSION-MENU-20261105/evidence/{dom,typecheck,lint,renderer-build}.log`。本记录不把DOM/编译结果当真实原生验收。
 
 ## 发布交接与完成标准
 
