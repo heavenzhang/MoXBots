@@ -6745,6 +6745,7 @@ function ChatContent({
                 inspectRevision: `${messages.length}:${streamingMessage?.id ?? ''}`,
                 inspect: () => apiGet<RecoveryActionSnapshot>(RECOVERY_REVIEW_ACTIONS_PATH),
                 reconcile: request => apiPost<RecoveryActionSnapshot>(RECOVERY_RECONCILE_PATH, request),
+                onViewOperation: handleJumpToTool,
                 onPrepareCheck: action => {
                   if (!chatInputRef.current || isComposerUpdateCheckpointLocked()) return;
                   const operation = t(`recoveryReview.kinds.${action.presentation?.kind ?? 'unknown'}`);

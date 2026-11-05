@@ -6,7 +6,7 @@ import type { Account, Target } from './native';
 import { MobileSheet } from './MobileSheet';
 import { BotAvatar } from './BotAvatar';
 import { BotProfileSheet } from './BotProfileSheet';
-import { botKey, botSessionKey, botSessionStatus, botSessionAction, type BotDirectoryPage, type BotSession } from './botDirectory';
+import { botKey, botSessionKey, botSessionStatus, botSessionAction, botStatusCoverage, type BotDirectoryPage, type BotSession } from './botDirectory';
 import { mobileTheme as c } from './mobileTheme';
 import { sessionUpdatedLabel } from './sessionPresentation';
 
@@ -16,6 +16,7 @@ type Props = {
   search: string; searchOpen: boolean; onSearch: (value: string) => void; onSearchOpen: (value: boolean) => void;
   busy: boolean; syncIssueCount: number; unavailableDeviceCount: number; onAccount: () => void; onRefresh: () => void;
   onNew: (target: Target) => void; onOpen: (row: BotSession) => void; onArtifacts: (row: BotSession) => void;
+  statusReading: boolean; onReadStatuses: (keys: readonly string[]) => void;
   notice?: ReactNode; pending?: ReactNode; empty: ReactNode;
 };
 type Tab = 'chats' | 'bots' | 'artifacts';
@@ -29,6 +30,7 @@ export function SessionHomeScreen(p: Props) {
   const query = p.search.trim().toLocaleLowerCase();
   const scoped = p.rows.filter(row => (!scope || botKey(row.target) === scope) && (!query || [row.title, row.preview, row.target.name, row.target.deviceName].some(value => value.toLocaleLowerCase().includes(query))));
   const rows = scoped.filter(row => tab !== 'chats' || filter === 'all' || botSessionStatus(row).tone === filter);
+  const coverage = botStatusCoverage(scoped);
   const bots = p.targets.filter(target => !query || [target.name, target.deviceName].some(value => value.toLocaleLowerCase().includes(query)));
   const newWork = () => { const selected = p.targets.find(t => botKey(t) === scope); if (selected) p.onNew(selected); else if (p.targets.length === 1) p.onNew(p.targets[0]); else if (p.targets.length) setChoosingBot(true); else setTab('bots'); };
   const validProfile = profile && p.targets.find(t => botKey(t) === botKey(profile)) || null;
@@ -38,10 +40,11 @@ export function SessionHomeScreen(p: Props) {
     <View style={s.tools}><Pressable accessibilityRole="button" accessibilityLabel="搜索会话和 Bots" onPress={() => p.onSearchOpen(!p.searchOpen)} style={s.searchButton}><Search size={18} color={c.muted}/><Text style={s.small}>搜索会话和 Bots</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel="刷新会话和设备" disabled={p.busy} onPress={p.onRefresh} style={s.icon}>{p.busy ? <ActivityIndicator size="small" color={c.primary}/> : <RefreshCw size={18} color={c.primary}/>}</Pressable><Pressable accessibilityRole="button" accessibilityLabel="新建会话" onPress={newWork} style={s.newButton}><SquarePen size={19} color={c.white}/></Pressable></View>
     {(p.searchOpen || !!p.search) && <View style={s.search}><TextInput autoFocus accessibilityLabel="搜索已加载的会话和 Bots" value={p.search} onChangeText={p.onSearch} placeholder="任务、内容或 Bot 名称" placeholderTextColor={c.muted} style={s.input}/><Pressable accessibilityRole="button" accessibilityLabel="清除并关闭搜索" onPress={() => {p.onSearch('');p.onSearchOpen(false);}} style={s.icon}><X size={18} color={c.muted}/></Pressable></View>}
     {tab !== 'bots' && <ScrollView horizontal style={s.scopes} contentContainerStyle={s.chips} showsHorizontalScrollIndicator={false}><Chip label="全部 Bots" selected={!scope} onPress={() => setScope(null)}/>{p.targets.map(t => <Chip key={botKey(t)} label={t.name} selected={scope === botKey(t)} onPress={() => setScope(botKey(t))}/>)}</ScrollView>}
-    {tab === 'chats' && <View style={s.filters}>{([['all','全部'],['attention','需要你'],['active','进行中']] as const).map(([value,label]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{selected:filter===value}} onPress={() => setFilter(value)} style={s.filter}><Text style={[s.small,filter===value && s.selectedText]}>{label}{value !== 'all' ? ` ${scoped.filter(r => botSessionStatus(r).tone === value).length}` : ''}</Text></Pressable>)}</View>}
+    {tab === 'chats' && <View style={s.filters}>{([['all','全部'],['attention','需要你'],['active','进行中']] as const).map(([value,label]) => <Pressable key={value} accessibilityRole="button" accessibilityState={{selected:filter===value}} onPress={() => setFilter(value)} style={s.filter}><Text style={[s.small,filter===value && s.selectedText]}>{label}{value !== 'all' ? ` ${scoped.filter(r => botSessionStatus(r).tone === value).length}${coverage.unread > 0 ? '+' : ''}` : ''}</Text></Pressable>)}</View>}
     {p.notice}
     <ScrollView style={s.list} contentContainerStyle={s.content} keyboardShouldPersistTaps="handled">
       {p.pending}
+      {tab === 'chats' && (coverage.unread > 0 || coverage.failed > 0) && <View style={{ backgroundColor: c.wash, borderRadius: 12, padding: 12, marginBottom: 12 }}><Text style={s.small}>{coverage.unread > 0 ? `还有 ${coverage.unread} 项会话状态待同步，筛选数量仅包含已读取的状态。` : '部分状态刷新未成功，当前显示最近已读取的结果。'}</Text><Pressable accessibilityRole="button" accessibilityLabel="为当前筛选继续读取会话状态" disabled={p.busy} accessibilityState={{ disabled: p.busy }} onPress={() => p.onReadStatuses(scoped.map(botSessionKey))} style={[s.botAction, p.busy && { opacity: 0.5 }]}><Text style={s.action}>{p.statusReading ? '正在同步状态…' : coverage.unread > coverage.failed ? '继续同步状态' : '重试未同步状态'}</Text></Pressable></View>}
       {p.unavailableDeviceCount > 0 && <Text style={s.coverage}>另有 {p.unavailableDeviceCount} 台设备目录暂不可用</Text>}
       {(p.syncIssueCount > 0 || p.pages.some(page => page.error)) && <Text accessibilityRole="alert" style={s.coverage}>部分 Bot 暂未同步，已读取的会话仍保留。可刷新重试。</Text>}
       {tab === 'bots' ? bots.map(t => <View key={botKey(t)} style={s.botCard}><Pressable accessibilityRole="button" accessibilityLabel={`查看 Bot：${t.name}`} onPress={() => setProfile(t)} style={s.botHead}><BotAvatar target={t} size={46}/><View style={s.flex}><Text style={s.title}>{t.name}</Text><Text style={s.small}>{t.deviceName} · {t.online ? '在线' : '离线'}</Text></View><ChevronRight size={18} color={c.muted}/></Pressable><View style={s.botActions}><Pressable accessibilityRole="button" accessibilityLabel={`继续 ${t.name} 的工作`} onPress={() => {setScope(botKey(t));setFilter('all');setTab('chats');}} style={s.botAction}><Text style={s.action}>查看会话</Text></Pressable><Pressable accessibilityRole="button" accessibilityLabel={`与 ${t.name} 新建会话`} onPress={() => p.onNew(t)} style={s.botAction}><Text style={s.action}>新建会话</Text></Pressable></View></View>) : <>

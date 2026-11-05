@@ -1264,7 +1264,33 @@ Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd
 实现/本地策略与原生回归/真实本地TLS+设备证明链/main/云发布/手机包/真机分别追踪；内置浏览器被Work设置禁用，Chrome独立会话授权仍待用户答复，页面实测不冒充通过。Kevin不可用，不发业务消息或重置账号。任务.agent-sync/tasks/codex-mobile-auth-20261105-84ad7697.md，契约、稳定ToDo与命令证据dev-docs/mobile-auth-20261105/{PLAN,acceptance}.md。完整候选与兼容顺序交既有owner，不自行触发共享CI。
 
 Root main intake 2026-11-05 integrates producer702a08a and mobile-owner explicit-consent94c9050 with current mainfcf06ff. Only plan append conflict resolved by retaining both desktop-native-login and mobile-auth records. Root sharedCI/main owner remains01a12bc2, cloud/mobile deployment remains01a12b99. Candidate/CI and production acceptance are separate.
+## MB-MOBILE-CONTINUE-02 · 原会话继续工作的深度优化 · 2026-11-03
+
+用户已授权下一轮只聚焦最重要功能。功能源分支 codex/mobile-continue-02-20261103，基线 f719dad17191fc9ea260e8775be85c143af36f1d；同Bot/Session固定工作进展、最近要求/回复、原请求定位、原成果与原草稿入口；首页状态未知显式提示并主动分批读取（12条/3并发），不新增协议/执行owner/Task账本或依赖。类型/全mobile lint通过、124 policy通过；主审及非实现者320/390合成组件走查与边界审阅见 dev-docs/mobile-continue-02/acceptance.md、INDEPENDENT-REVIEW.md。真实账号切换竞态/原生键盘/Host另验，不把模拟当生产验收。
+
+原sharedCI/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4；原mobile版本/签名/安装owner 01a12b99-7b38-78b1-831f-9c60257d386a。mobile owner已预留0.3.0-rc.1/build10并保留build9回退；等功能提交通过后合并其版本材料为一个固定候选，再由原sharedCI/main owner统一CI和主干集成。未运行共享CI/正式构建/发布，未安装；当前手机是否可装以owner实时核实与有效授权为准。完整项目组织、发送提案、成果版本谱系后续处理。
+
+## MB-MOBILE-CONTINUE-02 · original mobile release build10
+
+Originalmobileowner01a12b99 combines reviewed45d474c6 with0.3.0-rc.1/iOS0.3.0/build10/Android10 metadata; compatible new work overview/status coverage, resolveddependencies unchanged. OriginalsharedCI/mainowner01a12bc2 reviews/runs onefinalcandidate thenmain; no prematurefeatureCI/parallelPR. Freeze acceptedsource and buildnewnative+JS signedartifact with immutabletag/hash/rollback9; Kevin unavailable so prepareinternalIPA/nativeverification, retainphysicalpending, noXu substitution/dailyMac/101change. Recorddev-docs/mobile-continue-02/release10.md and taskcodex-mobile-build10-20261103-58f39586.md. Source/synthetic/native/main/package/physical/business separate.
+
+
+## MB-SESSION-MENU-20261105 — 恢复新版会话右键菜单
+
+用户明确要求合入主干并上线。隔离codex/session-menu-20261105基于main39b344765：BotConversationNavigation复用原SessionContextMenu和GlobalSidebar mutation/删除owner，恢复右键、⋯、键盘入口及Escape层级焦点。109定向DOM、type/lint、classification、依赖契约、renderer编译通过。真实渲染与正式原生持久化尚待验，IAB及用户授权的Chrome均被Work设置禁用。详见dev-docs/session-menu-20261105/acceptance.md与.agent-sync/tasks/codex-session-menu-20261105-b841b6de.md。
+
+部署单元desktop/macOS-arm64/updater/sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；已回执下一未冻结桌面批次，冻结542.1不覆盖。开发只保存精确源、测试与交接；该owner统一PR/CI/main、版本、签名、上线及回滚。无其他单元发布或迁移。源码、main、正式发行和真实验收继续分开追踪。
 
 ## Root MB-CHAT-STYLE-20261104 main intake 20261105
 
 Root desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates producerb506b852 with current main39b34476 in codex/chat-style-main-20261105. Native commentary/final_answer is optional transcript metadata; terminal closeout gates whole-turn folding, pending/failed/unknown/results retain visible paths. Root search regression propagates reveal through outer and inner process groups. Combined local106DOM/145unit/255simulatedintegration, type/lint/diff PASS. Exact sourceCI/main pending, then next unfrozen desktop version and real signed long-session UI acceptance. Existing native-login/mobile-auth source and production owners remain authoritative, no separate publisher is created. Record .agent-sync/tasks/codex-chat-style-main-20261105-17f98569.md.
+MB-RECOVERY-UX-20261102 / BG（2026-11-04）：用户要求后台处理、只在当前任务真实阻断且需要用户信息时提示。codex/recovery-background-20261104基于实际main065f2b6c；原账本/Stop/未知操作围栏保留，准确原生tool ID与当前暂停执行共同决定可选attention显示投影，不把历史数量或检查失败当用户待办。顶部/底部同源、具体操作/影响/处理办法和原工具定位，原补充/草稿/延后继续走既有owner。任务.agent-sync/tasks/codex-recovery-background-20261104-190274c9.md及dev-docs/recovery-ux-20261102/background-20261104.md。唯一desktop/macOS/updater/sharedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4已确认下一批接收；开发只提交证据，原owner统一版本/必要CI/main/新包原生验收/发布，不覆盖541.1冻结制品。
+
+
+### Root background recovery release0542 — 2026-11-04
+
+Existingsole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exactproducer33df108d on main065f2 in codex/release-recovery-background-0542-r1-20261104. Reserve0.5.42/build542.1. Root reproduced12 eligible proof receipts causing13 SDK history reads; one invocation-local native observation now bounds historical IO while every adoption retains owner/CAS/current-ledger guards and unknown fences. Original541.1 remains immutable and is not promoted. Necessary exactCI/main/newformal/safeinstall/signednative historical-silence-and-decision UI/sameartifact101 remain separate release gates. Taskcodex-release-recovery-background-0542-r1-20261104-e852e12e; evidence work/release-0542-20261104/owner. No cloud/mobile/Host/website deployment.
+
+## Root MB-RECOVERY-UX-20261106-COMBINED · fixed input batch
+
+Root integrates admitted chat-style mainec8058e3, recovery5c56a89d, menu replacement305a421c and originalmobileowner build10 preparedb8c912d0. Fixed inputs only; newer sources enter the next batch. Desktop0.5.42/build542.2 is a new immutable candidate, preserving frozen542.1; mobile0.3.0-rc.1/build10 whole tree a8640c13 remains exact owner preparation and is handed off after exact main/CI. Root189DOM/59unit/133simulatedintegration/type/lint/3version/classification pass, including a RED→GREEN detail/draft lifetime fix across disabled. Final source independent review, exactCI/main, desktop signed/native/updater and originalmobileowner IPA/phone acceptance remain separate. Existing production service39b/config/DB ownership is unchanged. Scope/evidence dev-docs/recovery-ux-20261102/combined-0542-r2-root-review.md and current Root task; private evidence work/release-0542-20261106/owner.

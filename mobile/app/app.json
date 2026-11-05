@@ -2,13 +2,13 @@
   "expo": {
     "name": "MoXBots Mobile Internal",
     "slug": "moxbots-mobile-internal",
-    "version": "0.2.1",
+    "version": "0.3.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": false,
-      "buildNumber": "9",
+      "buildNumber": "10",
       "bundleIdentifier": "com.moxbots.mobileinternal"
     },
     "android": {
@@ -21,7 +21,7 @@
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "versionCode": 9
+      "versionCode": 10
     },
     "web": {
       "favicon": "./assets/favicon.png"
