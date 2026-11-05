@@ -14,7 +14,8 @@
 
 - [x] INTAKE01 源审及兼容性检查，原desktop native login保留。
 - [x] INTEGRATE01 基于fresh main隔离集成，plan冲突保留双方记录。
-- [ ] VERIFY01 新组合定向检查与精确CI通过。
+- [x] VERIFY01A 新组合及R2本地157native、双strictClippy、完整TLS/WSS旧Host续期及目标重读链。
+- [ ] VERIFY01B R2精确自动CI全门通过。
 - [ ] MAIN01 freshmain/祖先/受测树准入后正常合入和远端核实。
 - [ ] HANDOFF01 共享原owner云先手机后发布，实际页面与真机另验。
 
@@ -28,8 +29,10 @@
 
 ## Blockers and unknowns
 
-实际页面和Kevin真机不可用，原cloud/mobile owner负责最终生产与设备验收。当前desktop原生登录mainpush41978809337仍在执行，未重新触发同源CI。本集成不分配desktop/phone版本，不安装或修改日常实例。
+实际页面和Kevin真机不可用，原cloud/mobile owner负责最终生产与设备验收。desktop原生登录mainpush41978809337已实际9success/iOSskip。R1手机组合CI有Headless续期失败，全部已terminal。原件保留，Root在本分支定向修复。本集成不分配desktop/phone版本，不安装或修改日常实例。
 
 ## Next step
 
-保存已验证组合精确提交，当前mainpush收齐后单次PR/自动CI，后按实际结果完成main交付。
+保存已验证组合精确提交，既有PR248在R1全部terminal后仅一次FFpush R2源，等待新精确自动CI；不重复旧job。
+
+Root R2诊断与修复/首红/负向围栏/完整绿证据见acceptance.md Root combined R2 intake。原producer及授权按钮fix Git祖先保持，后续新源按新CI结果决定准入。

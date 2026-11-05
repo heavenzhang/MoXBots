@@ -137,7 +137,7 @@ impl MobileConnection {
                 && saved.session.expires_at > now.saturating_add(30)
         }))
     }
-    fn retire_account_connections(&mut self) {
+    pub(super) fn retire_account_connections(&mut self) {
         self.active.store(false, Ordering::Release);
         self.active = Arc::new(AtomicBool::new(true));
         self.connected = None;

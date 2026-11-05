@@ -991,7 +991,7 @@ async fn original_mobile_wss_host_chain() {
             let original_address = owner.host_address(host_device).await.expect("initial actual Host address");
             let deadline = std::time::Instant::now();
             loop {
-                let renewed = root.join("renewal-observed.json").is_file();
+                let renewed = root.join(format!("renewal-observed-{host_device}.json")).is_file();
                 let status: Value = serde_json::from_slice(&fs::read(root.join("headless-status.json")).unwrap()).unwrap();
                 if renewed && status["ready"] == true {
                     if let Some(address) = owner.host_address(host_device).await {
@@ -1010,6 +1010,13 @@ async fn original_mobile_wss_host_chain() {
         eprintln!("actual-mobile-targets-with-joined-offline-peer={}",json!({"targets":targets,"offlineDeviceId":offline_device_id}));
         assert_eq!(targets["hasMore"],false,"directory unavailability is separate from pagination");
         let target=targets["items"].as_array().unwrap().iter().find(|v|v["agentId"]=="original-host-agent").expect("original explicitly authorized Host Agent must be discovered through the actual directory");
+        if mode == "renewal" {
+            let FixtureOwner::Direct(native) = &mut owner else { panic!("native owner required") };
+            // Renewal retires the captured credential snapshots and retains
+            // only opaque target hints. The next operation must rediscover
+            // this target through the real authorized directory first.
+            native.retire_account_connections();
+        }
         let operation_id=uuid::Uuid::new_v4().to_string();
         let start_intent=json!({"version":1,"kind":"mobile","targetId":target["targetId"],"request":{"kind":"mobile.start","version":1,"agentId":"original-host-agent","operationId":operation_id,"text":"Original E2EE WSS first turn.","assetIds":[]}});
         let probe=owner.request(start_intent.clone());eprintln!("native-future-bytes mobile.start.request={}",std::mem::size_of_val(&probe));drop(probe);

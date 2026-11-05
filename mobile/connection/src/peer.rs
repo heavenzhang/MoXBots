@@ -482,13 +482,24 @@ async fn return_credit(
 }
 
 impl MobileConnection {
-    fn approved_target(&self, intent: &Value) -> Result<Target, NetworkError> {
+    async fn approved_target(&mut self, intent: &Value) -> Result<Target, NetworkError> {
+        let id = intent["targetId"]
+            .as_str()
+            .ok_or_else(|| err("MOBILE_TARGET_INVALID"))?;
+        if !self.targets.contains_key(id)
+            && self.suspended_target_aliases.contains_key(id)
+            && self.saved.is_some()
+            && self.client.is_some()
+        {
+            // Renewal and suspension preserve only opaque continuity hints.
+            // Rebuild approval from the current authenticated directory before
+            // any RPC or operation-ledger decision can use the old target ID.
+            // An opaque hint must never authorize initial device enrollment.
+            self.account_identity(true).await?;
+            self.refresh_targets().await?;
+        }
         self.targets
-            .get(
-                intent["targetId"]
-                    .as_str()
-                    .ok_or_else(|| err("MOBILE_TARGET_INVALID"))?,
-            )
+            .get(id)
             .cloned()
             .ok_or_else(|| err("MOBILE_TARGET_INVALID"))
     }
@@ -591,7 +602,7 @@ impl MobileConnection {
         {
             return Err(err("MOBILE_INTENT_INVALID"));
         }
-        let target = self.approved_target(intent)?;
+        let target = self.approved_target(intent).await?;
         let request: Mobile = serde_json::from_value(intent["request"].clone())
             .map_err(|_| err("MOBILE_INTENT_INVALID"))?;
         request
@@ -660,7 +671,7 @@ impl MobileConnection {
         Ok(data)
     }
     pub(super) async fn session(&mut self, intent: &Value) -> Result<Value, NetworkError> {
-        let target = self.approved_target(intent)?;
+        let target = self.approved_target(intent).await?;
         let request: Session = serde_json::from_value(intent["request"].clone())
             .map_err(|_| err("MOBILE_INTENT_INVALID"))?;
         request
@@ -881,7 +892,7 @@ impl MobileConnection {
         Ok(())
     }
     pub(super) async fn assets(&mut self, intent: &Value) -> Result<Value, NetworkError> {
-        let target = self.approved_target(intent)?;
+        let target = self.approved_target(intent).await?;
         let request: Asset = serde_json::from_value(intent["request"].clone())
             .map_err(|_| err("MOBILE_ASSET_REQUEST_INVALID"))?;
         request
@@ -1044,6 +1055,39 @@ mod tests {
             agent: "agent".into(),
         }
     }
+    #[tokio::test]
+    async fn unknown_target_does_not_consume_retained_hints_or_start_discovery() {
+        let mut owner = owner();
+        owner
+            .suspended_target_aliases
+            .insert("known".into(), target());
+        let error = owner
+            .approved_target(&json!({"targetId":"foreign"}))
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "MOBILE_TARGET_INVALID");
+        assert_eq!(owner.suspended_target_aliases.len(), 1);
+        assert!(owner.targets.is_empty());
+        assert!(owner.client.is_none());
+    }
+
+    #[tokio::test]
+    async fn retained_target_hint_cannot_authorize_without_a_current_account_owner() {
+        let mut owner = owner();
+        owner
+            .suspended_target_aliases
+            .insert("known".into(), target());
+        let error = owner
+            .approved_target(&json!({"targetId":"known"}))
+            .await
+            .err()
+            .unwrap();
+        assert_eq!(error.code, "MOBILE_TARGET_INVALID");
+        assert!(owner.targets.is_empty());
+        assert!(owner.client.is_none());
+    }
+
     fn status(id: CanonicalUuid) -> Asset {
         Asset::UploadStatus {
             version: 1,

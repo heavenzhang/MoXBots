@@ -49,3 +49,15 @@ sharedCI/main owner01a12bc2；cloud/mobile owner01a12b99。先服务兼容升级
 ## 真实验收
 
 Kevin iPhone未连接，未修改设备/登录账号，未发业务消息；不把本地fixture当真实设备或生产验收。
+
+## Root combined R2 intake
+
+Root从当前mainfcf06ff组合producer702a及原mobile owner94c9050，限定生产源相同，只保留双方plan记录并新增Root任务。R1 source8fcd3b74/PR248的自动Test41981717362最终7success、Headless1failure、依赖systemd skip和条件iOS skip；Owned41981717368实际SUCCESS。原始日志和各首次失败保存在本机work/MB-MOBILE-AUTH-20261105/owner。
+
+R1旧Host续期fixture共享单一renewal-observed标记。新mobile自动续期提前写入后，原100ms轮询在Host实际续期前消耗device proof容量，实际CI等待新Ready超时；本机还复现NETWORK_PROOF_CAPACITY。R2仅在测试夹具中从实际成功续期响应提取canonical deviceId并按设备记录标记，保留原完整响应、原45秒界限、新Ready epoch和同scope全部断言，未提高证明容量或放宽生产授权。
+
+同时，本机复现实际轮换退役连接后，下一请求直接MOBILE_TARGET_INVALID。R2在使用已保留opaque目标线索前，要求已有当前账号owner、现有设备key证明，再通过原fresh目录重新授权映射。目录未确认的目标继续拒绝，所有RPC和原操作journal仍在之后执行；不把线索当授权、不重放未知操作。retire_account_connections仅调整为模块内可见供实际生命周期回归调用。原suspended_aliases不能直接授权资产的负向测试完整保留。
+
+Root最终本地157原生测试/1既有ignored通过，mobile strictClippy通过。确定性完整链先RED2为MOBILE_TARGET_INVALID，修复后green3 PASS并实际接收原Host/原SessionEngine完成结果，重复start仍MOBILE_RECEIPT_REQUIRED。中间RED1为测试模块可见性编译错误、green1/2为诊断阶段共享标记导致的proof容量失败，全部原件保留。整个crate rustfmt检查还发现未改动identity.rs既有格式差异，保留原log；改动四文件scoped rustfmt另核。原临时调试eprintln未进入最终源。
+
+这是本机隔离TLS/WSS与合成SSO/Provider证据。真实页面、手机安全存储/持久化与生产验收仍由原cloud/mobile owner完成。R2精确提交需要新的自动CI结果，R1其他平台通过不代替R2通过。
