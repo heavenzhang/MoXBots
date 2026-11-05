@@ -153,6 +153,7 @@ export interface ProviderToolUsePayload extends ToolUse {
 }
 
 export interface ContentBlock {
+  textPhase?: import('../../shared/types/session-message').AssistantTextPhase;
   executionTiming?: ExecutionTiming;
   /** Present on V2 blocks; supplied by the product transcript owner. */
   id?: string;

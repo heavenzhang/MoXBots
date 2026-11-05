@@ -5433,7 +5433,7 @@ export class CodexRuntime implements AgentRuntime {
           tool?: string; server?: string; mcpAppResourceUri?: string;
           arguments?: unknown; namespace?: string | null;
           result?: unknown; error?: { message: string };
-          text?: string; summary?: string[];
+          text?: string; phase?: unknown; summary?: string[];
           results?: unknown;
           query?: string; action?: { type: string; url?: string; queries?: string[]; pattern?: string };
           path?: string; revisedPrompt?: string; savedPath?: string;
@@ -5788,7 +5788,9 @@ export class CodexRuntime implements AgentRuntime {
             const asyncQuestions = item.delivery === 'async'
               ? parseAsyncQuestionSet({ id: codexTraceId(p, item.id), questions: item.questions })
               : undefined;
-            const stop: UnifiedEvent = { kind: 'text_stop', nativeText: finalText, traceId: codexTraceId(p, item.id), ...(asyncQuestions ? { asyncQuestions } : {}) };
+            const textPhase = item.phase === 'commentary' || item.phase === 'final_answer' ? item.phase : undefined;
+            const stop: UnifiedEvent = { kind: 'text_stop', nativeText: finalText, traceId: codexTraceId(p, item.id),
+              ...(textPhase ? { textPhase } : {}), ...(asyncQuestions ? { asyncQuestions } : {}) };
 
             if (finalText) {
               if (!streamedText) {

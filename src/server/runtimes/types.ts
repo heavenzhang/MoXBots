@@ -1,6 +1,7 @@
 import type { TurnProviderAnalytics } from '../session-core/turn-analytics';
 import type { AskUserQuestionAnswers } from '../../shared/types/askUserQuestion';
 import type { RuntimeAgentWorkControl, RuntimeAgentWorkTree } from '../../shared/types/subagent-lifecycle';
+import type { AssistantTextPhase } from '../../shared/types/session-message';
 import type { AsyncQuestionSet } from '../../shared/asyncUserQuestions';
 import type { ProviderRoute } from '../../shared/providerRoute';
 // AgentRuntime abstraction types (v0.1.59)
@@ -252,7 +253,7 @@ export interface NativeContentSource {
 export type UnifiedEvent = (
   // === Text streaming ===
   | { kind: 'text_delta'; text: string; traceId?: string; subAgent?: SubAgentScope }
-  | { kind: 'text_stop'; nativeText?: string; traceId?: string; subAgent?: SubAgentScope; asyncQuestions?: AsyncQuestionSet }
+  | { kind: 'text_stop'; nativeText?: string; textPhase?: AssistantTextPhase; traceId?: string; subAgent?: SubAgentScope; asyncQuestions?: AsyncQuestionSet }
 
   // === Thinking/reasoning streaming ===
   | { kind: 'thinking_start'; index: number; traceId?: string; subAgent?: SubAgentScope }
