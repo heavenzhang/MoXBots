@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { applyBotSnapshot, botKey, botSessionKey, botSessionStatus, botSessionAction, readBotDirectory, recentBotSessions } from '../src/botDirectory.ts';
+import { applyBotSnapshot, botKey, botSessionKey, botSessionStatus, botSessionAction, botStatusCoverage, nextBotStatusBatch, readBotDirectory, recentBotSessions } from '../src/botDirectory.ts';
 import type { BotSession } from '../src/botDirectory.ts';
 import type { Snapshot, Target } from '../src/native.ts';
 const a: Target = { targetId:'a', identityKey:'identity-a',agentId:'agent-a',name:'同名 Bot',deviceName:'电脑',online:true,runtime:null };
@@ -13,10 +13,28 @@ test('cross-Bot same session IDs remain separate and newest work sorts first', (
 test('only matching Bot and session may update observed state; text cannot invent completion',()=>{
  const rows=[row(a,''),row(b,'')];const snapshot={agentId:a.agentId,sessionId:'same-session',title:'真实标题',state:'running',terminal:null,messages:[]} as unknown as Snapshot;
  const updated=applyBotSnapshot(rows,a,snapshot,123);
- assert.equal(updated[0].state,'running');assert.equal(updated[1].state,undefined);assert.equal(botSessionStatus(rows[0]).label,'继续会话');
+ assert.equal(updated[0].state,'running');assert.equal(updated[1].state,undefined);assert.equal(botSessionStatus(rows[0]).label,'状态待同步');
  assert.deepEqual(applyBotSnapshot(rows,b,snapshot),rows);
  assert.equal(botSessionStatus({...rows[0],terminal:'complete'}).label,'本轮已结束');
  assert.equal(botSessionStatus({...rows[0],target:{...a,online:false},state:'running'}).label,'设备离线');
+});
+
+test('unread states do not mean an empty needs-me filter; offline rows stay separate',()=>{
+ const rows=[{...row(a,''),state:'waiting_user_action' as const,observedAt:1},row(b,''),{...row(a,''),sessionId:'offline',target:{...a,online:false}}];
+ assert.deepEqual(botStatusCoverage(rows),{total:3,known:1,unread:1,failed:0,offline:1});
+ assert.equal(botSessionStatus({...row(a,''),state:'unavailable'}).tone,'error');
+ assert.equal(botSessionAction({...row(a,''),state:'unavailable'}),'核对状态');
+});
+
+test('an explicit batch discovers unread work before retrying failed sources and never exceeds12',()=>{
+ const known={...row(a,''),sessionId:'known',state:'idle' as const};
+ const failed={...row(a,''),sessionId:'failed',statusReadFailed:true};
+ const unseen=Array.from({length:15},(_,i)=>({...row(b,''),sessionId:`unread-${i}`}));
+ const selected=nextBotStatusBatch([known,failed,...unseen]);
+ assert.equal(selected.length,12);assert.ok(selected.every(item=>item.sessionId.startsWith('unread-')));
+ assert.deepEqual(nextBotStatusBatch([known,failed]),[failed]);
+ assert.deepEqual(nextBotStatusBatch([{...failed,target:{...a,online:false}}]),[]);
+ assert.equal(botStatusCoverage([known,failed]).unread,1);
 });
 test('directory concurrency is bounded and obsolete work stops scheduling reads',async()=>{
  let current=true,active=0,peak=0,read=0;let release!:()=>void;const gate=new Promise<void>(resolve=>release=resolve);
