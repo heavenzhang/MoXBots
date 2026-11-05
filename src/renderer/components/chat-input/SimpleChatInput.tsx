@@ -1784,9 +1784,10 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                   configControlsLocked ? 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-[var(--ink-muted)]' : ''
                 }`}
                 title={configControlLockTitle ?? t('input.toolsTitle')}
+                aria-label={t('input.toolsLabel')}
+                aria-expanded={toolMenuOpen}
               >
                 <WrenchIcon className="h-3.5 w-3.5" />
-                <span className="toolbar-label">{t('input.toolsLabel')}</span>
                 {enabledToolEntryCount > 0 && (
                   <span className="text-xs text-[var(--ink-muted)]">
                     {enabledToolEntryCount}
@@ -2070,6 +2071,7 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
               {/* PRD 0.2.32 — context 用量指示器（自取数 slot，model 按钮左侧） */}
               {contextIndicator}
               {/* Model Dropdown with Provider Selector */}
+              <Tip label={modelButtonLabel} disabled={modelMenuOpen} wrap>
               <button
                 ref={modelBtnRef}
                 type="button"
@@ -2091,10 +2093,13 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                   configControlsLocked ? 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-[var(--ink-muted)]' : ''
                 }`}
                 title={configControlLockTitle ?? t('input.switchModel')}
+                aria-label={`${t('input.switchModel')} · ${modelButtonLabel}`}
+                aria-expanded={modelMenuOpen}
               >
-                <span className="max-w-[180px] truncate">{modelButtonLabel}</span>
+                <span className="max-w-[140px] truncate">{autoSelected ? t('input.autoModel') : modelButtonLabel}</span>
                 <ChevronUpIcon className="h-3 w-3 shrink-0" />
               </button>
+              </Tip>
               {/* The model list scrolls independently; the effort flyout uses
                   its own Popover to escape this menu's overflow boundary. */}
               <Popover

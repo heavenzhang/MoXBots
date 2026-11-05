@@ -1264,3 +1264,10 @@ Existing desktop/macOS-arm64/updater/sharedCI/main owner 01a12bc2-907a-7702-b6dd
 实现/本地策略与原生回归/真实本地TLS+设备证明链/main/云发布/手机包/真机分别追踪；内置浏览器被Work设置禁用，Chrome独立会话授权仍待用户答复，页面实测不冒充通过。Kevin不可用，不发业务消息或重置账号。任务.agent-sync/tasks/codex-mobile-auth-20261105-84ad7697.md，契约、稳定ToDo与命令证据dev-docs/mobile-auth-20261105/{PLAN,acceptance}.md。完整候选与兼容顺序交既有owner，不自行触发共享CI。
 
 Root main intake 2026-11-05 integrates producer702a08a and mobile-owner explicit-consent94c9050 with current mainfcf06ff. Only plan append conflict resolved by retaining both desktop-native-login and mobile-auth records. Root sharedCI/main owner remains01a12bc2, cloud/mobile deployment remains01a12b99. Candidate/CI and production acceptance are separate.
+
+
+## MB-SIMPLE-UX-20261105 — 简洁界面首批（2026-11-06）
+
+用户确认四场景示意并要求逐步实现。独立codex/simple-ux-20261105基于main39b344765：UX-01工作区默认收起并按workspace保存主动显隐；窄窗启动不恢复overlay；临时文件定位沿原disclosure不改默认。UX-02去摘要外围框，UX-05工具图标/自动模型紧凑且完整名称可键盘查看，权限常显。UX-03/04/06复用已有恢复卡/安全核对/草稿/滚动/IME/排队，228本地回归、8主题、类型/定向lint/分类和moxbot renderer构建通过。真实页面被Work浏览器设置禁用，原生/main/CI/正式发行未冒称通过。稳定清单与验收dev-docs/simple-ux-20261105/{PLAN,acceptance}.md，任务.agent-sync/tasks/codex-simple-ux-20261105-19cd5d6a.md。
+
+部署单元desktop/macOS-arm64/updater/sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；开发只保存精确源码与证据后提交下一未冻结批请求，不另触发PR/共享CI、不分配版本、不覆盖542.1、不重启日常客户端。无其他单元或迁移依赖；UI与源审门禁另列，G-02继续待owner统一处理。

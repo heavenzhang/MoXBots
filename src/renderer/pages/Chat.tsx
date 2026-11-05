@@ -307,6 +307,8 @@ import {
   DEFAULT_WORKSPACE_LAYOUT_METRICS,
   nextSplitViewAfterBrowserClose,
   reduceWorkspacePanelDisclosure,
+  readWorkspacePanelPreference,
+  rememberWorkspacePanelPreference,
   resolveWorkspacePanelMode,
   shouldPresentBrowserFullscreen,
 } from '@/utils/chatWorkspaceLayout';
@@ -377,12 +379,13 @@ function readWorkspaceLayoutMetrics(): WorkspaceLayoutMetrics {
   };
 }
 
-function shouldShowWorkspaceByDefault(): boolean {
+function shouldShowWorkspaceByDefault(workspacePath: string): boolean {
   const metrics = readWorkspaceLayoutMetrics();
-  return (
-    metrics.viewportWidthPx - metrics.sidebarMinWidthPx >=
-    metrics.contentMinWidthPx
-  );
+  return readWorkspacePanelPreference(workspacePath, resolveWorkspacePanelMode({
+    ...metrics,
+    splitPanelVisible: false,
+    splitRatio: 1,
+  }));
 }
 
 // Lazy load FilePreviewModal for split view panel
@@ -1006,11 +1009,11 @@ function ChatContent({
   const isNarrowLayout =
     workspaceLayoutMetrics.viewportWidthPx <
     workspaceLayoutMetrics.contentMinWidthPx;
-  // If workspace would render as an overlay at startup, keep it hidden so it
-  // does not block the chat before the user explicitly opens it.
+  // Default to conversation space. Restore explicit workspace preferences only
+  // inline; a restored overlay must never cover chat on a small window.
   const [workspacePanelDisclosure, dispatchWorkspacePanelDisclosure] =
     useReducer(reduceWorkspacePanelDisclosure, undefined, () =>
-      createWorkspacePanelDisclosureState(shouldShowWorkspaceByDefault()),
+      createWorkspacePanelDisclosureState(shouldShowWorkspaceByDefault(agentDir)),
     );
   const {
     visible: showWorkspace,
@@ -1028,13 +1031,14 @@ function ChatContent({
     dispatchWorkspacePanelDisclosure({ type: 'open' });
   }, [clearWorkspacePanelUnmountTimer]);
   const handleCollapseWorkspace = useCallback(() => {
+    rememberWorkspacePanelPreference(agentDir, false);
     clearWorkspacePanelUnmountTimer();
     dispatchWorkspacePanelDisclosure({ type: 'close' });
     workspacePanelUnmountTimerRef.current = window.setTimeout(() => {
       dispatchWorkspacePanelDisclosure({ type: 'settle-close' });
       workspacePanelUnmountTimerRef.current = null;
     }, WORKSPACE_PANEL_TRANSITION_MS);
-  }, [clearWorkspacePanelUnmountTimer]);
+  }, [agentDir, clearWorkspacePanelUnmountTimer]);
   useEffect(
     () => clearWorkspacePanelUnmountTimer,
     [clearWorkspacePanelUnmountTimer],
@@ -6622,7 +6626,10 @@ function ChatContent({
                 >
                   <button
                     type="button"
-                    onClick={handleExpandWorkspace}
+                    onClick={() => {
+                      rememberWorkspacePanelPreference(agentDir, true);
+                      handleExpandWorkspace();
+                    }}
                     aria-label={t('shell.header.expandWorkspace')}
                     className="flex h-7 w-7 items-center justify-center rounded-lg text-[var(--ink-muted)] transition-colors hover:bg-[var(--hover-bg)] hover:text-[var(--ink)]"
                   >
