@@ -1623,7 +1623,7 @@ function AppBody() {
           <Text style={styles.fieldLabel}>账号</Text>
           <TextInput accessibilityLabel="账号" placeholder="输入账号" value={username} onChangeText={setUsername} autoCapitalize="none" autoCorrect={false} keyboardType="email-address" autoComplete="username" textContentType="username" returnKeyType="next" onSubmitEditing={() => passwordInputRef.current?.focus()} editable={loginAction === null} style={styles.loginInput}/>
           <Text style={styles.fieldLabel}>密码</Text>
-          <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="go" editable={loginAction === null} onSubmitEditing={() => { Keyboard.dismiss(); if (username.trim() && password && loginAction === null) void run('login', startLogin); }} style={styles.loginInput}/>
+          <TextInput ref={passwordInputRef} accessibilityLabel="密码" placeholder="输入密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} autoComplete="current-password" textContentType="password" returnKeyType="done" editable={loginAction === null} onSubmitEditing={() => Keyboard.dismiss()} style={styles.loginInput}/>
           <Text style={styles.consentLabel}>点击“同意并登录”，即允许 MoXBots 使用你的账号标识、名称和邮箱，关联设备与会话。</Text>
         </View>}
 
