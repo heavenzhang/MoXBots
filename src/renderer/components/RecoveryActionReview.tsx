@@ -130,38 +130,36 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
 
   const pendingCount = snapshot?.actions.length ?? 0;
   useEffect(() => {
-    if (publishRecovery) publishRecovery({ sessionId, count: pendingCount, checking: busy, failed: error, open: openDetails });
+    if (publishRecovery) publishRecovery({ sessionId, count: pendingCount, checking: busy, failed: error, inline: !disabled, open: openDetails });
     return () => publishRecovery?.(undefined);
-  }, [publishRecovery, sessionId, pendingCount, busy, error, openDetails]);
+  }, [publishRecovery, sessionId, pendingCount, busy, error, disabled, openDetails]);
   const visible = hadActions || interrupted || details;
   // Ordinary conversations have no recovery banner. Explicit continuation keeps
   // its existing admission; inspecting evidence cannot claim task completion.
-  const showCard = !disabled && (visible || pendingCount > 0);
+  const showCard = !disabled && (visible || pendingCount > 0 || error);
   const checking = busy || (!snapshot && !error);
   const state = checking ? 'checking' : error ? 'unavailable' : pendingCount ? 'pending' : 'ready';
   const buttonClass = 'rounded-md px-2 py-1 text-sm font-medium text-[var(--accent)] hover:bg-[var(--paper-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50';
   return <div className={showCard ? 'shrink-0 px-4 py-2 text-sm text-[var(--ink-secondary)]' : ''}>
     <section aria-label={showCard ? t('recoveryReview.title') : undefined} aria-busy={showCard && checking}
-      className={showCard ? 'mx-auto max-w-3xl rounded-lg border border-[var(--line)] bg-[var(--paper-inset)] px-3 py-2.5' : ''}>
+      className={showCard ? 'mx-auto max-w-[792px] rounded-lg border border-[var(--line-subtle)] px-3 py-1' : ''}>
       <div hidden={!showCard}>
-      <div className="flex flex-wrap items-start justify-between gap-2">
+      <div className="flex flex-wrap items-center justify-between gap-x-2">
         <div className="min-w-0 flex-1">
           <p role="status" className="font-medium text-[var(--ink)]">{t(`recoveryReview.states.${state}`, { count: pendingCount })}</p>
-          <p className="mt-1">{t(`recoveryReview.descriptions.${state}`)}</p>
-          {!!snapshot?.resolvedCount && <p className="mt-1">{t('recoveryReview.confirmedCount', { count: snapshot.resolvedCount })}</p>}
         </div>
         <button type="button" className={buttonClass} aria-haspopup="dialog" onClick={openDetails}>{t('recoveryReview.details')}</button>
+        {!disabled && !checking && (pendingCount > 0 || error) && (
+          <button type="button" className={buttonClass} onClick={() => void run()}>{t('recoveryReview.checkAgain')}</button>
+        )}
       </div>
-      {error && <p role="alert" className="mt-2">{t('recoveryReview.changed')}</p>}
-      {!checking && <div className="mt-2 flex flex-wrap items-center gap-2">
-        {(pendingCount > 0 || error) && <button type="button" className={buttonClass} onClick={() => void run()}>{t('recoveryReview.checkAgain')}</button>}
-      </div>}
+      {error && <p role="alert" className="pb-1">{t('recoveryReview.changed')}</p>}
       </div>
       {/* Keep the continuation owner mounted through check/busy transitions. */}
       <div hidden={showCard && checking} className={showCard ? 'mt-2' : ''}>{continuation}</div>
     </section>
-    {showCard && details && <RecoveryActionDetails actions={snapshot?.actions ?? []} completed={snapshot?.completed ?? []} reviewed={snapshot?.reviewed ?? []}
+    {details && <RecoveryActionDetails actions={snapshot?.actions ?? []} completed={snapshot?.completed ?? []} reviewed={snapshot?.reviewed ?? []}
       independentTasks={snapshot?.independentTasks ?? []} busy={checking} error={error}
-      onClose={() => setDetails(false)} onPrepareCheck={onPrepareCheck} onSave={saveFollowup} />}
+      onClose={() => setDetails(false)} onPrepareCheck={disabled ? undefined : onPrepareCheck} onSave={disabled ? undefined : saveFollowup} />}
   </div>;
 }

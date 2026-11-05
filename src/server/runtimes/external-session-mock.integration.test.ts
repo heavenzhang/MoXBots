@@ -3759,6 +3759,7 @@ describe('external SessionEngine with fake runtime', () => {
       kind: 'text_stop',
       traceId: 'thread::item',
       nativeText: 'corrected',
+      textPhase: 'final_answer',
     });
     harness.runtime.emitForTest({
       kind: 'turn_complete',
@@ -3773,6 +3774,7 @@ describe('external SessionEngine with fake runtime', () => {
       (await harness.sessionStore.getSessionData(sessionId))?.messages,
     );
     expect(text).toContain('corrected');
+    expect(text).toContain('final_answer');
     expect(text).not.toContain('wrong');
     await waitFor(
       () => harness.mirrorCalls.some((call) => call.text === 'corrected'),

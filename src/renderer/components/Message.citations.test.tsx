@@ -41,6 +41,7 @@ describe('desktop citation live/history/actions', () => {
     render(<Message message={answer(blocks)} citationSources={sources} />);
     fireEvent.click(screen.getByRole('button', { name: i18n.t('app:message.actions.copy') }));
     await waitFor(() => expect(copyPlainText).toHaveBeenLastCalledWith('Claim [Primary source](<https://example.com/source>).'));
+    fireEvent.click(screen.getByRole('button', { name: '更多操作' }));
     fireEvent.click(screen.getByRole('button', { name: i18n.t('app:message.actions.exportMarkdown') }));
     await waitFor(() => expect(downloadMarkdown).toHaveBeenLastCalledWith(expect.any(String), 'Claim [Primary source](<https://example.com/source>).'));
   });

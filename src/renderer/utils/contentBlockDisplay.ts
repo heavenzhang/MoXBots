@@ -25,7 +25,7 @@ export function groupContentBlocksForDisplay(content: ContentBlock[]): (ContentB
         currentGroup = [];
       }
       const prev = groupedBlocks[groupedBlocks.length - 1];
-      if (prev && !Array.isArray(prev) && prev.type === 'text' && !prev.isComplete && !block.isComplete && !prev.asyncQuestions && !block.asyncQuestions) {
+      if (prev && !Array.isArray(prev) && prev.type === 'text' && !prev.isComplete && !block.isComplete && !prev.asyncQuestions && !block.asyncQuestions && prev.textPhase === block.textPhase) {
         groupedBlocks[groupedBlocks.length - 1] = {
           ...prev,
           text: (prev.text || '') + '\n\n' + (block.text || ''),

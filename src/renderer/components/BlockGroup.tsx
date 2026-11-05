@@ -15,14 +15,16 @@ interface BlockGroupProps {
   blocks: ContentBlock[];
   isLatestActiveSection?: boolean;
   isStreaming?: boolean;
+  compactHistory?: boolean;
+  revealProcess?: boolean;
 }
 
-interface ProcessPhaseCardProps { phase: ProcessPhase; live: boolean; hasFollowingPhase: boolean }
+interface ProcessPhaseCardProps { phase: ProcessPhase; live: boolean; hasFollowingPhase: boolean; revealProcess: boolean }
 
 // The projection creates new entry arrays on each stream event. Only changed
 // blocks (or their lifecycle/outcome) invalidate a committed phase's rows.
 function samePhase(previous: ProcessPhaseCardProps, next: ProcessPhaseCardProps) {
-  return previous.live === next.live && previous.hasFollowingPhase === next.hasFollowingPhase
+  return previous.live === next.live && previous.hasFollowingPhase === next.hasFollowingPhase && previous.revealProcess === next.revealProcess
     && previous.phase.key === next.phase.key && previous.phase.kind === next.phase.kind
     && previous.phase.entries.length === next.phase.entries.length
     && previous.phase.entries.every((entry, index) => {
@@ -31,7 +33,7 @@ function samePhase(previous: ProcessPhaseCardProps, next: ProcessPhaseCardProps)
     });
 }
 
-const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollowingPhase }: ProcessPhaseCardProps) {
+const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollowingPhase, revealProcess }: ProcessPhaseCardProps) {
   const { t } = useTranslation('chat');
   const remoteContent = useRemoteConversationContent();
   const [expanded, setExpanded] = useState(remoteContent);
@@ -46,10 +48,11 @@ const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollow
   const { counts, outcome } = summarizeProcessPhase(phase.entries);
   // Real active/failed calls and child navigation anchors remain reachable.
   const important = (entry: ProcessPhase['entries'][number]) =>
-    ['running', 'failed', 'stopped'].includes(entry.outcome)
+    ['running', 'failed', 'stopped', 'unknown'].includes(entry.outcome)
     || Boolean(entry.block.tool && isSubagentContainerTool(entry.block.tool.name));
+  const processExpanded = revealProcess || expanded;
   const single = phase.entries.length === 1;
-  const visible = single || expanded ? phase.entries : phase.entries.filter(important);
+  const visible = single || processExpanded ? phase.entries : phase.entries.filter(important);
   const hasImportant = phase.entries.some(important);
   const previousVisibleCount = useRef(visible.length);
   useLayoutEffect(() => {
@@ -60,11 +63,11 @@ const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollow
 
   return <section data-process-phase={phase.kind} data-phase-outcome={outcome}
     className={`min-w-0 overflow-hidden rounded-lg ${phase.kind === 'think' ? '' : 'bg-[var(--paper-inset)]/30'}`}>
-    {!single && <button type="button" aria-expanded={expanded} aria-controls={detailsId}
-      aria-label={t(expanded ? 'process.hideResults' : 'process.showResults', { count: phase.entries.length })}
+    {!single && <button type="button" aria-expanded={processExpanded} aria-controls={detailsId} disabled={revealProcess}
+      aria-label={t(processExpanded ? 'process.hideResults' : 'process.showResults', { count: phase.entries.length })}
       onClick={() => { notify(expanded ? 'block-group-collapse' : 'block-group-expand'); setExpanded(!expanded); }}
       className="flex w-full min-w-0 items-start gap-2 px-3 py-2 text-left hover:bg-[var(--hover-bg)] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--accent)]">
-      <ChevronDownIcon aria-hidden="true" className={`mt-0.5 size-3.5 shrink-0 text-[var(--ink-muted)] transition-transform motion-reduce:transition-none ${expanded ? 'rotate-180' : ''}`} />
+      <ChevronDownIcon aria-hidden="true" className={`mt-0.5 size-3.5 shrink-0 text-[var(--ink-muted)] transition-transform motion-reduce:transition-none ${processExpanded ? 'rotate-180' : ''}`} />
       <span className="min-w-0 flex-1">
         <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="text-sm font-medium text-[var(--ink)]">{t(`process.heading.${phase.kind}`)}</span>
@@ -73,11 +76,11 @@ const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollow
           {counts.failed > 0 && <span className="text-xs text-[var(--error)]">{t('process.summary.failed', { count: counts.failed })}</span>}
           {counts.stopped > 0 && <span className="text-xs text-[var(--warning)]">{t('process.summary.stopped', { count: counts.stopped })}</span>}
           {counts.unknown > 0 && <span className="text-xs text-[var(--ink-secondary)]">{t('process.summary.unknown', { count: counts.unknown })}</span>}
-          {!expanded && !hasImportant && <span className="ml-auto"><ProcessTiming blocks={phase.entries.map(entry => entry.block)} running={false} /></span>}
+          {!processExpanded && !hasImportant && <span className="ml-auto"><ProcessTiming blocks={phase.entries.map(entry => entry.block)} running={false} /></span>}
         </span>
-        {!expanded && !hasImportant && <span data-phase-result title={result} className="mt-0.5 block truncate text-sm text-[var(--ink-secondary)]">{result}</span>}
+        {!processExpanded && !hasImportant && <span data-phase-result title={result} className="mt-0.5 block truncate text-sm text-[var(--ink-secondary)]">{result}</span>}
       </span>
-      {!expanded && !hasImportant && <span className="mt-0.5"><ProcessStatus outcome={outcome} compact={outcome === 'succeeded'} /></span>}
+      {!processExpanded && !hasImportant && <span className="mt-0.5"><ProcessStatus outcome={outcome} compact={outcome === 'succeeded'} /></span>}
     </button>}
     <div id={detailsId}>
       {groupProcessResults(visible).map(group => <div key={group.key}>
@@ -98,11 +101,31 @@ const ProcessPhaseCard = memo(function ProcessPhaseCard({ phase, live, hasFollow
   </section>;
 }, samePhase);
 
-const BlockGroup = memo(function BlockGroup({ blocks, isStreaming = false }: BlockGroupProps) {
+const BlockGroup = memo(function BlockGroup({ blocks, isStreaming = false, compactHistory = false, revealProcess = false }: BlockGroupProps) {
+  const { t } = useTranslation('chat');
+  const notify = useNotifyRowLayoutChanged();
+  const [open, setOpen] = useState(false);
+  const detailsId = useId();
   const phases = buildProcessPhases(blocks, isStreaming);
   if (!phases.length) return null;
+
+  // Keep active, uncertain, failed, and child-agent rows directly reachable.
+  const compact = compactHistory && !revealProcess && !isStreaming && phases.every(phase =>
+    phase.entries.every(entry => entry.outcome === 'succeeded'
+      && !(entry.block.tool && isSubagentContainerTool(entry.block.tool.name))),
+  );
   return <div className="my-2 min-w-0 space-y-1 select-none" data-process-group>
-    {phases.map((phase, index) => <ProcessPhaseCard key={phase.key} phase={phase} live={isStreaming} hasFollowingPhase={index < phases.length - 1} />)}
+    {compact && (
+      <button type="button" aria-expanded={open} aria-controls={detailsId}
+        className="flex min-h-8 max-w-full items-center gap-1.5 rounded-md px-1 text-left text-xs text-[var(--ink-muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--ink)]"
+        onClick={() => { notify(open ? 'block-group-collapse' : 'block-group-expand'); setOpen(!open); }}>
+        <ChevronDownIcon aria-hidden="true" className={`size-3 shrink-0 ${open ? '' : '-rotate-90'}`} />
+        {t('process.completedSteps', { count: blocks.length })}
+      </button>
+    )}
+    <div id={detailsId} hidden={compact && !open} className="space-y-1">
+      {phases.map((phase, index) => <ProcessPhaseCard key={phase.key} phase={phase} live={isStreaming} revealProcess={revealProcess} hasFollowingPhase={index < phases.length - 1} />)}
+    </div>
   </div>;
 });
 export default BlockGroup;

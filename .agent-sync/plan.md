@@ -1280,3 +1280,7 @@ Originalmobileowner01a12b99 combines reviewed45d474c6 with0.3.0-rc.1/iOS0.3.0/bu
 用户明确要求合入主干并上线。隔离codex/session-menu-20261105基于main39b344765：BotConversationNavigation复用原SessionContextMenu和GlobalSidebar mutation/删除owner，恢复右键、⋯、键盘入口及Escape层级焦点。109定向DOM、type/lint、classification、依赖契约、renderer编译通过。真实渲染与正式原生持久化尚待验，IAB及用户授权的Chrome均被Work设置禁用。详见dev-docs/session-menu-20261105/acceptance.md与.agent-sync/tasks/codex-session-menu-20261105-b841b6de.md。
 
 部署单元desktop/macOS-arm64/updater/sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；已回执下一未冻结桌面批次，冻结542.1不覆盖。开发只保存精确源、测试与交接；该owner统一PR/CI/main、版本、签名、上线及回滚。无其他单元发布或迁移。源码、main、正式发行和真实验收继续分开追踪。
+
+## Root MB-CHAT-STYLE-20261104 main intake 20261105
+
+Root desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates producerb506b852 with current main39b34476 in codex/chat-style-main-20261105. Native commentary/final_answer is optional transcript metadata; terminal closeout gates whole-turn folding, pending/failed/unknown/results retain visible paths. Root search regression propagates reveal through outer and inner process groups. Combined local106DOM/145unit/255simulatedintegration, type/lint/diff PASS. Exact sourceCI/main pending, then next unfrozen desktop version and real signed long-session UI acceptance. Existing native-login/mobile-auth source and production owners remain authoritative, no separate publisher is created. Record .agent-sync/tasks/codex-chat-style-main-20261105-17f98569.md.

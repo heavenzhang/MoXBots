@@ -164,7 +164,13 @@ export class TranscriptPresentation {
       }, true);
       else for (const part of entry.fragments ?? [{ target: entry.target }]) {
         const wasComplete = this.content.readBlock(part.target)?.isComplete;
-        this.content.updateBlock(part.target, { isComplete: true, nativeMessageId: id, ...(provenance === 'sdk' ? { sdkUuid: deliveryId } : {}) }, true);
+        const textPhase = block.type === 'text' && (block.textPhase === 'commentary' || block.textPhase === 'final_answer')
+          ? block.textPhase : undefined;
+        this.content.updateBlock(part.target, {
+          isComplete: true, nativeMessageId: id,
+          ...(textPhase ? { textPhase } : {}),
+          ...(provenance === 'sdk' ? { sdkUuid: deliveryId } : {}),
+        }, true);
         if (block.type === 'text' && !wasComplete) this.onTextComplete?.(part.target);
       }
       entry.confirmed = true;

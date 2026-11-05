@@ -10667,7 +10667,7 @@ function applyUnifiedEvent(event: UnifiedEvent): void {
       presentation.confirmNativeBlocks(
         source.messageId,
         source.messageId,
-        [{ type: 'text', text: event.nativeText }],
+        [{ type: 'text', text: event.nativeText, textPhase: event.textPhase }],
         undefined,
         'native',
       );
