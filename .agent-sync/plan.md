@@ -1273,3 +1273,10 @@ Root main intake 2026-11-05 integrates producer702a08a and mobile-owner explicit
 ## MB-MOBILE-CONTINUE-02 · original mobile release build10
 
 Originalmobileowner01a12b99 combines reviewed45d474c6 with0.3.0-rc.1/iOS0.3.0/build10/Android10 metadata; compatible new work overview/status coverage, resolveddependencies unchanged. OriginalsharedCI/mainowner01a12bc2 reviews/runs onefinalcandidate thenmain; no prematurefeatureCI/parallelPR. Freeze acceptedsource and buildnewnative+JS signedartifact with immutabletag/hash/rollback9; Kevin unavailable so prepareinternalIPA/nativeverification, retainphysicalpending, noXu substitution/dailyMac/101change. Recorddev-docs/mobile-continue-02/release10.md and taskcodex-mobile-build10-20261103-58f39586.md. Source/synthetic/native/main/package/physical/business separate.
+
+
+## MB-SESSION-MENU-20261105 — 恢复新版会话右键菜单
+
+用户明确要求合入主干并上线。隔离codex/session-menu-20261105基于main39b344765：BotConversationNavigation复用原SessionContextMenu和GlobalSidebar mutation/删除owner，恢复右键、⋯、键盘入口及Escape层级焦点。109定向DOM、type/lint、classification、依赖契约、renderer编译通过。真实渲染与正式原生持久化尚待验，IAB及用户授权的Chrome均被Work设置禁用。详见dev-docs/session-menu-20261105/acceptance.md与.agent-sync/tasks/codex-session-menu-20261105-b841b6de.md。
+
+部署单元desktop/macOS-arm64/updater/sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；已回执下一未冻结桌面批次，冻结542.1不覆盖。开发只保存精确源、测试与交接；该owner统一PR/CI/main、版本、签名、上线及回滚。无其他单元发布或迁移。源码、main、正式发行和真实验收继续分开追踪。

@@ -152,6 +152,8 @@ function Fixture() {
             </div>
             <div className="min-h-0 flex-1">
               <BotConversationNavigation
+                renderSessionMenu={() => null}
+                onMenuOpenChange={() => {}}
                 view={view}
                 projects={projects}
                 agents={agents}

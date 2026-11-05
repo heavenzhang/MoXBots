@@ -1226,7 +1226,24 @@ export default memo(function GlobalSidebar({
         />
       </div>
       <div className="min-h-0 flex-1">
-    {botExperience && preference.resourceView !== 'history' ? <BotConversationNavigation spaces={projectCatalog.spaces} catalogError={projectCatalog.error} onOpenProjectSpace={project => { onOpenProjectSpace?.(project); closeFlyout(); }} onCreateProject={openNewProject} view={preference.resourceView} projects={activeProjects} agents={config.agents ?? []} data={taskCenterData} tabs={tabs} activeTab={activeTab} badges={sessionNotificationBadgeCounts} onOpenSession={(session, project) => { void handleOpenSession(session, project); }} onOpenProject={project => { onOpenProjectBoard?.(project); closeFlyout(); }} onNewConversation={() => setNewConversationOpen(true)} onCreateBot={() => handleOpenNewAgentPanel()} onManageHistory={() => updatePreference(current => ({ ...current, resourceView: 'history' }))} /> : <WorkspaceTree
+    {botExperience && preference.resourceView !== 'history' ? <BotConversationNavigation spaces={projectCatalog.spaces} catalogError={projectCatalog.error} onOpenProjectSpace={project => { onOpenProjectSpace?.(project); closeFlyout(); }} onCreateProject={openNewProject} view={preference.resourceView} projects={activeProjects} agents={config.agents ?? []} data={taskCenterData} tabs={tabs} activeTab={activeTab} badges={sessionNotificationBadgeCounts} onOpenSession={(session, project) => { void handleOpenSession(session, project); }} onOpenProject={project => { onOpenProjectBoard?.(project); closeFlyout(); }} onNewConversation={() => setNewConversationOpen(true)} onCreateBot={() => handleOpenNewAgentPanel()} onManageHistory={() => updatePreference(current => ({ ...current, resourceView: 'history' }))}
+      onMenuOpenChange={handleNestedInteractionChange}
+      renderSessionMenu={({ session, ...menuProps }) => <SessionContextMenu
+        {...menuProps}
+        session={session}
+        deleteProtected={taskCenterData.deleteProtectedSessionIds.has(session.id)}
+        onCopySessionId={() => handleCopySessionId(session)}
+        onToggleFavorite={() => handleToggleFavorite(session)}
+        onTogglePin={() => handleToggleSessionPin(session)}
+        onRenameSession={onRenameSession}
+        onShowStats={origin => { rememberChildLayerOrigin(origin); setStatsSession(session); }}
+        onDelete={origin => { rememberChildLayerOrigin(origin); setPendingDeleteSession(session); }}
+        onSessionMutationStart={taskCenterData.actions.beginSessionMetadataMutation}
+        onSessionUpdated={taskCenterData.actions.applySessionMetadata}
+        onGlobalTagChange={taskCenterData.actions.refreshSessions}
+        onRefreshSessions={taskCenterData.actions.refreshSessions}
+      />}
+    /> : <WorkspaceTree
       organization={preference.organization}
       onUpdateOrganization={(update) => new Promise<boolean>((resolve) => updatePreference((current) => ({ ...current, organization: update(current.organization) }), resolve))}
       fadeBottom={expanded}
@@ -1490,6 +1507,7 @@ export default memo(function GlobalSidebar({
                   return;
                 }
                 if (event.key === 'Escape') {
+                  if (openNestedLayerKeysRef.current.size > 0 || childLayerOpen) return;
                   event.preventDefault();
                   closeFlyout(true);
                 }
@@ -1642,6 +1660,7 @@ export default memo(function GlobalSidebar({
               return;
             }
             if (event.key === 'Escape') {
+              if (openNestedLayerKeysRef.current.size > 0 || childLayerOpen) return;
               event.preventDefault();
               closeFlyout(true);
             }
