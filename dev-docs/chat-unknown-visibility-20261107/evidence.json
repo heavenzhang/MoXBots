@@ -1,0 +1,37 @@
+{
+  "synthetic": true,
+  "nativeAcceptance": false,
+  "engine": "webkit",
+  "cases": [
+    {
+      "viewport": {
+        "width": 1100,
+        "height": 760
+      },
+      "writes": 0,
+      "viewed": [
+        "tool-1"
+      ],
+      "failRead": false,
+      "overflow": false,
+      "noticeVisible": true,
+      "resultVisible": true,
+      "errors": []
+    },
+    {
+      "viewport": {
+        "width": 390,
+        "height": 844
+      },
+      "writes": 0,
+      "viewed": [
+        "tool-1"
+      ],
+      "failRead": false,
+      "overflow": false,
+      "noticeVisible": true,
+      "resultVisible": true,
+      "errors": []
+    }
+  ]
+}

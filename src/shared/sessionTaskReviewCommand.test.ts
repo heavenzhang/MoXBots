@@ -12,6 +12,9 @@ describe('root review invocation proof', () => {
     `echo 'session tasks --data review'; cat child-report.json`,
     `cat child-report.json # myagents session tasks --data review`,
     `${command}; cat other-receipt.json`,
+    `${command.replace('tasks --json', 'tasks review --json')} | cat`,
+    `${command.replace('tasks --json', 'tasks review --json')} > receipt.json`,
+    `myagents session tasks review`,
     `echo fake | ${command}`,
     `cd /tmp && ${command}`,
     `sh -c "${command}"`,
@@ -19,6 +22,12 @@ describe('root review invocation proof', () => {
     `myagents session tasks --data '{"kind":"review"}'`,
   ])('rejects wrappers, spoofed keywords and incomplete actions: %s', command => {
     expect(parseTaskReviewCommand({ command })).toBeUndefined();
+  });
+  it('recognizes the CLI review spelling without changing the action identity', () => {
+    expect(parseTaskReviewCommand({ command: command.replace('tasks --json', 'tasks review --json') })).toEqual(action);
+    expect(parseTaskReviewCommand({ command: command.replace('tasks --json', 'tasks list --json') })).toBeUndefined();
+    expect(parseTaskReviewCommand({ command: command.replace('tasks --json', 'tasks review extra --json') })).toBeUndefined();
+    expect(isDirectSessionTaskListCommand({ command: `myagents session tasks review --data '{"kind":"list"}'` })).toBe(false);
   });
   it('distinguishes actions targeting another task, attempt or evidence', () => {
     for (const patch of [{ taskId: 'other' }, { attemptId: 'tool:run-1' }, { decision: 'reject' as const }, { evidence: 'Other' }, { expectedRevision: 3 }]) {

@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import '../i18n';
 import '../index.css';
 import { ThemeRuntimeProvider } from '../theme';
+import SessionExecutionDetails from '../components/agent-status/SessionExecutionStatus';
 import { RecoveryActionReview } from '../components/RecoveryActionReview';
 import BashTool from '../components/tools/BashTool';
 import BlockGroup from '../components/BlockGroup';
@@ -15,7 +16,7 @@ const initialSnapshot: RecoveryActionSnapshot = {
   actions: [
     { actionHash: 'hook-denied-demo', tool: 'Bash', presentation: { kind: 'command' }, eligible: true, reason: 'native_hook_denied' },
     { actionHash: 'task-query-demo', tool: 'TaskGet', eligible: true, reason: 'builtin_task_query' },
-    { actionHash: 'other-demo', tool: 'Other', toolUseIds:['original-save-call'], presentation: { kind: 'write_file', target: '考勤统计与薪资方案.docx' }, check: {kind:'file_matches'}, association: {taskId:'save-plan',title:'保存考勤方案',blockedTaskIds:['verify-plan']}, eligible: false, reason: 'external_receipt_required' },
+    { actionHash: 'other-demo', tool: 'Other', toolUseIds:['original-save-call'], presentation: { kind: 'write_file', target: '考勤统计与薪资方案.docx' }, check: {kind:'file_matches'}, association: {taskId:'save-plan',title:'保存考勤方案',blockedTaskIds:['verify-plan'],blockedTasks:[{taskId:'verify-plan',title:'核对考勤方案与薪资计算结果'}]}, eligible: false, reason: 'external_receipt_required' },
     { actionHash: 'missing-demo', tool: 'Other', eligible: false, reason: 'native_evidence_missing' },
   ],
 };
@@ -83,6 +84,12 @@ function Preview() {
           return next;
         }}
       />
+      <section aria-label="模型连接失败说明" className="mt-6 rounded-lg border border-[var(--line)] p-3">
+        <SessionExecutionDetails execution={{id:'preview-error',requestId:'preview-error-request',originalInput:'生成图文报告',
+          intent:{kind:'execute',objective:'生成图文报告',scope:'合成预览',acceptanceCriteria:['报告可读']},
+          phase:'incomplete',startedAt:1,deadlineAt:0,turns:1,reworks:0,noProgress:0,currentQueueId:'preview-error-turn',
+          reason:'turn_error',failure:{kind:'modelService',httpStatus:502}}} />
+      </section>
       {draft && <textarea aria-label="核查消息草稿" className="mt-4 w-full rounded border p-3" value={draft} onChange={event => setDraft(event.target.value)} />}
       <section className="mt-6 grid gap-3 md:grid-cols-2" aria-label="Tool error and success status comparison">
         <div><h2 className="mb-2 text-sm font-semibold">Native hook denial · not executed</h2><BashTool tool={fixtureTool('PreToolUse hook denied', true)} /></div>

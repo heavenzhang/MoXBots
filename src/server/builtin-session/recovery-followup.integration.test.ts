@@ -58,7 +58,7 @@ it('groups only exact task bindings, traverses dependencies, and does not guess 
  const f=await fixture();
  await taskOwner.mutateSessionTaskLedger(id,next=>({...next,tasks:[{id:'a',title:'保存方案',blockedBy:[]},{id:'b',title:'复核方案',blockedBy:['a']},{id:'c',title:'独立查资料',blockedBy:[]}],bindings:{tool:'a'}}));
  const s=await review.inspectRecoveryActions(f.deps);
- expect(s.actions[0].association).toEqual({taskId:'a',title:'保存方案',blockedTaskIds:['b']});
+ expect(s.actions[0].association).toEqual({taskId:'a',title:'保存方案',blockedTaskIds:['b'],blockedTasks:[{taskId:'b',title:'复核方案'}]});
  expect(s.independentTasks).toEqual([{taskId:'c',title:'独立查资料'}]);
  await taskOwner.mutateSessionTaskLedger(id,next=>({...next,bindings:{}}));
  const unknown=await review.inspectRecoveryActions(f.deps);

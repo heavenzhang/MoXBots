@@ -21,6 +21,20 @@ describe('bounded semantic output transport', () => {
     return { transport, request, release };
   }
 
+  it.each([408, 429, 500, 502, 503, 504, 529, 400, 401, 403, 404])('classifies HTTP %s without exposing the response body', async status => {
+    const { transport, request } = fixture('anthropic');
+    calls.fetch.mockResolvedValue({ ok: false, status, text: async () => 'private upstream detail' });
+    const error = await transport(request).catch(error => error);
+    expect(error).toMatchObject({ status, retryable: status === 408 || status === 429 || status >= 500 });
+    expect(error.message).not.toContain('private upstream detail');
+  });
+
+  it.each(['ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN', 'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'CERT_HAS_EXPIRED'])('classifies network failure %s', async code => {
+    const { transport, request } = fixture('anthropic');
+    calls.fetch.mockRejectedValue(new TypeError('fetch failed', { cause: Object.assign(new Error('network detail'), { code }) }));
+    await expect(transport(request)).rejects.toMatchObject({ retryable: code !== 'CERT_HAS_EXPIRED', code });
+  });
+
   it.each(['anthropic', 'openai'] as const)('preserves room for reasoning and final JSON (%s)', async protocol => {
     const { transport, request, release } = fixture(protocol);
     calls.fetch.mockImplementation(async (_url, options) => {

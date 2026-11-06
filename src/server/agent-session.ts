@@ -10716,6 +10716,7 @@ async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies>
     startInvestigation: async () => { await prepareSessionRecoveryInvestigation(owner.sessionId); queueMicrotask(() => wakeSessionExecution(owner.sessionId)); },
     checkFile: (name, input) => checkRecoveryFile(captured.dir, name, input),
     taskLedger: () => getCurrentProductSessionMetadata()?.taskOrchestration,
+    transcript: () => getBuiltinProductContent()?.writer.projection,
     mutateTaskLedger: async (mutation, current) => { await mutateSessionTaskLedger(owner.sessionId, mutation, current); },
     load: () => loadBuiltinContextLedger(owner.sessionId, owner.sdkSessionId),
     readNative: async () => {

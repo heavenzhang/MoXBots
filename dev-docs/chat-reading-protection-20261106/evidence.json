@@ -1,0 +1,552 @@
+{
+  "mox-reading-browser-red": {
+    "engine": "webkit",
+    "baseline": true,
+    "cases": [
+      {
+        "mode": "reader",
+        "before": {
+          "top": 9542,
+          "height": 10256,
+          "view": 650,
+          "gap": 64,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 7154,
+          "height": 7804,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 171.78125,
+          "visibleRows": 0,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 315.21875,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": null,
+        "selected": ""
+      }
+    ],
+    "status": "FAIL",
+    "error": "AssertionError [ERR_ASSERTION]: Completion hid process content\n\n0 !== 25\n"
+  },
+  "mox-reading-browser-green-final": {
+    "engine": "webkit",
+    "baseline": false,
+    "cases": [
+      {
+        "mode": "reader",
+        "before": {
+          "top": 9542,
+          "height": 10256,
+          "view": 650,
+          "gap": 64,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 9542,
+          "height": 10337,
+          "view": 650,
+          "gap": 145,
+          "rowHeight": 1729.1875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 315.21875,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": {
+          "x": 104,
+          "y": 315.21875,
+          "width": 792,
+          "height": 22.390625
+        },
+        "selected": ""
+      },
+      {
+        "mode": "selection",
+        "before": {
+          "top": 9742,
+          "height": 10392,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 9742,
+          "height": 10473,
+          "view": 650,
+          "gap": 81,
+          "rowHeight": 1729.1875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "selected": "READING_SELECTION_MARKER"
+      },
+      {
+        "mode": "manual",
+        "before": {
+          "top": 9742,
+          "height": 10533,
+          "view": 650,
+          "gap": 141,
+          "rowHeight": 1759.578125,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 9742,
+          "height": 10613,
+          "view": 650,
+          "gap": 221,
+          "rowHeight": 1869.96875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "selected": ""
+      },
+      {
+        "mode": "following",
+        "before": {
+          "top": 9742,
+          "height": 10392,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": true
+        },
+        "after": {
+          "top": 7154,
+          "height": 7804,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 171.78125,
+          "visibleRows": 0,
+          "follow": true
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": null,
+        "selected": ""
+      }
+    ],
+    "status": "PASS"
+  },
+  "mox-reading-chromium": {
+    "engine": "chromium",
+    "baseline": false,
+    "cases": [
+      {
+        "mode": "reader",
+        "before": {
+          "top": 9542,
+          "height": 10256,
+          "view": 650,
+          "gap": 64,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 9542,
+          "height": 10337,
+          "view": 650,
+          "gap": 145,
+          "rowHeight": 1729.1875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 315.21875,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": {
+          "x": 104,
+          "y": 315.21875,
+          "width": 792,
+          "height": 22.390625
+        },
+        "selected": ""
+      },
+      {
+        "mode": "selection",
+        "before": {
+          "top": 9742,
+          "height": 10392,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 9742,
+          "height": 10473,
+          "view": 650,
+          "gap": 81,
+          "rowHeight": 1729.1875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "selected": "READING_SELECTION_MARKER"
+      },
+      {
+        "mode": "manual",
+        "before": {
+          "top": 9742,
+          "height": 10533,
+          "view": 650,
+          "gap": 141,
+          "rowHeight": 1759.578125,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 9742,
+          "height": 10613,
+          "view": 650,
+          "gap": 221,
+          "rowHeight": 1869.96875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "selected": ""
+      },
+      {
+        "mode": "following",
+        "before": {
+          "top": 9742,
+          "height": 10392,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": true
+        },
+        "after": {
+          "top": 7154,
+          "height": 7804,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 171.78125,
+          "visibleRows": 0,
+          "follow": true
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": null,
+        "selected": ""
+      }
+    ],
+    "status": "PASS"
+  },
+  "mox-reading-webkit-accepted": {
+    "engine": "webkit",
+    "baseline": false,
+    "cases": [
+      {
+        "mode": "reader",
+        "before": {
+          "top": 9542,
+          "height": 10256,
+          "view": 650,
+          "gap": 64,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 9542,
+          "height": 10337,
+          "view": 650,
+          "gap": 145,
+          "rowHeight": 1729.1875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 315.21875,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": {
+          "x": 104,
+          "y": 315.21875,
+          "width": 792,
+          "height": 22.390625
+        },
+        "selected": ""
+      },
+      {
+        "mode": "selection",
+        "before": {
+          "top": 9742,
+          "height": 10392,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 9742,
+          "height": 10473,
+          "view": 650,
+          "gap": 81,
+          "rowHeight": 1729.1875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "selected": "READING_SELECTION_MARKER"
+      },
+      {
+        "mode": "manual",
+        "before": {
+          "top": 9742,
+          "height": 10533,
+          "view": 650,
+          "gap": 141,
+          "rowHeight": 1759.578125,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "after": {
+          "top": 9742,
+          "height": 10613,
+          "view": 650,
+          "gap": 221,
+          "rowHeight": 1869.96875,
+          "visibleRows": 25,
+          "follow": false
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "selected": ""
+      },
+      {
+        "mode": "following",
+        "before": {
+          "top": 9742,
+          "height": 10392,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1618.796875,
+          "visibleRows": 25,
+          "follow": true
+        },
+        "after": {
+          "top": 7154,
+          "height": 7804,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 171.78125,
+          "visibleRows": 0,
+          "follow": true
+        },
+        "markerBefore": {
+          "x": 104,
+          "y": 251.265625,
+          "width": 792,
+          "height": 22.390625
+        },
+        "markerAfter": null,
+        "selected": ""
+      }
+    ],
+    "status": "PASS"
+  },
+  "mox-reading-existing-continuity": {
+    "engine": "webkit",
+    "baseline": false,
+    "cases": [
+      {
+        "cycle": 0,
+        "before": {
+          "top": 9693,
+          "height": 10343,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1569.40625,
+          "visibleRows": 25,
+          "follow": true
+        },
+        "gap": {
+          "top": 9693,
+          "height": 10343,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1569.40625,
+          "visibleRows": 25,
+          "follow": true
+        }
+      },
+      {
+        "cycle": 1,
+        "before": {
+          "top": 9750,
+          "height": 10400,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1627.046875,
+          "visibleRows": 26,
+          "follow": true
+        },
+        "gap": {
+          "top": 9750,
+          "height": 10400,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1627.046875,
+          "visibleRows": 26,
+          "follow": true
+        }
+      },
+      {
+        "cycle": 2,
+        "before": {
+          "top": 9812,
+          "height": 10462,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1688.6875,
+          "visibleRows": 27,
+          "follow": true
+        },
+        "gap": {
+          "top": 9812,
+          "height": 10462,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1688.6875,
+          "visibleRows": 27,
+          "follow": true
+        }
+      }
+    ],
+    "reader": {
+      "reader": {
+        "top": 9620,
+        "height": 10520,
+        "view": 650,
+        "gap": 250,
+        "rowHeight": 1746.328125,
+        "visibleRows": 28,
+        "follow": false
+      },
+      "afterGap": {
+        "top": 9620,
+        "height": 10520,
+        "view": 650,
+        "gap": 250,
+        "rowHeight": 1746.328125,
+        "visibleRows": 28,
+        "follow": false
+      }
+    },
+    "terminal": {
+      "top": 7132,
+      "height": 7782,
+      "view": 650,
+      "gap": 0,
+      "rowHeight": 149.390625,
+      "visibleRows": 0,
+      "follow": true
+    },
+    "status": "PASS"
+  }
+}

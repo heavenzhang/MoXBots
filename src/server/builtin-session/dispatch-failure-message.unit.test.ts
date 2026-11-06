@@ -1,7 +1,7 @@
 import { expect, it } from 'vitest';
 import { preDispatchFailureMessage } from './dispatch-failure-message';
 
-it.each(['TOOL_OUTCOME_UNKNOWN', 'WAITING_FOR_USER', 'BACKGROUND_WORK_ACTIVE', 'EXECUTION_PREVIOUS_TURN_UNSETTLED', 'EXECUTION_ALREADY_COMPLETED'])
+it.each(['TOOL_OUTCOME_UNKNOWN', 'WAITING_FOR_USER', 'BACKGROUND_WORK_ACTIVE', 'EXECUTION_PREVIOUS_TURN_UNSETTLED', 'EXECUTION_ALREADY_COMPLETED', 'EXECUTION_REQUIRES_REVIEW', 'EXECUTION_DISPATCH_OUTCOME_UNKNOWN'])
   ('explains a known pre-dispatch rejection: %s', error => {
     const message = preDispatchFailureMessage({ accepted: false, error });
     expect(message).toMatch(/^本次消息未执行：/);
@@ -11,3 +11,14 @@ it.each(['TOOL_OUTCOME_UNKNOWN', 'WAITING_FOR_USER', 'BACKGROUND_WORK_ACTIVE', '
 it('does not disclose arbitrary raw error content', () => {
   expect(preDispatchFailureMessage({ accepted: false, error: 'private path or token' })).not.toContain('private');
 });
+
+it.each(['EXECUTION_TURN_OUTCOME_UNKNOWN','EXECUTION_INPUT_REVOKED','EXECUTION_CONTINUATION_REVOKED',
+  'EXECUTION_CONTINUATION_CHANGED','dispatch_unconfirmed','continuation_admission_busy',
+  'continuation_not_admitted','continuation_cancelled_before_dispatch','admission_cancelled'])
+  ('explains cancellation or recovery rejection without a generic state-change notice: %s', error => {
+    const message = preDispatchFailureMessage({accepted:false,error});
+    expect(message).toMatch(/^本次消息未执行：/);
+    expect(message).not.toContain('会话状态已变化');
+    expect(message).not.toContain(error);
+    expect(message).toContain('请');
+  });

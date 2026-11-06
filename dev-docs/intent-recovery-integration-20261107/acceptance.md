@@ -1,0 +1,13 @@
+# MB-INTENT-RECOVERY-INTEGRATION-20261107
+
+本批0.5.43/build543.4在main4cee上集成intent dd972c3772251f2632b441e05bba388a0fbccab1、unknown23d98cddde575d4ebdcca3dbae0c36079c4010ac、reading1921e850f8c92f78ca53687d8146a8cea5c2e5d3、remediation9f818331ec5891b8353f497fcbae1ffd67ae38f9，均保留完整Git祖先。保留PR257简化聊天界面与PR258原任务恢复；原543.3制品不变。
+
+Root独立审查全部生产delta；只文档追加段和两份新增测试发生冲突，双方保留。原生SDK终态错误只投影稳定类别和400–599状态，不作为准入/重试权。工具外意图重试仍两次/总60秒；纯回复不要求工具证据，真实资源行动仍受原执行门。unknown只有当前已结算轮的精确调用身份才能显示，刷新失败保留旧已知提示；无重放或清账。
+
+本机Node24：259unit、129DOM通过；集成首轮394pass1fail，唯一缺新增blockedTasks expected，精确补全并保留strict/missingbinding断言后相关4/4通过；其余391生产未变。追加9f后的458相关unit/DOM/integration及完整type、33TS/TSX lint、locale7类双语键、classification、3version、diff通过。原两项编排/expectation失败原件保留，不冒首次全绿。
+
+组合WebKit实际组件使用合成数据：unknown1100/390写入0、详情/刷新失败/重挂载；reading上翻/选区/详情终态标记0px移动、正常跟随折叠。Root查看截图。这些不是安装版或真实Provider验收。
+
+Root现有543.3原报告由原负责人唯一接续，保持同execution并5项全accept，Root只读核对持久记录。中间502保留，不清历史未知、不把自动恢复到running当成功。543.4尚无CI/main/新签名制品/安装或真实验收，必须逐门记录。原两问完整模型矩阵仍pending，浏览器human-deferred不绕过；其他Bot/mobile功能不混本批。
+
+部署desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4。正常集成与本地维护/发布授权持续，但发布前相称验收、备份、回滚和同制品摘要仍必核。私密原件work/intent-recovery-integration-20261107/owner；不得提交运行数据/凭据。
