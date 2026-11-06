@@ -3,16 +3,16 @@
   "channel": "trial",
   "macArm64": {
     "status": "ready",
-    "version": "0.5.36",
-    "build": "536.1",
-    "url": "https://101.42.11.29/updates/releases/0.5.36/06bbca4f20b7e61468d5ae5f9d3114d722e5c317288b28cae2228f2819f120f1-MoXBots.app.tar.gz",
-    "bytes": 302230704,
-    "sha256": "06bbca4f20b7e61468d5ae5f9d3114d722e5c317288b28cae2228f2819f120f1",
-    "sourceCommit": "137fd178863109b0e0a3b202f2c300bd4f57a257",
+    "version": "0.5.42",
+    "build": "542.6",
+    "url": "https://101.42.11.29/updates/releases/0.5.42/5e6724a0dc672f0cead5a86553e7ff9e714f1423298ab57258ec28232f9046d1-MoXBots.app.tar.gz",
+    "bytes": 302337663,
+    "sha256": "5e6724a0dc672f0cead5a86553e7ff9e714f1423298ab57258ec28232f9046d1",
+    "sourceCommit": "34fe85d41660b361232015c54e33ef4bfffa1d57",
     "signed": true,
     "notarized": true,
-    "notesUrl": "https://101.42.11.29/moxbots/download/notes/0.5.36.html",
-    "notice": "构建 536.1；新增项目工作台。TAR.GZ 内含 MoXBots.app，与正式自动更新通道使用同一份已签名制品。"
+    "notesUrl": "https://101.42.11.29/moxbots/download/notes/0.5.42.html",
+    "notice": "构建 542.6；改进长聊天滚动、输入框与项目弹窗，并修复内置 Playwright 启动和 Codex 任务识别兼容性。TAR.GZ 内含 MoXBots.app，与正式自动更新通道使用同一份已签名制品。"
   },
   "windowsX64": {
     "status": "preparing"
