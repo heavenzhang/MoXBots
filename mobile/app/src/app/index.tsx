@@ -33,7 +33,7 @@ import { MobileSheet } from '../MobileSheet';
 import { mobileTheme } from '../mobileTheme';
 import { conversationStyles } from '../conversationStyles';
 import { ComposerPopover } from '../ComposerPopover';
-import { conversationStatus, type RecentSessionItem } from '../sessionPresentation';
+import { type RecentSessionItem } from '../sessionPresentation';
 import { readRecentSessions } from '../recentSessionRead';
 import { receiptCheckDelay, snapshotSessionToRead, submittedDraftHidden, rejectedDraftForOwner } from '../deliveryPolicy';
 import { SnapshotReadTracker, snapshotReadStatus } from '../snapshotRead';
@@ -1712,7 +1712,7 @@ function AppBody() {
     {screen === 'chat' && <View style={styles.fill}>
       <View accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} style={styles.chatToolbar}>
         <Pressable accessibilityRole="button" accessibilityLabel="返回会话列表" onPress={() => { moveOwner('sessions', targetRef.current, null); void run('sessions', loadSessions); }} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="查看当前 Bot 信息" onPress={() => setBotProfileOpen(true)} style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || (awaitingSnapshot ? '读取已有会话' : '新会话')}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'} · {awaitingSnapshot ? (snapshotStatus === 'pending' ? '读取中' : '待读取') : conversationStatus(snapshot?.state, target?.online)}</Text></Pressable>
+        <Pressable accessibilityRole="button" accessibilityLabel="查看当前 Bot 信息" onPress={() => setBotProfileOpen(true)} style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || (awaitingSnapshot ? '读取已有会话' : '新会话')}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'}</Text></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="更多会话信息" onPress={() => setMenuOpen((value) => !value)} style={styles.toolbarAction}><MoreHorizontal size={22} color={C.ink}/></Pressable>
       </View>
       <ConversationWorkPanel key={`${account?.principalId ?? ''}:${ownerEpoch}`}

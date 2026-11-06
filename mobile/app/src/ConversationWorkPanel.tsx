@@ -22,11 +22,12 @@ export function ConversationWorkPanel(p: Props) {
   const disabled = p.sending || (progress.action === 'query' ? !p.canQuery : progress.action === 'read' ? p.busy || !p.target?.online : progress.action === 'compose' ? !p.canCompose : false);
   const canOpenArtifacts = !!p.snapshot && !p.awaiting;
   const requests = currentWorkRequests(p.awaiting ? null : p.snapshot);
+  const showInlineDetail = p.awaiting || !!p.receipt || !p.target?.online || progress.tone === 'error' || progress.action === 'read';
   const closeThen = (action: () => void) => { setOpen(false); action(); };
   return <>
     <View style={s.panel}>
       <Pressable accessibilityRole="button" accessibilityLabel={`查看工作进展：${progress.title}`} accessibilityState={{ expanded: open }} onPress={() => { Keyboard.dismiss(); setOpen(true); }} style={s.summary}>
-        <View style={s.copy}><View style={s.statusRow}><View style={[s.dot, progress.tone === 'attention' ? s.attentionDot : progress.tone === 'error' ? s.errorDot : progress.tone === 'active' ? s.activeDot : null]}/><Text style={s.status}>{progress.title}</Text></View><Text numberOfLines={2} style={s.detail}>{progress.detail}</Text></View><ChevronRight size={17} color={c.muted}/>
+        <View style={s.copy}><View style={s.statusRow}><View style={[s.dot, progress.tone === 'attention' ? s.attentionDot : progress.tone === 'error' ? s.errorDot : progress.tone === 'active' ? s.activeDot : null]}/><Text style={s.status}>{progress.title}</Text></View>{showInlineDetail && <Text style={s.detail}>{progress.detail}</Text>}</View><ChevronRight size={17} color={c.muted}/>
       </Pressable>
       {(progress.action === 'query' || progress.action === 'read') && <Pressable accessibilityRole="button" accessibilityLabel={progress.actionLabel} accessibilityState={{ disabled }} disabled={disabled} onPress={() => p.onAction(progress.action)} style={[s.recovery, disabled && s.disabled]}><Text style={s.resultsText}>{progress.actionLabel}</Text></Pressable>}
     </View>
@@ -54,7 +55,7 @@ const s = StyleSheet.create({
   navSelected: { borderColor: c.primary }, navText: { fontSize:15,lineHeight:22,color:c.muted }, navTextSelected: { color: c.primary, fontWeight: '600' },
   recovery: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, alignSelf: 'flex-start' },
   panel: { marginHorizontal:24,marginBottom:4 },
-  summary: { flexDirection:'row',alignItems:'center',gap:12,paddingVertical:12,minHeight:68 },
+  summary: { flexDirection:'row',alignItems:'center',gap:12,paddingVertical:6,minHeight:44 },
   copy: { flex: 1, minWidth: 0 }, statusRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
   dot: { width:7,height:7,borderRadius:4,backgroundColor:c.muted }, attentionDot: { backgroundColor: '#947124' }, errorDot: { backgroundColor: c.red }, activeDot: { backgroundColor: c.online },
   status: { flexShrink:1,color:c.ink,fontSize:15,lineHeight:22,fontWeight:'600' }, detail: { color:c.muted,fontSize:13,lineHeight:20,marginTop:5 },

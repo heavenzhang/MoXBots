@@ -1343,3 +1343,10 @@ sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；mobile iOS/Android�
 ## MB-MOBILE-VISUAL-04（2026-11-06）
 
 用户要求改善手机界面视觉尺度。codex/mobile-visual-polish-20261106承接C03精确2d12f25b，调整首页/原对话/待处理/成果的字阶、留白、触控与内容层级，保留状态/审批/草稿/成果owner。任务V04-1～6及证据见dev-docs/mobile-visual-04/与分支任务记录。sharedCI/main与mobile部署归属不变；不分配新正式版本或替换冻结制品。
+
+
+## MB-MOBILE-FOCUS-05 · 2026-11-07
+
+用户认可精简方向并要求关键交互验收后交原负责人打包。codex/mobile-focus-05-20261107连续继承C03/V04，首页搜索/筛选按需展开、状态说明聚焦、成果主操作提前；保留原会话/草稿/审批/成果身份和恢复围栏。最终本地type/lint/125policy及320/390合成实际组件关键路径通过，独立源码/截图审阅见dev-docs/mobile-focus-05/；独立点击、真实Host/设备验收不冒充通过。
+
+sharedCI/main唯一01a12bc2-907a-7702-b6dd-788225c5dfe4，mobile iOS/Android版本/签名/安装唯一01a12b99-7b38-78b1-831f-9c60257d386a，均不变。mobile owner已预接收C03/V04/F05下一批，待精确SHA和主干CI；旧build10/tag/IPA及回退保留。开发只提交分支证据和交接，不重复CI/正式构建、不分配正式版本。F05-6 main/新包/真机仍待原owner完成。
