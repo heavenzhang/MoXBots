@@ -263,6 +263,69 @@ describe('bounded native execution evidence view', () => {
   const view = (beforeOrder?: number) => executionOwner.projectSessionExecutionEvidence(
     store.getSessionMetadata(id)!.taskOrchestration!, engine.getExecutionVerificationEpoch?.(), beforeOrder,
   );
+  it('keeps a positional step review out of business evidence and commits its root receipt', async () => {
+    const first = await prepare();
+    const queueId = first.request.queueId!;
+    engine.getLiveSessionOverlay = () => ({ isActive: true, inMemoryMessages: [] });
+    // One completed root step, same ledger/CLI/native hooks as the real path.
+    await taskOwner.observeSessionTasks(id, { plan: [{ key: 'step', content: 'Verify result', activeForm: 'Verifying result', status: 'completed' }] });
+    const snapshot = await taskOwner.readSessionTasks(engine);
+    const action = { kind: 'review' as const, taskId: 'step', attemptId: 'main', decision: 'accept' as const,
+      expectedRevision: snapshot.ledger.revision, evidence: 'Read back the actual result' };
+    const command = `myagents session tasks review --data '${JSON.stringify(action)}' --json`;
+    await tool(queueId, { id: 'step-review', name: 'Bash', stage: 'start', input: { command } });
+    expect(store.getSessionMetadata(id)!.taskOrchestration!.revision).toBe(action.expectedRevision);
+    const result = await taskOwner.mutateSessionTasks(engine, id, action);
+    expect(result.pendingMainAgentReview).toBe(true);
+    expect(result.ledger.reviews).toHaveLength(0);
+    const output = JSON.stringify({ success: true, taskReviewReceipt: result.taskReviewReceipt });
+    await tool(queueId, { id: 'step-review', name: 'Bash', stage: 'success', input: { command }, output });
+    await taskOwner.confirmSessionTaskReviewFromRootTool(id, { id: 'step-review', name: 'Bash', root: true, input: { command }, output });
+    const ledger = store.getSessionMetadata(id)!.taskOrchestration!;
+    expect(ledger.reviews).toMatchObject([{ taskId: 'step', rootToolUseId: 'step-review' }]);
+    expect(ledger.executionEvidence?.some(fact => fact.id === 'step-review')).toBeFalsy();
+  });
+
+  it.each(['pending-write', 'unknown-claim', 'unsettled', 'approval', 'background', 'unconfirmed-review', 'changed-reason', 'changed-review'] as const)
+    ('keeps %s blocked when responding to a paused assessment', async condition => {
+      const first = await prepare();
+      const original = currentExecution()!;
+      await submitReview(first.request.queueId!, { decision: 'blocked', summary: 'Need input', checks: [] });
+      await first.request.onTerminal?.({ status: 'complete', text: 'Waiting', assistantMessagePresent: true });
+      await taskOwner.mutateSessionTaskLedger(id, ledger => {
+        if (condition === 'pending-write') ledger.executionEvidence = [{ id: 'unresolved', queueId: first.request.queueId!, name: 'Write',
+          digest: 'unknown', successful: false, observationOrder: 1, mutating: true, pending: true }];
+        if (condition === 'unknown-claim') ledger.delegationClaims = [{ toolUseId: 'child', taskId: 'step', executionId: original.id, state: 'unknown' }];
+        if (condition === 'unsettled') ledger.execution!.lastSettledQueueId = undefined;
+        if (condition === 'unconfirmed-review') ledger.executionReview!.committedBy = undefined;
+        if (condition === 'changed-reason') ledger.execution!.reason = 'EXECUTION_DISPATCH_OUTCOME_UNKNOWN';
+        if (condition === 'changed-review') ledger.executionReview!.queueId = 'different-queue';
+        return ledger;
+      });
+      if (condition === 'approval') engine.getStreamReplaySnapshot = () => ({ pendingInteractiveRequests: [{}] }) as never;
+      if (condition === 'background') engine.getLiveSessionState = () => ({ backgroundWorkBlocksContinuation: true }) as never;
+      const next = await prepareUnpromoted('Continue this work', `blocked-${condition}`, { ...executeIntent, continuationOf: original.id });
+      expect((await next.request.beforeDispatch!()).accepted).toBe(false);
+      expect(currentExecution()).toMatchObject({ id: original.id, phase: 'paused', currentQueueId: first.request.queueId });
+      expect(continuationRequests).toHaveLength(0);
+    });
+
+  it.each(['blocked', 'needs_user'] as const)('accepts new human input after a settled %s assessment without automatic replay', async decision => {
+    const first = await prepare();
+    const original = currentExecution()!;
+    const assessment = { decision, summary: 'Need a corrected report scope', checks: [] };
+    await submitReview(first.request.queueId!, assessment);
+    await first.request.onTerminal?.({ status: 'complete', text: 'Waiting for input', assistantMessagePresent: true });
+    await executionOwner.continueSessionExecution(engine, id);
+    expect(currentExecution()).toMatchObject({ phase: 'paused', reason: assessment.summary });
+    expect(continuationRequests).toHaveLength(0);
+    const resumed = await prepare('Use charts in the same report', `human-${decision}`, { ...executeIntent, continuationOf: original.id });
+    expect(currentExecution()).toMatchObject({ id: original.id, originalInput: original.originalInput, intent: original.intent,
+      startedAt: original.startedAt, deadlineAt: original.deadlineAt, reworks: 0, noProgress: 0, turns: 2, phase: 'running' });
+    expect(resumed.request.queueId).not.toBe(first.request.queueId);
+    expect(continuationRequests).toHaveLength(0);
+  });
+
   it('keeps successful post-write Read evidence valid through the direct compact query and native review receipt', async () => {
     const prepared = await prepare();
     expect(prepared.request.runtimeReminder).toContain('"view":"execution"');
@@ -2361,13 +2424,23 @@ describe('temporary inspection preserves the original execution', () => {
     expect(currentExecution()).toEqual(old.execution);
     expect(store.getSessionMetadata(id)?.taskOrchestration?.executionEvidence).toEqual(old.executionEvidence);
     expect(continuationRequests).toHaveLength(0);
-    // The original business pause is still effective, and never becomes a new
-    // read-only policy or an implicit grant to resume it.
+    // Inspection alone cannot resume work. A separate new human input may
+    // re-evaluate the blocker but must retain it in the runtime instructions.
     const resume = await prepareUnpromoted('Continue original work', 'human-resume-original', {
       ...executeIntent, continuationOf: old.execution!.id, preserveExecution: false,
     });
-    expect(await resume.request.beforeDispatch!()).toMatchObject({ accepted: false, error: 'Business identity still required' });
     expect(currentExecution()).toEqual(old.execution);
+    const decision = await resume.request.beforeDispatch!();
+    expect(decision.accepted).toBe(true);
+    expect(decision.validateAtCommit?.().accepted).toBe(true);
+    expect(resume.request.runtimeReminder).toContain('Business identity still required');
+    expect(resume.request.runtimeReminder).toContain('不代表上轮阻断已解除');
+    expect(currentExecution()).toMatchObject({ id: old.execution!.id, intent: old.execution!.intent, phase: 'running' });
+    currentQueueId = resume.request.queueId!;
+    await submitReview(resume.request.queueId!, { decision: 'needs_user', summary: 'Business identity still required', checks: [] });
+    await resume.request.onTerminal?.({ status: 'complete', text: 'Still need identity', assistantMessagePresent: true });
+    expect(currentExecution()).toMatchObject({ phase: 'paused', reason: 'Business identity still required' });
+    expect(continuationRequests).toHaveLength(0);
   });
 });
 

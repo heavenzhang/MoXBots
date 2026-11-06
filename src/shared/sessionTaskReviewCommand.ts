@@ -25,14 +25,18 @@ export function parseSessionTaskCommand(input: unknown,
   if (begun) tokens.push(token);
   const executable = tokens[0]?.split(/[\\/]/).at(-1);
   if (![APP_CLI_NAME, `${APP_CLI_NAME}.cmd`].includes(executable ?? '') || tokens[1] !== 'session' || tokens[2] !== 'tasks') return undefined;
+  // The product CLI accepts `tasks review --data ...`. Its native lifecycle
+  // must classify the same invocation as bookkeeping before checking revision.
+  const positionalReview = tokens[3] === 'review';
   let data: unknown;
-  for (let i = 3; i < tokens.length; i++) {
+  for (let i = positionalReview ? 4 : 3; i < tokens.length; i++) {
     if (tokens[i] === '--json') continue;
     if (tokens[i] !== '--data' || data !== undefined || !tokens[i + 1]) return undefined;
     try { data = JSON.parse(tokens[++i]); } catch { return undefined; }
   }
-  if (data === undefined) return { kind: "list" };
+  if (data === undefined) return positionalReview ? undefined : { kind: "list" };
   if (!data || typeof data !== 'object' || Array.isArray(data)) return undefined;
+  if (positionalReview && (data as Record<string, unknown>).kind !== 'review') return undefined;
   return data as Record<string, unknown>;
 }
 

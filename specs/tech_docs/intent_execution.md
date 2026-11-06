@@ -107,3 +107,9 @@ review 命令响应只携带有界回执、Session 身份、pending 标记和 le
 原执行存在时，后续只读/控制请求也接收当前核对边界提示，不再只向 execute 提供历史错误纠正。该提示不恢复写权限、不新建或替换原执行；实际准入和工具返回仍是判断依据，不能把查询成功解释为原任务已恢复执行或已经验收。
 
 每个完成轮次，原ledger当前queue存在未committed的executionReview时，累计独立reviewReceiptFailures；连续3次失败停止自动续接。真实业务progressDigest/noProgress和完整证据不受影响，不推断工具归属。正确回执或无失败提案轮次清连续计数；重复终态不重复计数，Stop/unknown优先，人工继续保持原execution。为回滚兼容沿用incomplete/turn_error，UI依据可选计数显示明确评审故障，不恢复任务总时限。
+
+## 步骤评审与人工补充（2026-11-07）
+
+原生记账识别与 CLI 路由必须一致：`session tasks review --data` 仅在 payload.kind 为 review 时等价于既有 `session tasks --data`。在 PreToolUse 识别，避免评审自身产生业务 evidence/revision；根工具完成仍按精确 action/receipt/session/current attempt 校验，CAS 不放宽，复合 shell 不纳入此例外。
+
+已持久化终态且有精确根回执的 blocked/needs_user assessment 只暂停自动执行。新的可信人工要求可沿同一 execution 重新核对原阻断，必须将原原因传给模型，不能把人工补充等同于补齐身份、权限或所有业务条件。临时只读核查本身不恢复任务。原任务 ID/范围/验收条件/证据/累计次数保留；未知写入、unknown child、未结算前轮、当前审批和后台工作仍优先拒绝。系统故障替换了原 reason、原 review 不匹配或未确认时不使用此接续条件。前述“不得绕过业务阻断”指不得推定条件已解除，不代表拒绝用户回答或继续核对的输入。

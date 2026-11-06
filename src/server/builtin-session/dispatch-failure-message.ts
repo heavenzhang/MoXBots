@@ -7,6 +7,8 @@ export function preDispatchFailureMessage(result: DispatchGuardResult): string {
     WAITING_FOR_USER: '已有待确认事项，请先处理会话中的提问或审批。',
     BACKGROUND_WORK_ACTIVE: '后台工作尚未结束，请在任务详情查看其进度。',
     EXECUTION_PREVIOUS_TURN_UNSETTLED: '上一轮还未完成结果核对，请查看任务进度。',
+    EXECUTION_REQUIRES_REVIEW: '任务仍有未核实的暂停原因，请查看执行详情。',
+    EXECUTION_DISPATCH_OUTCOME_UNKNOWN: '上一轮是否开始执行尚未确认，请先核查原操作结果。',
     EXECUTION_ALREADY_COMPLETED: '原任务已完成，请查看已有成果。',
   };
   const reason = result.error && reasons[result.error];

@@ -2899,3 +2899,10 @@ describe('internal CLI command admission', () => {
     expect(buildRequestBody('task', 'update', ['task-id'], { name: 'renamed' })).not.toHaveProperty('executionMode');
   });
 });
+
+// The native bookkeeping parser must recognize every supported review spelling.
+it('preserves the exact task review body for the positional review spelling', () => {
+  const action = { kind: 'review', taskId: 'step', attemptId: 'main', decision: 'accept', expectedRevision: 12, evidence: 'Verified' };
+  expect(buildRequestBody('session', 'tasks', ['review'], { data: JSON.stringify(action), json: true }))
+    .toEqual({ ...action, sessionId: process.env.MYAGENTS_SESSION_ID });
+});

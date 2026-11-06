@@ -224,8 +224,20 @@ function humanContinuationBlock(
     execution.lastSettledQueueId !== execution.currentQueueId
   )
     return "EXECUTION_PREVIOUS_TURN_UNSETTLED";
+  // A root-confirmed assessment pauses automatic work; the next trusted human
+  // input is how the user supplies clarification or asks us to recheck it.
+  // Only that exact settled assessment is resumable, never a system fault that
+  // subsequently replaced it. Native side-effect and live-owner gates still run.
+  const review = ledger.executionReview;
+  const humanResponseToAssessment = execution.phase === "paused"
+    && ["blocked", "needs_user"].includes(execution.assessment?.decision ?? "")
+    && execution.reason === execution.assessment?.summary
+    && !!review?.committedBy
+    && review.queueId === execution.currentQueueId
+    && JSON.stringify(review.assessment) === JSON.stringify(execution.assessment);
   if (
     ["paused", "incomplete"].includes(execution.phase) &&
+    !humanResponseToAssessment &&
     ![
       "stopped",
       "user_stopped",
@@ -459,6 +471,10 @@ export async function prepareSessionExecution(
       ? intent.continuationOf
       : undefined;
   const previous = currentLedger(request.sessionId)?.execution;
+  const assessmentResponseReminder = continues && previous?.id === continues && previous.phase === 'paused'
+    && ['blocked', 'needs_user'].includes(previous.assessment?.decision ?? '')
+    ? `<system-reminder><SESSION_EXECUTION>本次人工输入允许重新核对原任务，不代表上轮阻断已解除。上轮阻断：${escapeSystemReminderText(previous.reason ?? '')}。结合本次补充核实条件；仍缺业务身份、权限或必要信息时继续询问，不推定已获得授权，也不重复结果未知的操作。</SESSION_EXECUTION></system-reminder>`
+    : '';
   const stagedExecution =
     intent?.kind === "execute" && !intent.preserveExecution && engine.kind === "builtin"
       ? continues
@@ -655,7 +671,7 @@ export async function prepareSessionExecution(
         ? executionReminder(request.sessionId, stagedExecution)
         : previous && engine.kind === 'builtin'
           ? `<system-reminder><SESSION_EXECUTION>本轮只读核对不恢复原任务写入权限，也不创建替代执行。只读入口包括 Read、Grep、Glob、TaskList、TaskGet 和直接 ${APP_CLI_NAME} session tasks --json；实际工具权限与具体操作防重放保护仍由运行时裁决。${recoveryGuidance}不要仅凭历史报错要求新建会话；区分本轮实际成功的核对、旧错误与仍未知的原操作。</SESSION_EXECUTION></system-reminder>`
-          : "") + (taskPlanId && intent?.kind === "execute" && !intent.preserveExecution
+          : "") + assessmentResponseReminder + (taskPlanId && intent?.kind === "execute" && !intent.preserveExecution
         ? taskPlanReminder(taskPlanId, stagedExecution?.intent.steps ?? intent.steps ?? [])
         : "")) || undefined,
       // A continuation must retain its original transcript root until the
