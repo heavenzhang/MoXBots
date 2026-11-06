@@ -25,6 +25,8 @@
 
 ## Verification
 
+- Source digest: `74747e47ca8c6f09e71330e50a6f8db302bc9d4d412a290f371ddddc2ca8feb0`; 已测生产源码仍为b428ebd7；一次真实upstream observer到gateway_response_admitted/native_turn_completed、非空165字符、无主任务；源码31项单元/typecheck/lint仍适用。
+
 - Source digest: `74747e47ca8c6f09e71330e50a6f8db302bc9d4d412a290f371ddddc2ca8feb0`; 旧代码正向红例稳定失败；修复后31项utility单元通过；完整npm run typecheck、定向ESLint、git diff --check通过。实际新候选原生验收待桌面唯一负责人。
 
 红例见本机 /tmp/mox-utility-metadata-red.log，正向旧代码失败，其余 8 个拒绝边界通过。完整检查和精确源码核验在本次保存时追加。
@@ -33,6 +35,8 @@
 
 官方原生实现亦保留该类型作为元数据事件。
 https://github.com/openai/codex/blob/main/codex-rs/codex-api/src/sse/responses.rs
+
+真实上游补充观察已通过。精确 b428ebd7 源码，1 次受控分类 utility、主任务执行为 0，阶段为 gateway_response_admitted 和 native_turn_completed，返回非空 165 字符。私有证据位置为工作区 work/MB-CHAT-STYLE-20261104/metadata-20261106/fixed-source-utility-control.json，未存正文或凭据。helper 环境成功不替代已安装客户端、任务 JSON 准入和整轮折叠验收。
 
 ## Blockers and unknowns
 
