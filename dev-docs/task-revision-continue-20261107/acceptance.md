@@ -14,8 +14,9 @@
 - [x] 旧源码反事实：4 个新增检查失败，包含实际 native start revision 4→5 自冲突。
 - [x] 初步修复：相同 4 项通过。
 - [x] 完整受影响回归 7 文件 / 438 项通过，TypeScript、受影响 ESLint、分类和 diff 检查通过。
-- [ ] 提交、推送精确源码并由原负责人审阅集成远端 main。
-- [ ] 原桌面负责人构建下一不可变候选、安装并验证原会话。
+- [x] 源码07dcf4d2701b03b165292f339ef9ac2cce7caa4f已推送，原负责人PR258集成main4ceeb2d21acc164487ef199b4a5788d7d27c65f1；后续maina650939d2c38b8dc04750e282b159ddaac8ea346仍包含本修复。
+- [x] 原负责人安装0.5.43/543.3同份签名归档；原业务负责人在原execution恢复执行并完成5/5，Root独立核实持久化。
+- [ ] 正式更新通道晋级由原负责人后续统一批次完成；未把本地修复当公开发布。
 
 ## 证据与边界
 
@@ -26,3 +27,11 @@ desktop/macOS-arm64/updater/sharedCI/main 仍唯一负责人 `01a12bc2-907a-7702
 验证命令：内置 Node v24 + `vitest run --project unit` 的 sessionTaskReviewCommand、sessionTaskOrchestration、sessionExecution、CLI、dispatch-failure-message，以及 `--project integration` 的 session-execution/task-orchestration；438/438。`tsc --noEmit`、受影响文件 ESLint、check-test-classification、git diff --check 全通过。
 
 旧临时检查测试末尾原来期待新人工请求永远被模型业务说明拒绝；现在保留“检查期间原 execution/证据/评审完全不变”断言，并验证新人工接续携带原阻断、仍缺身份时再次 paused，自动接续次数为0。这是本次修复的行为变化，不等同于自动解除业务限制。
+
+## 真实验收回执（2026-11-07）
+
+原execution `7c78b227-4644-41cf-996d-e9dba38aeda3` 已完成，五步均有accept评审，rootToolUseId `call_8a2469efc13643ef9eef2985`，持久化revision1613、pendingMutatingCount0。已交付HTML/Markdown图文趋势版，原负责人记录210项业务核验。业务材料未外发；具体行情内容与结论不由这次产品修复的438项源码测试证明。
+
+543.3源码6789cf4444a68bd0afa4c97e2838c605edf3a195，归档SHA256 `055d4275e60a6019c4bd1689069f0ba7746e633a4fabffe170c3675adc57ec6c`。原生回执在交付工作区 `work/task-revision-continue-root-20261107/owner/original-report-root-completion-review.json`，业务回执 `work/MB-EXECUTION-REMEDIATION-20261107/original-report-completed.json`。原生日志中间出现真实502，原负责人在确认已结算/无未知写入后恢复完成；不宣称所有供应商故障均已解决。
+
+后续543.4已在本机安装，并有独立的冷恢复409提示验收失败，正在543.5补修；这些后续场景与本次原会话完成分别追踪。公开通道尚未晋级本修复，原桌面负责人仍独占正式发布。
