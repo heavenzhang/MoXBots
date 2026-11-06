@@ -1,0 +1,70 @@
+{
+  "task": "MB-SIMPLE-UX-20261105-P2",
+  "baseline": "59e0277a518d8b221bc5756bb890da1f91d4417b",
+  "source": "codex/simple-ux-results-20261106",
+  "local": {
+    "unit": 88,
+    "dom": 91,
+    "theme": 8,
+    "type": "PASS",
+    "changedEslint": "PASS",
+    "classification": "PASS",
+    "dependencyCruiser": {
+      "errors": 0,
+      "warnings": 20
+    },
+    "moxbotRendererBuild": "PASS",
+    "independentNewCases": 14
+  },
+  "ui": {
+    "tool": "Codex in-app browser",
+    "data": "synthetic transcript and preview/navigation callbacks, real production component",
+    "viewports": [
+      {
+        "width": 1280,
+        "height": 900
+      },
+      {
+        "width": 390,
+        "height": 844,
+        "pageWidth": 390,
+        "dialogWidth": 364
+      },
+      {
+        "width": 320,
+        "height": 740,
+        "pageWidth": 320,
+        "dialogWidth": 294
+      }
+    ],
+    "appearance": [
+      "dark",
+      "light"
+    ],
+    "passed": [
+      "open autofocus",
+      "search",
+      "preview delegation",
+      "source delegation",
+      "Escape focus return",
+      "earlier records failure preserves files",
+      "earlier records success",
+      "final page returns focus to search"
+    ],
+    "finalPageActiveTag": "INPUT",
+    "finalPageActiveLabel": "搜索本会话文件",
+    "realFileIO": "NOT_VERIFIED",
+    "native": "NOT_VERIFIED",
+    "devHotReload": "One fixture createRoot warning observed during editing; fixture now disposes root on HMR, no zero-console claim"
+  },
+  "review": {
+    "renameOldLinks": "CLOSED",
+    "reparseHistory": "CLOSED",
+    "hiddenTabPortal": "CLOSED",
+    "finalPageFocus": "CLOSED",
+    "allNewCases": 14
+  },
+  "main": "PENDING_ORIGINAL_OWNER",
+  "sharedCI": "NOT_TRIGGERED",
+  "artifact": "NOT_BUILT"
+}

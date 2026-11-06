@@ -309,7 +309,7 @@ describe('App Shell chrome contract', () => {
 
     expect(chat).toMatch(/const \[workspacePanelDisclosure, dispatchWorkspacePanelDisclosure\]\s*=\s*useReducer\(/);
     expect(chat).toContain('reduceWorkspacePanelDisclosure,');
-    expect(chat).toMatch(/\(\) =>\s*createWorkspacePanelDisclosureState\(shouldShowWorkspaceByDefault\(\)\),/);
+    expect(chat).toMatch(/\(\) =>\s*createWorkspacePanelDisclosureState\(shouldShowWorkspaceByDefault\(agentDir\)\),/);
     expect(chat).toContain("dispatchWorkspacePanelDisclosure({ type: 'open' });");
     expect(chat).toContain("dispatchWorkspacePanelDisclosure({ type: 'close' });");
     expect(chat).toContain("dispatchWorkspacePanelDisclosure({ type: 'settle-close' });");

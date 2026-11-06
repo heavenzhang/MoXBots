@@ -1,0 +1,37 @@
+{
+  "task": "MB-SIMPLE-UX-20261105",
+  "baseline": "39b3447659dd92e71f9bb86bf12f2326bb3e5fcd",
+  "local": {
+    "unit": 28,
+    "dom": 173,
+    "adjacentDom": 27,
+    "theme": 8,
+    "typecheck": "PASS",
+    "changedFileEslint": {
+      "errors": 0,
+      "warnings": 0
+    },
+    "dependencyCruiser": {
+      "errors": 0,
+      "warnings": 20
+    },
+    "classification": "PASS",
+    "rendererBuild": "PASS",
+    "moxbotRendererBuild": "PASS",
+    "reviewFixDom": 26
+  },
+  "browser": {
+    "status": "BLOCKED_BY_WORK_SETTINGS",
+    "observedError": "Local browser use is disabled in Work settings"
+  },
+  "main": "PENDING_OWNER",
+  "sharedCI": "NOT_TRIGGERED",
+  "formalArtifact": "NOT_BUILT",
+  "installedUI": "NOT_VERIFIED",
+  "realBusinessWrite": "NOT_APPLICABLE",
+  "review": {
+    "status": "PASS",
+    "P2": "closed",
+    "independentDom": 7
+  }
+}

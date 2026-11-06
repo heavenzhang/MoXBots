@@ -13,6 +13,7 @@ import { NATIVE_RESUME_BOUNDARY_MESSAGE } from '../../shared/nativeResumeBoundar
 import { projectErrorMessageResend, projectErrorRecovery, type ErrorRecovery } from './errorMessageResend';
 import { ErrorRecoveryAction } from '@/components/ErrorRecoveryAction';
 import { useChatDraftScope } from "@/hooks/useChatDraftScope";
+import { SessionFilesButton } from '@/components/SessionFilesButton';
 import type { SessionPlanTarget } from '../../shared/sessionPlanConfirmation';
 import { useNextPromptSuggestion } from '@/hooks/useNextPromptSuggestion';
 import TaskDiscussionRecovery from "@/components/TaskDiscussionRecovery";
@@ -308,6 +309,8 @@ import {
   DEFAULT_WORKSPACE_LAYOUT_METRICS,
   nextSplitViewAfterBrowserClose,
   reduceWorkspacePanelDisclosure,
+  readWorkspacePanelPreference,
+  rememberWorkspacePanelPreference,
   resolveWorkspacePanelMode,
   shouldPresentBrowserFullscreen,
 } from '@/utils/chatWorkspaceLayout';
@@ -378,27 +381,13 @@ function readWorkspaceLayoutMetrics(): WorkspaceLayoutMetrics {
   };
 }
 
-const WORKSPACE_PANEL_PREFERENCE = 'moxbots.chat.workspace-panel';
-
-function shouldShowWorkspaceByDefault(): boolean {
-  try {
-    if (localStorage.getItem(WORKSPACE_PANEL_PREFERENCE) !== 'open') return false;
-  } catch {
-    return false;
-  }
+function shouldShowWorkspaceByDefault(workspacePath: string): boolean {
   const metrics = readWorkspaceLayoutMetrics();
-  return (
-    metrics.viewportWidthPx - metrics.sidebarMinWidthPx >=
-    metrics.contentMinWidthPx
-  );
-}
-
-function saveWorkspacePanelPreference(open: boolean): void {
-  try {
-    localStorage.setItem(WORKSPACE_PANEL_PREFERENCE, open ? 'open' : 'closed');
-  } catch {
-    // The panel remains usable when browser storage is unavailable.
-  }
+  return readWorkspacePanelPreference(workspacePath, resolveWorkspacePanelMode({
+    ...metrics,
+    splitPanelVisible: false,
+    splitRatio: 1,
+  }));
 }
 
 // Lazy load FilePreviewModal for split view panel
@@ -1028,7 +1017,7 @@ function ChatContent({
   // does not block the chat before the user explicitly opens it.
   const [workspacePanelDisclosure, dispatchWorkspacePanelDisclosure] =
     useReducer(reduceWorkspacePanelDisclosure, undefined, () =>
-      createWorkspacePanelDisclosureState(shouldShowWorkspaceByDefault()),
+      createWorkspacePanelDisclosureState(shouldShowWorkspaceByDefault(agentDir)),
     );
   const {
     visible: showWorkspace,
@@ -1046,13 +1035,14 @@ function ChatContent({
     dispatchWorkspacePanelDisclosure({ type: 'open' });
   }, [clearWorkspacePanelUnmountTimer]);
   const handleCollapseWorkspace = useCallback(() => {
+    rememberWorkspacePanelPreference(agentDir, false);
     clearWorkspacePanelUnmountTimer();
     dispatchWorkspacePanelDisclosure({ type: 'close' });
     workspacePanelUnmountTimerRef.current = window.setTimeout(() => {
       dispatchWorkspacePanelDisclosure({ type: 'settle-close' });
       workspacePanelUnmountTimerRef.current = null;
     }, WORKSPACE_PANEL_TRANSITION_MS);
-  }, [clearWorkspacePanelUnmountTimer]);
+  }, [agentDir, clearWorkspacePanelUnmountTimer]);
   useEffect(
     () => clearWorkspacePanelUnmountTimer,
     [clearWorkspacePanelUnmountTimer],
@@ -4204,8 +4194,9 @@ function ChatContent({
     active: chatSearchOpen,
   });
 
-  const handleLoadOlderMessages = useCallback(() => {
-    void loadOlderMessages({
+  const handleLoadOlderMessages = useCallback((onError?: (error: unknown) => void) => {
+    return loadOlderMessages({
+      onError,
       beforePrepend: () => {
         const anchor = captureAnchor('prepend-older');
         if (anchor) {
@@ -4214,6 +4205,11 @@ function ChatContent({
       },
     });
   }, [captureAnchor, loadOlderMessages, preserveAnchorAfterPrepend]);
+  const handleLoadEarlierFiles = useCallback(async () => {
+    let failure: { error: unknown } | undefined;
+    await handleLoadOlderMessages(error => { failure = { error }; });
+    if (failure) throw failure.error;
+  }, [handleLoadOlderMessages]);
   const chatSearchSetQueryRef = useRef(chatSearch.setQuery);
   chatSearchSetQueryRef.current = chatSearch.setQuery;
   const closeChatSearch = useCallback(() => {
@@ -6540,6 +6536,8 @@ function ChatContent({
                       )}
               </button>
               {/* Developer setting keeps this legacy entry reversible while it is phased out. */}
+              <SessionFilesButton key={sessionId ?? 'pending'} active={isActive} messages={chatScrollModel.data}
+                hasMoreBefore={_hasMoreBefore} onLoadOlder={handleLoadEarlierFiles} onNavigate={handleNavigateToQuery} />
               {isChatHistoryEntryVisible && (
                 <>
                   {/* History button */}
@@ -6601,7 +6599,7 @@ function ChatContent({
                   <button
                     type="button"
                     onClick={() => {
-                      saveWorkspacePanelPreference(true);
+                      rememberWorkspacePanelPreference(agentDir, true);
                       handleExpandWorkspace();
                     }}
                     aria-label={t('shell.header.expandWorkspace')}
@@ -7189,10 +7187,7 @@ function ChatContent({
                 provider={effectiveModelProvider}
                 providers={providerUiProviders}
                 onProviderChange={handleProviderChange}
-                onCollapse={() => {
-                  saveWorkspacePanelPreference(false);
-                  handleCollapseWorkspace();
-                }}
+                onCollapse={handleCollapseWorkspace}
                 onOpenConfig={handleOpenAgentSettings}
                       refreshTrigger={
                         toolCompleteCount + workspaceRefreshTrigger

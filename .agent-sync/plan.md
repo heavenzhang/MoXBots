@@ -1398,3 +1398,26 @@ R2真实验收补充：543.3原群报告已在同execution完成5项验收；真
 用户要求继续简洁Bot协作开发。codex/bot-collaboration-20261107基于mainbfbc92f：本地项目会话session start沿原Inbox保留来源固定projectSpace背景，按当前成员/工作区重新核对目标出生，模型/权限仍取接收Bot；单个隐藏send.request携带固定配置，外部/跨设备不继承，不放宽动态历史。无新Store/队列/持久群schema。稳定清单与验证见dev-docs/bot-collaboration-20261107/；群主题、成员入口与真实模型联调仍未完成。
 
 原desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4；本分支只本地检查/保存/交接，不触发共享CI/正式构建/安装或分配版本。无其他单元/迁移依赖。前两批SimpleUX组合8240ddbc仍是独立待收源，当前分支不把其main/发行门禁算作已完成。
+
+
+## MB-SIMPLE-UX-20261105 — 简洁界面首批（2026-11-06）
+
+用户确认四场景示意并要求逐步实现。独立codex/simple-ux-20261105基于main39b344765：UX-01工作区默认收起并按workspace保存主动显隐；窄窗启动不恢复overlay；临时文件定位沿原disclosure不改默认。UX-02去摘要外围框，UX-05工具图标/自动模型紧凑且完整名称可键盘查看，权限常显。UX-03/04/06复用已有恢复卡/安全核对/草稿/滚动/IME/排队，228本地回归、8主题、类型/定向lint/分类和moxbot renderer构建通过。真实页面被Work浏览器设置禁用，原生/main/CI/正式发行未冒称通过。稳定清单与验收dev-docs/simple-ux-20261105/{PLAN,acceptance}.md，任务.agent-sync/tasks/codex-simple-ux-20261105-19cd5d6a.md。
+
+部署单元desktop/macOS-arm64/updater/sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；开发只保存精确源码与证据后提交下一未冻结批请求，不另触发PR/共享CI、不分配版本、不覆盖542.1、不重启日常客户端。无其他单元或迁移依赖；UI与源审门禁另列，G-02继续待owner统一处理。
+
+
+## MB-SIMPLE-UX-20261105-P2 — 会话成果入口（2026-11-06）
+
+继续用户确认的逐步实施，独立codex/simple-ux-results-20261106基于main59e0277。UX-09a/09b/10a提供标题栏按需“成果与文件”，从成功结构化记录与助手Markdown本地链接投影去重文件，搜索/原FileAction重验预览/回来源/原历史分页锚点与错误。无新持久索引或业务权限，默认关闭不解析，稳定文本WeakMap缓存，旧重命名链接不复活、删除不冒充可用；active沿原Chat useTabActive防缓存Tab portal残留。88unit+91DOM+8theme、类型/lint/分类/renderer构建与独立14项通过；IAB实际组件页1280/390/320通过，合成数据/委托不替代真实文件IO和完整原生。清单/验收dev-docs/simple-ux-results-20261106/{PLAN,acceptance}.md，task.agent-sync/tasks/codex-simple-ux-results-20261106-ae5e1f85.md。
+
+首批59faa99与本批各自交既有desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4统一审核/CI/main与下一未冻结包；不另触发PR/共享CI/版本/安装，不改542.2/stable0.5.36或其他制品。无其他单元/迁移依赖，真实原生文件路径与发行仍待验；其余UX项保持后续清单。
+
+
+## MB-BOT-CORE-20261106 — Bot协作核心与两批主干准备
+
+用户要求合入SimpleUX两批并明确桌面端以Bot协作为核心。独立codex/bot-collaboration-main-ready-20261106基于main05ea1e2，包含59faa99与f815453祖先，保留当前主干稳定性与两批功能；workspace偏好显式选择优先，旧window key只读回退。360定向回归+8主题、类型/lint/分类/build与独立34项通过。本地冲突处理截断曾发生，未用作交接候选；已从精确main恢复完整文件并复审关闭，证据dev-docs/bot-collaboration-core-20261106/acceptance.md。
+
+产品主线：用户向负责Bot交代目标→成员分工/真实交接→成果回报→负责Bot核验汇总→必要用户决定。主界面围绕Bot/协作/成果，项目保留为固定上下文，任务/工具/目录按需展开。BC-00～05稳定清单见dev-docs/bot-collaboration-core-20261106/PLAN.md；下一重点BC-02/03同账号同设备两个稳定Bot的单次协作闭环，不把子Agent角色面板算作M3完成；新增群状态/命令owner契约先明确后实施。
+
+main/共享CI/desktop/macOS-arm64/updater唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，开发只交组合源码，不另开CI/PR/正式构建/版本/安装，不改变其543.1/543.2安排。无其他部署单元或迁移。本地通过不等同于远端main或原生验收。
