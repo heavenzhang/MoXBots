@@ -37,3 +37,19 @@ Local-only implementation handoff by parent instruction: no push, shared CI or r
 ## Next step
 
 Parent owner reviews the scoped commit, integrates it into the overall Bot-care candidate, and passes exact SHA with these evidence boundaries to the existing desktop CI/release owner.
+
+
+## Follow-up: BOT-CARE-DOCUMENTS-20261107
+
+Parent assigned `BotCareDocuments.tsx` with a `forwardRef` exposing `isEditing()`, scoped exclusively to new document component, discovery helper and tests. Definitions are discovered from existing root CLAUDE.md / AGENTS.md plus direct .claude/rules Markdown; memory includes existing root MEMORY.md, memory-named rules, and memory Markdown subdirectories. Traversal is capped at 200 files, 32 directories and four subdirectory levels. No second storage or assumed 04-MEMORY template is created.
+
+- [x] DOCS-01: All IO uses `useWorkspaceFileService(agentDir)`, with generation-fenced discovery and file-read results.
+- [x] DOCS-02: Existing FilePreviewModal owns draft/conflict/save behavior. Preview state captures its original workspace and stays mounted if parent props unexpectedly change; isEditing remains true until modal-authorized close. File loading and creation also hold the parent guard.
+- [x] DOCS-03: Explicit missing-definition and named-memory-note creation calls existing newFile; subsequent edits remain in existing editor. Collisions surface as errors, preserve the note name, and never invoke a fallback save.
+- [x] DOCS-04: 14 inventory/helper tests, 6 new DOM tests, plus all 29 existing FilePreviewModal live-reload/conflict tests pass (49 tests total). Full TypeScript noEmit and changed-file ESLint pass.
+- [ ] DOCS-05: Parent integrates component and translations into care center, arranges independent visual review and native file IO acceptance.
+- [ ] DOCS-06: Existing Rust newFile implementation uses existence-check followed by fs::write. Parent was informed to replace it with the existing exclusive no-follow creation primitive before claiming race-safe creation. Rust file is outside this worker's assigned scope.
+
+Translation keys are under app:botCare.docs: contextChanged, invalidName, createFailed, definitionTitle, memoryTitle, description, refresh, loading, empty, truncated, createDefinition (path interpolation), noteName, notePlaceholder, createNote, opening. Parent owns locale files; component supplies Chinese defaultValue fallbacks.
+
+Next: parent reviews the follow-up exact commit, integrates the component and locale keys, and closes DOCS-06 in its separately owned Rust change. No actual app operation, shared CI, production write or release was performed.
