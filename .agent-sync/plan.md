@@ -1313,3 +1313,10 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 MB-FORM-SCROLLBARS-20261106 Root intake: producerbacd source/UI evidence independently reviewed; PR253 firstCI exposed existing NewAgentPanel pre-settlement staleDOM assertion. Controlleddeferred RED proves editedtextarea query before save is detached on correct detailreturn. Root changes only test settlement, 26DOM/type/lint PASS; exactnewheadCI/main and nextunfrozen native stillpending. Sole desktop/sharedCI/main owner01a12bc2; current5424 immutable. Rootbranch codex/form-scrollbars-integration-20261106, PR253 sameSHA FF headalias after originalalljobs terminal; no cancellation/rerun or competingpublisher.
 
 MB-FORM-SCROLLBARS-20261106 continuinguserdelivery: soleRootowner reserves0.5.42/build542.5 nextunfrozen desktopcandidate to include reviewed scrollbarfix and Rootdeterministic template-save testsettlement plus already-main metadata/MCP fixes. 542.4 originalarchive/stage remains immutable/uninstalled; combine necessarychanges into one safe maintenance window after5425admission. ExactsourceCI/main/nativeproject-settings-chat longtext/sameartifact101 remain pending. No SimpleUX/jitterunavailablecode/cloud/mobile expansion.
+
+
+## MB-CHAT-JITTER-20261106 — source repair ready for desktop intake
+
+- 2026-11-06：codex/chat-jitter-20261106，源码修复062c2f6fe4091309e6b5ce126b65fc894f05c270；已同步main66f76d734并核实远端工作分支。grow/clamp/unmount循环已在WebKit及Mac WKWebView110%旧码反事实复现，修复通过；完成Footer漏算16px修正。
+- 新增双引擎真实组件回归与完整滚动基线、68项DOM、原生隔离对照及类型/lint通过；证据dev-docs/chat-jitter-20261106/acceptance.md和evidence.json。
+- desktop/macOS-arm64/updater/sharedCI/main仍由01a12bc2-907a-7702-b6dd-788225c5dfe4统一接收、评审、下一未冻结批和原会话安装验收。本开发会话不触发共享CI、正式构建/安装或版本分配；不能把542.5或暂时停稳视为包含/验收此修复。

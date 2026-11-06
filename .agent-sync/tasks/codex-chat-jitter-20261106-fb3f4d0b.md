@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=dc7ed98d2b723296256c5805a572d3d4d3cdd91220b13b67bcc0f1864650d45d -->
+<!-- git-project-sync-task:source-digest=e411306b3ca746088ea82266403246aaa4fd26f731f0c9eef32462213b7c2ca2 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=1520b587-2cdb-4730-bfb7-355f23cbdb7f -->
 <!-- git-project-sync-task:branch=codex/chat-jitter-20261106 -->
@@ -17,7 +17,7 @@ MB-CHAT-JITTER-20261106：找到持续上下跳动根因并修复，交既有桌
 - [x] 真实MessageList/Virtuoso中确定复现持续往返，退回旧逻辑会失败，保留失败与反证。
 - [x] 跟随不越过已测量模型，待测消息保持挂载；Footer自然底部与模型一致。
 - [x] 定向DOM 68项及WebKit/Chromium新增回归通过，手动阅读、恢复和显式回底保留。
-- [ ] 最终合并树相称检查、远端工作分支与精确SHA交接。
+- [x] 同步main后的相称检查、源码提交与远端工作分支已核实：062c2f6fe4091309e6b5ce126b65fc894f05c270。
 - [ ] 桌面owner统一main/共享CI/构建安装及真实原会话验收；不以夹具或短时停稳代替。
 
 ## Completed
@@ -27,9 +27,11 @@ MB-CHAT-JITTER-20261106：找到持续上下跳动根因并修复，交既有桌
 - [x] 确认grow/clamp/unmount根因：原生overflow领先size tree，旧follow越界导致空range并卸载待测尾行。WebKit和Mac WKWebView 110%均确定复现逐帧往返。
 - [x] 同一motion owner读取既有extent上限、观察实际投影提交、保留安全像素接管；Footer flow-root修正漏算16px。
 - [x] 真实任务Footer/测量延迟双引擎回归、StrictMode与嵌套作用域单测、全滚动WebKit/Chromium基线、原生110%对照及最终类型/lint通过。
-- [ ] 最终检查、提交/远端/发布交接。
+- [x] 最终检查、源码提交和远端工作分支完成；发布交接要求见下。
 
 ## Verification
+
+- Source digest: `e411306b3ca746088ea82266403246aaa4fd26f731f0c9eef32462213b7c2ca2`; Documentation only after source commit062c2f6; source and remote verified; WebKit/Chromium full and focused scroll checks PASS; native WK110 old motion FAIL vs fixed PASS; DOM68, tsc, targeted lint and diff checks PASS; no shared CI or installed acceptance performed by this task.
 
 - Source digest: `dc7ed98d2b723296256c5805a572d3d4d3cdd91220b13b67bcc0f1864650d45d`; PASS: WebKit and Chromium full verify-chat-scroll; task-footer measurement handoff regression on both engines with 6.5s idle zero scroll writes; native WKWebView 110 percent old motion FAIL versus fixed PASS; targeted DOM 68/68; tsc --noEmit; targeted ESLint; doc-link tests 4/4; git diff --check. Current main 66f76d734 merged; installed original-session acceptance remains with existing desktop owner.
 
@@ -51,4 +53,4 @@ DOM68项通过；新增WebKit/Chromium回归通过；现有完整verify-chat-scr
 
 ## Next step
 
-完成最终相称检查、提交和远端核实后，向现有桌面owner发送精确SHA、根因、反事实失败、通过证据及原会话验收要求，并取得接收状态；main与安装验收由该owner统一维护，不抢占或覆盖冻结批。
+现有桌面owner接收本分支的精确候选后，统一main/共享CI/下一未冻结版本及原会话验收；不抢占或覆盖冻结批。源码修复SHA为062c2f6fe4091309e6b5ce126b65fc894f05c270；分支最终tip还包含交接记录，以远端snapshot核实。建议整分支PR集成，保留此前排查记录，避免单独cherry-pick造成新增文档的modify/delete冲突。
