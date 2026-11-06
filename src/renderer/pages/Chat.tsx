@@ -7217,10 +7217,7 @@ function ChatContent({
                 provider={effectiveModelProvider}
                 providers={providerUiProviders}
                 onProviderChange={handleProviderChange}
-                onCollapse={() => {
-                  rememberWorkspacePanelPreference(agentDir, false);
-                  handleCollapseWorkspace();
-                }}
+                onCollapse={handleCollapseWorkspace}
                 onOpenConfig={handleOpenAgentSettings}
                       refreshTrigger={
                         toolCompleteCount + workspaceRefreshTrigger

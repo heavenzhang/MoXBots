@@ -1346,3 +1346,12 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 继续用户确认的逐步实施，独立codex/simple-ux-results-20261106基于main59e0277。UX-09a/09b/10a提供标题栏按需“成果与文件”，从成功结构化记录与助手Markdown本地链接投影去重文件，搜索/原FileAction重验预览/回来源/原历史分页锚点与错误。无新持久索引或业务权限，默认关闭不解析，稳定文本WeakMap缓存，旧重命名链接不复活、删除不冒充可用；active沿原Chat useTabActive防缓存Tab portal残留。88unit+91DOM+8theme、类型/lint/分类/renderer构建与独立14项通过；IAB实际组件页1280/390/320通过，合成数据/委托不替代真实文件IO和完整原生。清单/验收dev-docs/simple-ux-results-20261106/{PLAN,acceptance}.md，task.agent-sync/tasks/codex-simple-ux-results-20261106-ae5e1f85.md。
 
 首批59faa99与本批各自交既有desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4统一审核/CI/main与下一未冻结包；不另触发PR/共享CI/版本/安装，不改542.2/stable0.5.36或其他制品。无其他单元/迁移依赖，真实原生文件路径与发行仍待验；其余UX项保持后续清单。
+
+
+## MB-BOT-CORE-20261106 — Bot协作核心与两批主干准备
+
+用户要求合入SimpleUX两批并明确桌面端以Bot协作为核心。独立codex/bot-collaboration-main-ready-20261106基于main05ea1e2，包含59faa99与f815453祖先，保留当前主干稳定性与两批功能；workspace偏好显式选择优先，旧window key只读回退。360定向回归+8主题、类型/lint/分类/build与独立34项通过。本地冲突处理截断曾发生，未用作交接候选；已从精确main恢复完整文件并复审关闭，证据dev-docs/bot-collaboration-core-20261106/acceptance.md。
+
+产品主线：用户向负责Bot交代目标→成员分工/真实交接→成果回报→负责Bot核验汇总→必要用户决定。主界面围绕Bot/协作/成果，项目保留为固定上下文，任务/工具/目录按需展开。BC-00～05稳定清单见dev-docs/bot-collaboration-core-20261106/PLAN.md；下一重点BC-02/03同账号同设备两个稳定Bot的单次协作闭环，不把子Agent角色面板算作M3完成；新增群状态/命令owner契约先明确后实施。
+
+main/共享CI/desktop/macOS-arm64/updater唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，开发只交组合源码，不另开CI/PR/正式构建/版本/安装，不改变其543.1/543.2安排。无其他部署单元或迁移。本地通过不等同于远端main或原生验收。

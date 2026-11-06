@@ -1784,6 +1784,8 @@ const SimpleChatInput = memo(forwardRef<SimpleChatInputHandle, SimpleChatInputPr
                   configControlsLocked ? 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-[var(--ink-muted)]' : ''
                 }`}
                 title={configControlLockTitle ?? t('input.toolsTitle')}
+                aria-label={t('input.toolsLabel')}
+                aria-expanded={toolMenuOpen}
               >
                 <WrenchIcon className="h-3.5 w-3.5" />
                 <span className="sr-only">{t('input.toolsLabel')}</span>
