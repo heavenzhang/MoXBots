@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=e81f319dd89458aaa92f36be341e379c49bd904d504c1dcc3390ea9bd9ebeebe -->
+<!-- git-project-sync-task:source-digest=877e18b564e1fcf2f5527767fb10cb472c4f62f749c4225ee389fa6d8643ee6a -->
 <!-- git-project-sync-task:id=3bb2b55f-d155-40af-b279-4ebea97758b3 -->
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/form-scrollbars-integration-20261106 -->
@@ -9,7 +9,7 @@
 
 ## Objective
 
-MB-FORM-SCROLLBARS-20261106：集成已审producerbacd的输入框/项目表单滚动修复，并诊断原PR253旧NewAgentPanel保存测试异步查询失败。Root负责sharedCI/main与下一未冻结桌面候选；当前5424制品保持不可变。
+MB-FORM-SCROLLBARS-20261106：集成已审producerbacd的输入框/项目表单滚动修复，并诊断原PR253旧NewAgentPanel保存测试异步查询失败。Root负责sharedCI/main与下一未冻结桌面候选；当前5424制品保持不可变；Root预留下一未冻结0.5.42/build542.5，最终新source CI/main后一次包和真实UI闭环。
 
 ## Acceptance criteria
 
@@ -27,7 +27,7 @@ MB-FORM-SCROLLBARS-20261106：集成已审producerbacd的输入框/项目表单�
 
 ## Blockers and unknowns
 
-- 原PR253 actualARM仍运行；不取消/重跑，完整终态后才选择下一候选CI。日常原生窗口由jitterowner只读排查，Root不安装/发消息。初始在producerHEAD调用旧task-init因非mainbase被拒；保留失败，无reset；新branch在实际main初始化PASS后FF生产源码。
+- 原PR253已全部终态8success含实际ARM/1DOMfail/iOSskip；没有取消/重跑，接下来只FF更新同PR新source触发一次自动CI。日常原生窗口由jitterowner只读排查，Root不安装/发消息。初始在producerHEAD调用旧task-init因非mainbase被拒；保留失败，无reset；新branch在实际main初始化PASS后FF生产源码。
 
 ## Next step
 

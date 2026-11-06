@@ -69,3 +69,5 @@ Node 使用现有 `/opt/homebrew/opt/node@24/bin/node`（24.21.0），依赖复�
 Root使用受控未完成save Promise验证：旧findByText实际命中编辑textarea；save完成后编辑页被移除，旧节点的toBeInTheDocument断言稳定失败。原CI日志和定向RED已私密保留。修正仅为测试结清时序：保留trimmed更新参数和详情文本/Create断言，额外断言pending草稿、禁用输入和无Create；act完成save后在waitFor中重新查询返回详情页。无生产实现、timeout、skip或断言豁免改动。
 
 Root定向NewAgentPanel19 + 项目页2/交互5共26 DOM用例、完整TypeScript、scopedESLint及diff检查通过。浏览器布局生产文件与已审producer完全相同，不重复既有矩阵。新head仍需精确自动CI/main和后续安装版验收。原ARM运行不取消或重跑；全部原job终态后才正常FF更新同PR253。Root分支codex/form-scrollbars-integration-20261106为可接续源码记录，PR原head分支后续仅作为同SHA的FF引用；原作者物理工作区不改。冻结542.4不混入本次源码。
+
+Root已按用户持续交付要求预留下一未冻结0.5.42/build542.5；包含上述滚动条修复、测试settlement及已主干的Playwright/Codex metadata修复。旧542.4已签名制品保持不变；新候选精确源、CI/main、签名包、101/本地安装和安全单一UI窗口复验仍分别待完成。窗口当前由jitterowner优先只读观察，不抢占草稿或业务会话。
