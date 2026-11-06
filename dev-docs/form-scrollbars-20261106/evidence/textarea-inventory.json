@@ -1,0 +1,214 @@
+[
+  {
+    "file": "src/renderer/App.tsx",
+    "line": 1833
+  },
+  {
+    "file": "src/renderer/components/AgentDetailPanel.tsx",
+    "line": 690
+  },
+  {
+    "file": "src/renderer/components/BugReportOverlay.tsx",
+    "line": 168
+  },
+  {
+    "file": "src/renderer/components/ChatInput.tsx",
+    "line": 293
+  },
+  {
+    "file": "src/renderer/components/CommandDetailPanel.tsx",
+    "line": 373
+  },
+  {
+    "file": "src/renderer/components/CronTaskDetailPanel.tsx",
+    "line": 296
+  },
+  {
+    "file": "src/renderer/components/DshAgentTreeDialog.tsx",
+    "line": 136
+  },
+  {
+    "file": "src/renderer/components/ExitPlanModePrompt.tsx",
+    "line": 203
+  },
+  {
+    "file": "src/renderer/components/RecoveryActionDetails.tsx",
+    "line": 95
+  },
+  {
+    "file": "src/renderer/components/SettingsHelperInbox.tsx",
+    "line": 257
+  },
+  {
+    "file": "src/renderer/components/SkillDetailPanel.tsx",
+    "line": 533
+  },
+  {
+    "file": "src/renderer/components/SkillDialogs.tsx",
+    "line": 547
+  },
+  {
+    "file": "src/renderer/components/TaskDiscussionRecovery.tsx",
+    "line": 89
+  },
+  {
+    "file": "src/renderer/components/agent-status/OrchestrationPlanCard.tsx",
+    "line": 331
+  },
+  {
+    "file": "src/renderer/components/chat-input/ComposerSurface.tsx",
+    "line": 43
+  },
+  {
+    "file": "src/renderer/components/global-sidebar/NewBotConversationDialog.tsx",
+    "line": 180
+  },
+  {
+    "file": "src/renderer/components/global-sidebar/NewBotConversationDialog.tsx",
+    "line": 276
+  },
+  {
+    "file": "src/renderer/components/launcher/NewAgentPanel.tsx",
+    "line": 1177
+  },
+  {
+    "file": "src/renderer/components/markdown-editor/ConflictComparison.tsx",
+    "line": 123
+  },
+  {
+    "file": "src/renderer/components/task-center/DispatchTaskDialog.tsx",
+    "line": 504
+  },
+  {
+    "file": "src/renderer/components/task-center/DispatchTaskDialog.tsx",
+    "line": 534
+  },
+  {
+    "file": "src/renderer/components/task-center/TaskCommentTimeline.tsx",
+    "line": 587
+  },
+  {
+    "file": "src/renderer/components/task-center/TaskEditPanel.tsx",
+    "line": 685
+  },
+  {
+    "file": "src/renderer/components/task-center/ThoughtCard.tsx",
+    "line": 441
+  },
+  {
+    "file": "src/renderer/components/task-center/ThoughtInput.tsx",
+    "line": 9
+  },
+  {
+    "file": "src/renderer/components/task-center/ThoughtInput.tsx",
+    "line": 113
+  },
+  {
+    "file": "src/renderer/components/task-center/ThoughtInput.tsx",
+    "line": 588
+  },
+  {
+    "file": "src/renderer/components/task-center/editors/TriggerEditor.tsx",
+    "line": 224
+  },
+  {
+    "file": "src/renderer/features/agent-network/AgentRow.tsx",
+    "line": 156
+  },
+  {
+    "file": "src/renderer/features/community/CommunityPage.tsx",
+    "line": 397
+  },
+  {
+    "file": "src/renderer/features/community/CommunityPage.tsx",
+    "line": 477
+  },
+  {
+    "file": "src/renderer/features/feedback/FeedbackDialog.tsx",
+    "line": 155
+  },
+  {
+    "file": "src/renderer/features/project-board/ProjectBoardDetail.tsx",
+    "line": 115
+  },
+  {
+    "file": "src/renderer/features/project-spaces/ProjectConversationDialog.tsx",
+    "line": 85
+  },
+  {
+    "file": "src/renderer/features/project-spaces/ProjectConversationDialog.tsx",
+    "line": 95
+  },
+  {
+    "file": "src/renderer/features/project-spaces/ProjectSpaceEditor.tsx",
+    "line": 45
+  },
+  {
+    "file": "src/renderer/features/project-spaces/ProjectSpaceEditor.tsx",
+    "line": 46
+  },
+  {
+    "file": "src/renderer/features/project-spaces/ProjectSpaceEditor.tsx",
+    "line": 53
+  },
+  {
+    "file": "src/renderer/floating-ball/CompanionWindow.tsx",
+    "line": 1510
+  },
+  {
+    "file": "src/renderer/pages/Chat.tsx",
+    "line": 7797
+  },
+  {
+    "file": "src/renderer/pages/RecordDetail.tsx",
+    "line": 1533
+  },
+  {
+    "file": "src/renderer/pages/RecordDetail.tsx",
+    "line": 2550
+  },
+  {
+    "file": "src/renderer/pages/settings/SettingsPage.tsx",
+    "line": 8263
+  },
+  {
+    "file": "src/renderer/pages/settings/SettingsPage.tsx",
+    "line": 8354
+  },
+  {
+    "file": "src/renderer/pages/space/agents/AgentsWorkspace.tsx",
+    "line": 94
+  },
+  {
+    "file": "src/renderer/pages/space/goals/GoalsWorkspace.tsx",
+    "line": 567
+  },
+  {
+    "file": "src/renderer/pages/space/issues/CreateIssueDialog.tsx",
+    "line": 176
+  },
+  {
+    "file": "src/renderer/pages/space/issues/IssueDetailDrawer.tsx",
+    "line": 623
+  },
+  {
+    "file": "src/renderer/pages/space/issues/IssueDetailDrawer.tsx",
+    "line": 768
+  },
+  {
+    "file": "src/renderer/pages/space/skills/SkillsWorkspace.tsx",
+    "line": 890
+  },
+  {
+    "file": "src/renderer/pages/space/tools/ToolPublishDialog.tsx",
+    "line": 159
+  },
+  {
+    "file": "src/renderer/pages/space/tools/ToolPublishDialog.tsx",
+    "line": 419
+  },
+  {
+    "file": "src/renderer/pages/space/tools/ToolPublishDialog.tsx",
+    "line": 512
+  }
+]

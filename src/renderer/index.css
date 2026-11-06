@@ -8,6 +8,19 @@
    ThemeProvider manages the class based on user preference (light/dark/system). */
 @custom-variant dark (&:where(.dark, .dark *));
 
+@layer base {
+  /* Plain text fields wrap instead of exposing a second scroll axis. Keep
+     vertical scrolling for long drafts and leave editor-owned input sinks and
+     explicitly unwrapped fields to their own viewport/measurement rules. */
+  :where(textarea:not([wrap="off"], .monaco-editor *, .cm-editor *, .xterm *)) {
+    min-width: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
+  }
+}
+
 /* Chat transcript + query index only: keep native scrolling without two visible
    tracks. Other surfaces retain their platform scrollbar and gutter policy. */
 .chat-scroll-surface {

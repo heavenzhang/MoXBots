@@ -1,3 +1,7 @@
+## MB-FORM-SCROLLBARS-20261106 — 输入框与项目表单滚动
+
+任务 `.agent-sync/tasks/codex-form-scrollbars-20261106-c4291ee9.md`，验收 `dev-docs/form-scrollbars-20261106/acceptance.md`。审计 40 个产品文件的 53 处 textarea，通过共享 base 样式统一软换行和仅纵向自动滚动，保留 wrap=off/编辑器内部例外；ProjectSpaceEditor 标题/footer 不压缩，由独立 div 负责表单滚动。真实组件双引擎 192 组、聊天缩放 120 组、59 个不同 DOM 用例、类型/lint/MoXBots Web 构建和主题检查通过。主 Agent 自验，未宣称独立审阅或原生安装验收。desktop/macOS-arm64/updater/sharedCI/main 沿用唯一负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，开发分支交接后由其统一 CI/main/版本/下一未冻结候选与安装版复验，不涉及其他部署单元。
+
 ## MB-SIDEBAR-GRIP-20261031 — 去除拖动提示图标
 
 任务记录 `.agent-sync/tasks/codex-sidebar-grip-20261031-168e5a2c.md`。仅删除侧边栏 GripIcon，保留原拖动/键盘入口；83 项 DOM 回归及定向 lint 通过。desktop builtin client 的 CI/main/版本/构建/发布仍由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 统一负责；开发分支保存后待其纳入下一未冻结批，真实安装版验收未完成，不改变现有发布归属。
@@ -1305,3 +1309,7 @@ Existing desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exac
 ## Root MB-PLAYWRIGHT-20261106 /542.4
 
 Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates producer45f9f5e5 on main14956e2f. Exact bundled Playwright preset directNode+CLI resolves missingnpm-bin127; custom/nonmatching fallback and arguments remain. Allocate0.5.42/build542.4 including already-main Codexmetadatafix. Frozen542.3 is preserved and superseded before daily install/publication; currentApp542.2 remains. Rootaffectedchecks/exactCI/main/newimmutableformal/freshsafemaintenance/nativePlaywright+Codexlongturn/sameartifact101 separately tracked. No cloud/mobile/website deployment or SimpleUX batching. Private evidence work/release-0542-r4-20261106/owner.
+
+MB-FORM-SCROLLBARS-20261106 Root intake: producerbacd source/UI evidence independently reviewed; PR253 firstCI exposed existing NewAgentPanel pre-settlement staleDOM assertion. Controlleddeferred RED proves editedtextarea query before save is detached on correct detailreturn. Root changes only test settlement, 26DOM/type/lint PASS; exactnewheadCI/main and nextunfrozen native stillpending. Sole desktop/sharedCI/main owner01a12bc2; current5424 immutable. Rootbranch codex/form-scrollbars-integration-20261106, PR253 sameSHA FF headalias after originalalljobs terminal; no cancellation/rerun or competingpublisher.
+
+MB-FORM-SCROLLBARS-20261106 continuinguserdelivery: soleRootowner reserves0.5.42/build542.5 nextunfrozen desktopcandidate to include reviewed scrollbarfix and Rootdeterministic template-save testsettlement plus already-main metadata/MCP fixes. 542.4 originalarchive/stage remains immutable/uninstalled; combine necessarychanges into one safe maintenance window after5425admission. ExactsourceCI/main/nativeproject-settings-chat longtext/sameartifact101 remain pending. No SimpleUX/jitterunavailablecode/cloud/mobile expansion.
