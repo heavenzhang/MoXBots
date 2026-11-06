@@ -68,3 +68,7 @@ React先提交更高的正文，原生scrollHeight随之增长，但ResizeObserv
 既有桌面owner从实际main66f clean初始化新Root任务后整支FF接收producerC3，保留前序诊断记录。Root完整审阅motion、Footer、既有Virtuoso投影和同owner清理边界；同一真实组件WebKit夹具仅退回旧motion，稳定出现待测尾行卸载断言失败；当前实现通过全部Footer/测量交付/阅读/恢复/静置零写入检查。Root合并后94项DOM（含滚动条/模板保存回归）、完整TypeScript、scopedESLint通过。原数据、业务会话、权限与模型不在此源码修改范围。
 
 最终候选预留0.5.42/build542.6，明确保留滚动条MB-FORM-SCROLLBARS-20261106（producerbacd/source0d/main66f）及已main的Playwright/Codex metadata修复；不默认旧542.5包含抖动修复，也不把其签名/Apple完成当正式发布。既有冻结包和原始证据保持。后续独立功能进入下一批，不继续追加本候选。新精确CI/main、一次正式制品、本地安全更新、101通道和安装版原会话验收仍待完成。
+
+## Root 542.6 第二源修订
+
+R1自动CI的RecoveryActionReview旧case在DOM已提交而passive effect尚未发布摘要时断言lastcall；原完整日志保留。仅将测试inspect改为受控Promise并在act内明确结清，保留原精确summary和原call跳转断言，新增loading隐藏、reconcile0和unmount清理检查。生产恢复逻辑、jitter、滚动条、Playwright、metadata均无变化。39相关DOM通过；新源的完整适用CI/main与安装版验收仍待完成。R1本机12项ARM已真实通过，只记原精确源证据，不冒新head GitHub通过。

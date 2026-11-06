@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=27458ff5481302d7a87749480925ce65d2ac3b0cea97c2e79200b6041e227d66 -->
+<!-- git-project-sync-task:source-digest=1933d6a80dea2658c5c7ea34dc789b6eaf485bf39c0422a562b1058230c9f087 -->
 <!-- git-project-sync-task:id=164ff0e6-1c92-4b19-be50-3816d782c91b -->
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/release-0542-jitter-20261106 -->
@@ -25,6 +25,8 @@ MB-CHAT-JITTER-20261106：修复未测量追底越过Virtuoso size tree及Footer
 ## Verification
 
 - 作者WebKit/Chromium完整+新增回归、原生WK110反事实、68DOM/type/lint均为作者证据；Root独立WebKit旧motion稳定FAIL/当前GREEN；合并94DOM、type/lint通过。预留542.6，只改buildmetadata；不冒已安装修复。
+
+- R1 exactsource自动CI的DOM 331files/3028case通过、RecoveryActionReview一个case在DOM已出现而passive summary尚未发布时读lastcall undefined。完整原log封存；Root只把该case的inspect改为controlled Promise并在act内settle，保留全部原精确summary/原call跳转断言，新增settle前隐藏、reconcile0与unmount清理断言；production0改动，39相关DOM通过。新exactsourceCI仍必需，不取消原ARM或盲rerun。
 
 ## Blockers and unknowns
 

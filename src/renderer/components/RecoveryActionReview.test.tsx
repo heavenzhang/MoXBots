@@ -196,15 +196,24 @@ it('keeps six historical uncertainties silent while continuing to collect proof'
 });
 it('shows only the exact blocking operations and links to the original call', async () => {
   const p = props(); const onViewOperation = vi.fn();
-  p.inspect.mockResolvedValue({...snapshot, actions:[{...snapshot.actions[1],toolUseIds:['original-call']}, {...snapshot.actions[1],actionHash:'old',presentation:{kind:'write_file',target:'unrelated.txt'}}]});
-  render(<RecoveryActionReview {...p} onViewOperation={onViewOperation} />);
-  expect(await screen.findByText(/方案.docx/)).toBeVisible();
+  let finishInspection!: (value: RecoveryActionSnapshot) => void;
+  p.inspect.mockImplementation(() => new Promise(resolve => { finishInspection = resolve; }));
+  const view = render(<RecoveryActionReview {...p} onViewOperation={onViewOperation} />);
+  expect(screen.queryByText(/方案.docx/)).not.toBeInTheDocument();
+  expect(publishRecovery).toHaveBeenLastCalledWith(undefined);
+  // The decision DOM can commit before its passive summary publication. Settle
+  // the read inside act so both parts of this assertion observe that same commit.
+  await act(async () => finishInspection({...snapshot, actions:[{...snapshot.actions[1],toolUseIds:['original-call']}, {...snapshot.actions[1],actionHash:'old',presentation:{kind:'write_file',target:'unrelated.txt'}}]}));
+  expect(screen.getByText(/方案.docx/)).toBeVisible();
   expect(screen.queryByText(/unrelated.txt/)).not.toBeInTheDocument();
   expect(screen.getByText('recoveryReview.decision.currentTask')).toBeVisible();
-  expect(publishRecovery).toHaveBeenLastCalledWith(expect.objectContaining({count:1,checking:false,failed:false}));
+  expect(publishRecovery).toHaveBeenLastCalledWith(expect.objectContaining({sessionId:'s',count:1,checking:false,failed:false,inline:true}));
   expect(screen.getByText('recoveryReview.decision.next.write_file')).toBeVisible();
   fireEvent.click(screen.getByText('recoveryReview.decision.viewOperation'));
   expect(onViewOperation).toHaveBeenCalledExactlyOnceWith('original-call');
+  expect(p.reconcile).not.toHaveBeenCalled();
+  view.unmount();
+  expect(publishRecovery).toHaveBeenLastCalledWith(undefined);
 });
 it('removes a decision when the original task resumes without clearing its unknown history', async () => {
   const p = props(); const view=render(<RecoveryActionReview {...p} />);
