@@ -1,3 +1,7 @@
+## BC-02 当前主干组合候选（2026-11-07）
+
+`codex/bot-collaboration-main-ready-20261107` 以实际main a650939d普通合并8240ddbc两批SimpleUX和aef6d722a/1471ec01f持久协作及项目交接。组合337项、独立70项与类型/lint/Web/server/theme8通过，成果复用同一文件面板避免重复入口；实际合成页面另证。记录 `.agent-sync/tasks/codex-bot-collaboration-main-ready-20261107-4ea65ee3.md`，验收 `dev-docs/bot-collaboration-entry-20261107/integration.md`。唯一desktop/macOS-arm64/updater/sharedCI/main owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，按下一未冻结批统一main/CI/版本/原生验收。当前只是组合候选，未把推送当main或正式发布。
+
 ## BC-02 — 持久负责 Bot 协作对话入口（2026-11-07）
 
 任务 `.agent-sync/tasks/codex-bot-collaboration-entry-20261107-dd098257.md`，可勾验收 `dev-docs/bot-collaboration-entry-20261107/PLAN.md`。负责 Session 固定组、成员准入及历史隔离、侧栏持久入口、按需详情已实现；131项本地回归、独立87项与实际组件明暗/窄窗口/键盘验证通过。依赖1471ec01f；SimpleUX综合8240ddbc仍为独立待集成项。desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4统一选择下一未冻结候选；本开发会话不占用543.5、不触发共享CI或正式构建。下一步：精确源码保存交接，按实际主干和签名制品分别核验。

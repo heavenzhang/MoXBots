@@ -36,12 +36,12 @@ function SessionFilesTrigger(props: Props) {
     </button>
     <Popover open={open} onClose={close} anchorRef={anchorRef} placement="bottom-end"
       className="w-[min(420px,calc(100vw-24px))]">
-      {open && <SessionFilesList {...props} id={id} onClose={close} />}
+      {open && <SessionFilesPanel {...props} id={id} onClose={close} />}
     </Popover>
   </>;
 }
 
-function SessionFilesList({ messages, hasMoreBefore, onLoadOlder, onNavigate, id, onClose }: Props & { id: string; onClose: () => void }) {
+export function SessionFilesPanel({ messages, hasMoreBefore, onLoadOlder, onNavigate, id, onClose, embedded = false }: Props & { id: string; onClose: () => void; embedded?: boolean }) {
   const { t } = useTranslation('chat');
   const { t: appT } = useTranslation('app');
   const fileAction = useFileAction();
@@ -65,10 +65,10 @@ function SessionFilesList({ messages, hasMoreBefore, onLoadOlder, onNavigate, id
     } catch { setFailed(true); }
     finally { setLoading(false); }
   };
-  return <section id={id} role="dialog" aria-label={t('sessionFiles.title')} className="min-w-0">
+  return <section id={id} role={embedded ? "region" : "dialog"} aria-label={t('sessionFiles.title')} className="min-w-0">
     <div className="border-b border-[var(--line)] p-3">
       <h2 className="text-sm font-medium text-[var(--ink)]">{t('sessionFiles.title')}</h2>
-      <input ref={searchRef} autoFocus type="search" aria-label={t('sessionFiles.search')} placeholder={t('sessionFiles.search')}
+      <input ref={searchRef} autoFocus={!embedded} type="search" aria-label={t('sessionFiles.search')} placeholder={t('sessionFiles.search')}
         value={query} onChange={event => setQuery(event.target.value)}
         className="mt-2 w-full rounded-md border border-[var(--line)] bg-[var(--paper)] px-2 py-1.5 text-sm text-[var(--ink)] outline-offset-2 focus-visible:outline-[var(--focus-border)]" />
     </div>

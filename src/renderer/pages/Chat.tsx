@@ -6446,7 +6446,7 @@ function ChatContent({
                   onOpen={handleOpenAgentSettings}
                 />
               )}
-              {sessionMeta?.projectSpace && (sessionMeta.projectSpace.collaboration && sessionId ? <CollaborationDetails snapshot={sessionMeta.projectSpace} sessionId={sessionId} messages={messages} isActive={isActive} onOpenConversation={onOpenRelatedConversation} /> : <ProjectContextBadge snapshot={sessionMeta.projectSpace} />)}
+              {sessionMeta?.projectSpace && (sessionMeta.projectSpace.collaboration && sessionId ? <CollaborationDetails snapshot={sessionMeta.projectSpace} sessionId={sessionId} messages={chatScrollModel.data} isActive={isActive} onOpenConversation={onOpenRelatedConversation} hasMoreBefore={_hasMoreBefore} onLoadOlder={handleLoadEarlierFiles} onNavigate={handleNavigateToQuery} /> : <ProjectContextBadge snapshot={sessionMeta.projectSpace} />)}
               <UserTagPills
                 tags={sessionMeta?.userTags}
                 onTagClick={(name) => onOpenHistoryTag?.(name)}
@@ -6536,8 +6536,8 @@ function ChatContent({
                       )}
               </button>
               {/* Developer setting keeps this legacy entry reversible while it is phased out. */}
-              <SessionFilesButton key={sessionId ?? 'pending'} active={isActive} messages={chatScrollModel.data}
-                hasMoreBefore={_hasMoreBefore} onLoadOlder={handleLoadEarlierFiles} onNavigate={handleNavigateToQuery} />
+              {!sessionMeta?.projectSpace?.collaboration && <SessionFilesButton key={sessionId ?? 'pending'} active={isActive} messages={chatScrollModel.data}
+                hasMoreBefore={_hasMoreBefore} onLoadOlder={handleLoadEarlierFiles} onNavigate={handleNavigateToQuery} />}
               {isChatHistoryEntryVisible && (
                 <>
                   {/* History button */}

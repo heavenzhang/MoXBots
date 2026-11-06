@@ -1,0 +1,32 @@
+{
+  "task": "BC-02 combined current main",
+  "branch": "codex/bot-collaboration-main-ready-20261107",
+  "base": "a650939d2c38b8dc04750e282b159ddaac8ea346",
+  "contains": [
+    "8240ddbc4697862c6064d12d56ae62d8be98fa7c",
+    "1471ec01f2a0ec71d92ba833823ee60f4410abad",
+    "aef6d722a70ef2d5c8bf745bfcb2777cd5f954ae"
+  ],
+  "focused": {
+    "files": 20,
+    "passed": 337,
+    "log": "/tmp/mox-entry-combined-tests.log"
+  },
+  "independent": {
+    "files": 6,
+    "passed": 70,
+    "overlap": true,
+    "log": "/tmp/bot-collaboration-main-ready-review.log"
+  },
+  "type": "PASS",
+  "lint": "PASS",
+  "buildWeb": "PASS",
+  "theme": 8,
+  "buildServer": "PASS",
+  "dependencyErrors": 0,
+  "dependencyWarnings": 20,
+  "browser": "production components synthetic data; 390x844 dark search/source/focus PASS",
+  "main": "PENDING_ORIGINAL_OWNER",
+  "native": "NOT_CLAIMED",
+  "sharedCI": "NOT_TRIGGERED_BY_DEVELOPER"
+}

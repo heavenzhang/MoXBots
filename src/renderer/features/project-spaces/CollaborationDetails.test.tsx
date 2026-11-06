@@ -10,7 +10,7 @@ import type { Project } from '@/config/types';
 const state = vi.hoisted(() => ({ sessions: [] as SessionMetadata[], read: vi.fn(), openFile: vi.fn() }));
 vi.mock('@/hooks/useTaskCenterData', () => ({ useTaskCenterData: () => { state.read(); return { sessions: state.sessions, isSessionsLoading: false, sessionsError: null }; } }));
 vi.mock('@/components/agent-status/useSessionTaskOrchestration', () => ({ useSessionTaskOrchestrationContext: () => ({ sessionId: 'root', tasks: [], stale: false, retry: vi.fn() }) }));
-vi.mock('@/context/FileActionContext', () => ({ useFileAction: () => ({ openFileTarget: state.openFile }) }));
+vi.mock('@/context/FileActionContext', () => ({ useFileAction: () => ({ openFileTarget: state.openFile, workspacePath: '/lead' }) }));
 const at = '2026-11-07T00:00:00Z';
 const snapshot: ProjectSpaceSessionSnapshot = { schemaVersion: 1, projectId: 'p', projectName: '产品协作', projectRevision: 1, botId: 'lead', botName: '负责 Bot', workspacePath: '/lead', capturedAt: at, description: '', instructions: '', materials: [], resources: [], collaboration: { leadSessionId: 'root', leadBotId: 'lead', members: [{ id: 'lead', name: '负责人' }, { id: 'writer', name: '撰写助手' }] } };
 const session = (id: string, fixed = snapshot) => ({ id, title: id, agentDir: fixed.workspacePath, projectSpace: fixed, createdAt: at, lastActiveAt: at } as SessionMetadata);
@@ -53,6 +53,20 @@ describe('progressive collaboration details', () => {
     expect(collaborationSessions(snapshot, [...state.sessions, other, alien, malformed]).map(item => item.id)).toEqual(['root', 'member']);
     expect(collaborationSessions(snapshot, [state.sessions[1]]).map(item => item.id)).toEqual(['member']);
   });
+  it('keeps shared result search and retryable history loading inside one collaboration entry', async () => {
+    const load = vi.fn().mockRejectedValueOnce(new Error('fixture unavailable')).mockResolvedValueOnce(undefined);
+    const navigate = vi.fn();
+    const messages = [{ id: 'assistant', role: 'assistant', content: '[成果](result.md)' }] as Message[];
+    render(<CollaborationDetails snapshot={snapshot} sessionId="root" messages={messages} isActive hasMoreBefore onLoadOlder={load} onNavigate={navigate} />);
+    fireEvent.click(screen.getByRole('button', { name: /协作详情/ })); fireEvent.click(screen.getByRole('tab', { name: '成果' }));
+    fireEvent.change(screen.getByRole('searchbox'), { target: { value: 'result' } });
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '加载更早记录' })));
+    expect(screen.getByRole('alert')).toHaveTextContent('加载失败'); expect(screen.getByRole('searchbox')).toHaveValue('result');
+    await act(async () => fireEvent.click(screen.getByRole('button', { name: '加载更早记录' })));
+    expect(load).toHaveBeenCalledTimes(2); expect(screen.queryByRole('alert')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '查看 result.md 的来源消息' }));
+    expect(navigate).toHaveBeenCalledWith('assistant'); expect(screen.queryByRole('dialog')).toBeNull();
+  });
   it('exposes current-session tasks and safe assistant file references, never user attachments', () => {
     const messages = [{ id: 'user', role: 'user', content: '[input](input.md)' }, { id: 'assistant', role: 'assistant', content: '[成果](result.md)' }] as Message[];
     render(<CollaborationDetails snapshot={snapshot} sessionId="root" messages={messages} isActive />);
@@ -60,7 +74,7 @@ describe('progressive collaboration details', () => {
     fireEvent.click(screen.getByRole('tab', { name: '任务' })); expect(screen.getByText('当前会话还没有记录任务')).toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole('tab', { name: '任务' }), { key: 'ArrowRight' }); expect(screen.getByRole('tab', { name: '成果' })).toHaveFocus();
     expect(screen.queryByRole('button', { name: 'input.md' })).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: 'result.md' })); expect(state.openFile).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByTitle('result.md')); expect(state.openFile).toHaveBeenCalledOnce();
   });
 });
 it('creates an explicit collaboration task and fences uncertain retries', async () => {
