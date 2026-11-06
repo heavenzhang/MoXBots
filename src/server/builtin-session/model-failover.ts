@@ -30,6 +30,7 @@ export function createSessionModelFailover(options: {
   onUnavailable?: (reason: string) => void;
   canRetry?: () => boolean;
   canRetryRejectedResponse?: () => boolean;
+  canRetryPreResponse?: () => boolean;
   canUsePinnedRoute?: () => boolean;
   canRetryConnection?: () => boolean;
   retryDelaysMs?: readonly [number, number, number];
@@ -227,6 +228,7 @@ export function createSessionModelFailover(options: {
     canSwitch: options.canSwitch,
     canRetry: options.canRetry,
     canRetryRejectedResponse: options.canRetryRejectedResponse,
+    canRetryPreResponse: options.canRetryPreResponse,
     canUsePinnedRoute: options.canUsePinnedRoute,
     retryDelaysMs: options.retryDelaysMs,
     recovery: options.recovery,

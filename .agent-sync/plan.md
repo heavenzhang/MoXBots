@@ -1361,3 +1361,10 @@ desktop/macOS-arm64/updater/sharedCI/main 唯一负责人仍 01a12bc2-907a-7702-
 ## MB-TASK-REVISION-CONTINUE-20261107 Root local5433
 
 Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exactproducer07dc from mainbfbc, preserving PR257 cleanup. Allocate0.5.43/build543.3 for a different localrepair artifact; installed543.2 and published542.6 remain immutable. Fix only exact positional task-review classification and newtrustedhuman response to an exactsettled rootconfirmed pausedassessment, keeping original intent/ledger/unknown/Stop/approval/background guards. Actualsourcechecks/main, newimmutablelocalbuild/safeinstall and originalsession behavior are separate acceptance claims. LocalMac repair doesnot wait for unavailable hostedrunner; publicpublication/tag is not admitted by localcandidate record. No business replay, ledger edits, cloud/mobile/website release or laterfeature batching. Root task codex-release-task-revision-0543-20261107-7734669b; private controls work/task-revision-continue-root-20261107/owner.
+
+
+## MB-BRIDGE-PRECONTENT-RECOVERY-20261107 — 已知旧未知操作下的新推理连接恢复
+
+用户要求继续完成稳定性验收及正式更新。真实原会话出现首响应前 UND_ERR_SOCKET 映射本地 502；旧未知记录使新推理的严格恢复不可用。独立分支从 main 4ceeb2d2 修首个 Chat Completions 响应前 socket 失败的有限恢复，保留旧操作 fence/原请求预算/流重放禁止，不清账本、不更改全局只读或业务授权。源码与证据见 `.agent-sync/tasks/codex-bridge-precontent-recovery-20261107-3b76992e.md`、`dev-docs/bridge-precontent-recovery-20261107/acceptance.md`。
+
+桌面、共享 CI、版本、签名、安装、正式 updater 仍由 01a12bc2-907a-7702-b6dd-788225c5dfe4 唯一负责；543.4 已冻结且不包含本次源码，不覆盖其制品或中止其验收。开发方交精确源后由该 owner 选择下一批。代码/本地实际 SDK/主干/安装/真实供应商验收分别记录；没有全链验收不宣称所有 502 已解决。

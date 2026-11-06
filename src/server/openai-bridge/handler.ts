@@ -41,7 +41,7 @@ import { resolveBridgeModel } from './translate/model';
 import { opencodeGoHeaders } from '../opencode-go-request';
 import { readBoundedErrorBody } from './read-error-body';
 import { composeAcceptedAttemptModelProgress } from './model-progress';
-import { createDirectConnectionPool, hasInitialConnectionFailure, withConnectionRetries } from './connection-retry';
+import { createDirectConnectionPool, hasInitialConnectionFailure, hasInitialPreResponseSocketFailure, withConnectionRetries } from './connection-retry';
 
 const KNOWN_RESPONSES_EVENTS = new Set(['response.created', 'response.in_progress', 'response.completed', 'response.failed',
   'response.incomplete', 'error', 'response.output_item.added', 'response.output_item.done',
@@ -775,6 +775,14 @@ export function createBridgeHandler(config: BridgeConfig): BridgeHandler {
       } catch (err) {
         clearTimeout(headersTimer);
         if (!controller.signal.aborted && hasInitialConnectionFailure(dispatcher, err)) upstream.onConnectionFailure?.(err);
+        // No response headers (therefore no model/tool output) reached this bridge.
+        // Only our Chat Completions translation with client-executed functions is
+        // eligible. A provider may have computed the POST; this is not exactly-once.
+        if (!isResponses && !controller.signal.aborted && !request.signal.aborted
+            && (!translatedReq.tools || translatedReq.tools.every(tool => tool.type === 'function'))
+            && hasInitialPreResponseSocketFailure(dispatcher, err)) {
+          upstream.onPreResponseFailure?.();
+        }
         if (request.signal) {
           request.signal.removeEventListener('abort', onDownstreamAbort);
         }
