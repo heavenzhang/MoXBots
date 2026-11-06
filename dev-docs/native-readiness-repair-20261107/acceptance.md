@@ -15,3 +15,7 @@ Root combined190unit/193DOM/125integration, type, scopedlint and classification 
 - [ ] Only accepted samearchive to formal101updater/immutabletag, normalTLS/fullGETonce/CAS/rollback. Fullmodel/Goal matrix unanswered scope and realprovider boundaries stay explicit.
 
 Unrelated Bot/group/mobile/cloud/site work is excluded. No business replay, oldledger edits, private-key copying, permission expansion or duplicate old builds. Private originals: work/native-readiness-repair-20261107/owner.
+
+## 543.5 real native evidence and next543.6
+
+Signed5435 first-dialog once-send, actual Codex approval close/reopen/single-file and manual-upscroll through real terminal were observed. Originalunknown7b still409 because optional SDK list-summary was absent despite selected/raw records readable; original data untouched. This prevents main/public admission. Exact5f4e reader fix is Root source-reviewed and locally integrated for new543.6; it changes no execution/ledger permission and does not claim a preparse raw-memory cap. New candidate targeted checks/sourceCI/signature/native must be recorded separately; no5435 rebuild or release.

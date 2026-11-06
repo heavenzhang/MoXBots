@@ -40,3 +40,13 @@ Close the installed first-message restore race and initial cold recovery inspect
 ## Next step
 
 - Collect the final neutralcopy/version checks, freeze the four-source exact5435 candidate, save/push once with current project-sync handoff and create one PR/sourceCI. Build/install and actual native gates remain separate; never rebuild or resign5434.
+
+## R2 next immutable5436 — 5435 original N02 failure
+
+5435 first build/sign/Apple/archive/install completed once; actual sourceCI9success/iOSskip and sameMac full12 passed. Original7b remained unchanged, but readiness triggered readonlyGET still409 because SDK listing summary was undefined while actual SDK selected12/raw36 history existed. Do not rebuild or publish5435. Root reviewed exact5f4e3b501 read-only reader fix and independent review: SDK retains path/identity authority; available summary id/size preflight remains, absent summary rawimport batch1 collected with50k/64MiB accepted serialized evidence limits. SDK per-record preparse allocation is not a hard raw-file memory cap. Execution/selected-chain proof/unknownledger/Store/reconcile gates unchanged.
+
+Root merged5f4e once locally into existing release branch; only shared-plan append conflict resolved retaining both full sections. Allocate new build543.6. Combined targeted checks, exactupdatedPR260 CI and new immutable artifact/install/native still pending; required originalN02 and actual native gates must pass before main/public. No original business messages/replay/ledger edits or global Agent permission changes. Native5435 evidence: firstdialog one send/one reply, N03 actual same request close/reopen and allowonce/file terminal PASS; N04 manual upscroll across real terminal PASS. N05/N06 and controlled transport diagnostics still pending; these are not5436 native acceptance.
+
+Next: finish current finite native reading cases on5435 while preparing scoped combined reader checks, then freeze/push exact5436 source to existing PR260. Published5426/oldarchives remain immutable.
+
+R2 combined check result: 123unit/24actual-adapter-and-Store integration (147total/7files), complete TypeScript/scopedlint/classification/diff all PASS; 3version-contract tests PASS. Preserved producer113unit/33integration original log hashes. Existing coldN02native and live detail/transport gates remain pending, no main/public admission.
