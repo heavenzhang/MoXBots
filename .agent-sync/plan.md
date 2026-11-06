@@ -1326,9 +1326,27 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 - 542.6 sourceR2：原R1精确CI DOM一个旧被动effect结清断言失败，Root仅修RecoveryActionReview测试等待，全部生产字节不变；同PR254待原全部job终态后唯一FFpush，再按新exacthead检查。最终范围仍滚动条+jitter+Playwright+Codexmetadata，不扩功能或重复正式构建。
 
 
+## MB-CHAT-REVIEW-CLEANUP-20261106 — chat review controls removal
+
+用户明确要求聊天保持简洁，删除截图中的人工请求验收/重试/返工及内部回执说明。独立codex/chat-review-cleanup-20261106基于main045b30eef；仅renderer只读成果展示及预设消息路径清理，保留内部核验/权限/历史消息。48DOM、类型/lint/分类及IAB实际组件1280浅色与390深色通过；真实Chat/原生发布另验。记录.agent-sync/tasks/codex-chat-review-cleanup-20261106-56025a7a.md及dev-docs/chat-review-cleanup-20261106/acceptance.md。desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，开发保存远端分支和证据后交其独立审阅/main/下一未冻结批；不新建PR、触发共享CI、分配版本或自行安装；无其他单元变更。
+
 ## MB-STREAM-STABILITY-20261106 — native block gap continuity
 
 - 基于main045b30eef，当前542.6已有virtual extent修复；新增独立问题：Message以未结束块推断live，工具间隙导致成功过程组反复历史折叠。现沿消息owner的isLoading维持live，行状态与真实终态不变。
 - 旧Message DOM2/2 RED；修复71DOM、type/lint/分类、独立源码审查通过。真实MessageList/Virtuoso WebKit旧码1569→113px反事实；WebKit/Chromium修复3次间隙高度/滚动变化0px、手动阅读及真实终态展开通过。见dev-docs/stream-stability-20261106/acceptance.md。
 - desktop/macOS-arm64/updater/sharedCI/main唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发共享CI或正式构建。冻结542.6不修改，原owner接收精确SHA并在下一未冻结批集成、发布和原会话复验；源码/离线与main/正式/真实验收分别记录。
 - 原会话执行失败另有模型命令schema漏参/任务版本冲突与native证据epoch检查；不通过UI折叠隐藏，不放宽门禁或重放原unknown操作。私有诊断只留本地工作区。
+
+## MB-CONTINUE-RECOVERY-20261106 — continuation misclassification and visibility
+
+- 分支 codex/continue-recovery-20261106；修复 builtin Bash exit 128 被错误计作 unknown、压缩后历史失败无法核对，以及暂停原因被旧摘要遮盖、发送前拒绝没有界面反馈。
+- 源码与模拟验证完成；只读真实历史匹配，未手改运行数据、未重放业务操作。待远端 main、统一桌面构建安装及原任务真实完成验收。
+- desktop/macOS-arm64/sharedCI/main 唯一负责人仍为 01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发会话不分配版本或触发共享 CI。任务记录 .agent-sync/tasks/codex-continue-recovery-20261106-f2d2543b.md，验收说明 dev-docs/continue-recovery-20261106/acceptance.md。
+
+## MB-CONTINUE-RECOVERY-20261106 — Root current-Mac repair candidate
+
+Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 prepares local repair0.5.43/build543.1 from reviewed stream66fd and recoveryc4f169c. Original producer workspaces and published542.6 remain immutable. Root239 recovery tests/type/lint/classification and71stream DOM/WebKit geometry plus exact66fd full12localARM passed; combined-candidate checks and actual native/original-task acceptance are distinct. Current-Mac development/repair candidate validation does not require waiting for unrelated hosted setup. No public publication/tag is admitted by this local record; later main/CI/public promotion need their own exact evidence. Original recovery owner alone coordinates one business continuation after Root safe backup/normal maintenance install; no clearing unknown ledgers, model/permission change, business replay or stale full-config restore. Record `.agent-sync/tasks/codex-recovery-local-repair-0543-20261106-9e3af6dc.md`; private controls `work/recovery-local-0543-20261106/owner`.
+
+## MB-CHAT-REVIEW-CLEANUP-20261106 Root combined local5432
+
+Existing sole desktop/macOS/updater/sharedCI/main owner01a12bc2 integrates reviewed cleanup9164/9a606 and recovery93b on the immutable5431 source35c1 plus actual main05ea. Reserve0.5.43/build543.2 for a different artifact; frozen5431 and published5426 stay unchanged. Current-Mac development/checks can progress independently of hosted setup and a pending user maintenance-window answer. Remote main, new local artifact/install and actual awaiting_review Chat/no review-template controls/results-detail/input acceptance remain separate evidence. No automatic task acceptance, business resend/replay, unknown-ledger clearing, UI guard bypass or cloud/mobile/website deployment. CHAT08 real pending/unknown and reading-protection1921 are separate queued tasks, not part of this freeze. Task codex-chat-cleanup-recovery-integration-20261106-f1ade627; private evidence work/chat-review-cleanup-root-20261106/owner.
