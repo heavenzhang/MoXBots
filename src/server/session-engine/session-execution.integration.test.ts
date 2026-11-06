@@ -946,13 +946,14 @@ describe("durable Session execution owner", () => {
     }));
   });
 
-  it.each(['paired', 'interrupted', 'changed-input', 'changed-result', 'duplicate-result', 'foreign-history', 'owner-changed', 'ledger-changed'] as const)(
+  it.each(['paired', 'compacted-128', 'interrupted', 'changed-input', 'changed-result', 'duplicate-result', 'foreign-history', 'owner-changed', 'ledger-changed'] as const)(
     'reconciles legacy pending execution only from paired native process-exit evidence (%s)', async variant => {
       const first = await prepare(input, 'human-original-failed-shell');
       const queueId = first.request.queueId!;
       const originalId = currentExecution()!.id;
       const toolInput = { command: 'python3 -c "raise TypeError()"' };
-      const output = 'Exit code 1\nTraceback: TypeError';
+      const historical = variant === 'compacted-128';
+      const output = historical ? 'Exit code 128\nfatal: not a git repository' : 'Exit code 1\nTraceback: TypeError';
       const toolId = 'original-failed-shell';
       const { ContextRecoveryController } = await import('../openai-bridge/context-recovery');
       let ledger: unknown;
@@ -973,8 +974,8 @@ describe("durable Session execution owner", () => {
           + frame('message_stop', { type: 'message_stop' }), { headers: { 'content-type': 'text/event-stream' } }));
       await stream.text();
       expect(await controller.authorizeTool('Bash', toolInput, toolId)).toBeUndefined();
-      const settled = await controller.commitToolResult('Bash', toolInput, output, true, toolId, { interrupted: variant === 'interrupted' });
-      expect(settled).toBe(variant === 'interrupted' ? undefined : 'bash-exit');
+      const settled = await controller.commitToolResult('Bash', toolInput, output, true, toolId, { interrupted: variant === 'interrupted' || historical ? undefined : false });
+      expect(settled).toBe(variant === 'interrupted' || historical ? undefined : 'bash-exit');
       await tool(queueId, { id: toolId, name: 'Bash', input: toolInput, stage: 'start' });
       await tool(queueId, { id: toolId, name: 'Bash', input: toolInput, output, stage: 'failure' });
       await first.request.onTerminal?.({ status: 'complete', text: 'The command failed', assistantMessagePresent: true });
@@ -983,7 +984,17 @@ describe("durable Session execution owner", () => {
         message: { content: [{ type: 'tool_use', id: toolId, name: 'Bash', input: toolInput }] } };
       const result = { type: 'user', uuid: 'native-result', session_id: id,
         message: { content: [{ type: 'tool_result', tool_use_id: toolId, is_error: true, content: output }] } };
-      const selected: unknown[] = [use, result];
+      const raw: unknown[] = [
+        { ...use, sessionId: id, isSidechain: false, parentUuid: null },
+        { ...result, sessionId: id, isSidechain: false, parentUuid: use.uuid,
+          sourceToolAssistantUUID: use.uuid, toolUseResult: `Error: ${output}` },
+        { type: 'system', subtype: 'compact_boundary', uuid: 'compact', sessionId: id,
+          isSidechain: false, parentUuid: null, logicalParentUuid: result.uuid },
+        { type: 'user', uuid: 'summary', sessionId: id, isSidechain: false, parentUuid: 'compact',
+          message: { content: 'Earlier context compacted' } },
+      ];
+      const selected: unknown[] = historical
+        ? [{ ...raw[3] as object, session_id: id }] : [use, result];
       if (variant === 'changed-input') use.message.content[0].input = { command: 'a different command' };
       if (variant === 'changed-result') result.message.content[0].content = 'Exit code 2\nOther failure';
       if (variant === 'duplicate-result') selected.push({ ...result, uuid: 'duplicate-native-result' });
@@ -996,6 +1007,10 @@ describe("durable Session execution owner", () => {
         observationDigest: executionOwner.executionToolObservationDigest,
         mutateLedger: taskOwner.mutateSessionTaskLedger,
         isCurrent: () => ownerCurrent, load: () => ledger, save, adopt,
+        ...(historical ? { readNativeRecords: async () => raw,
+          reconcileNativeFailures: async (records: readonly unknown[], rows: readonly unknown[], current: () => boolean) => {
+            await controller.reconcileNativeBashFailures(records, rows, current);
+          } } : {}),
         readNative: async () => {
           if (variant === 'owner-changed') ownerCurrent = false;
           if (variant === 'ledger-changed') ledger = { ...(ledger as object), blocked: true };
@@ -1007,12 +1022,13 @@ describe("durable Session execution owner", () => {
       const guard = await next.request.beforeDispatch!();
       const fact = store.getSessionMetadata(id)!.taskOrchestration!.executionEvidence!.find(row => row.id === toolId)!;
       expect(save).not.toHaveBeenCalled(); expect(adopt).not.toHaveBeenCalled();
-      if (variant === 'paired') {
+      if (variant === 'paired' || historical) {
         expect(fact).toMatchObject({ successful: false, pending: false, settledFailure: 'native-bash-exit' });
         expect(guard.accepted).toBe(true);
         expect(guard.validateAtCommit?.().accepted).toBe(true);
         expect(currentExecution()).toMatchObject({ id: originalId, currentQueueId: next.request.queueId });
-        expect(ledger).toEqual(preserved);
+        if (!historical) expect(ledger).toEqual(preserved);
+        else expect(controller.inspectSettledBashFailures()).toMatchObject([{ exitCode: 128 }]);
         await controller.protectInference({ model: 'fixture', max_tokens: 64, stream: true, messages: [
           { role: 'user', content: 'Verify the artifact' },
           { role: 'assistant', content: [{ type: 'tool_use', id: toolId, name: 'Bash', input: toolInput }] },

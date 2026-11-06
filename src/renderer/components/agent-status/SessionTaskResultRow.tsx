@@ -12,8 +12,8 @@ export function taskPhaseColor(phase: SessionTaskView['phase']) {
 }
 
 /** Each row is one task, with its current execution and review kept distinct. */
-export default function SessionTaskResultRow({ task, report, onInspect, onFeedback, disabled = false }: {
-  task: SessionTaskView; report?: string; onInspect: (id: string) => void; onFeedback?: () => void; disabled?: boolean;
+export default function SessionTaskResultRow({ task, report, onInspect }: {
+  task: SessionTaskView; report?: string; onInspect: (id: string) => void;
 }) {
   const { t } = useTranslation('app');
   const attempt = task.attempts.find(item => item.id === task.reviewAttemptId);
@@ -38,7 +38,6 @@ export default function SessionTaskResultRow({ task, report, onInspect, onFeedba
       {elapsed && <span className="tabular-nums">{elapsed}</span>}
       {task.attempts.length > 1 && <span>{t('orchestration.inline.attemptHistory', { count: task.attempts.length })}</span>}
       {attempt && <button type="button" onClick={() => onInspect(attempt.toolUseId)} className="compact-action rounded px-1 text-[var(--accent)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--focus-border)]">{t(subagentDetailAction(task.phase))}</button>}
-      {exceptional && onFeedback && <button type="button" disabled={disabled} onClick={onFeedback} className="compact-action rounded px-1 text-[var(--ink-secondary)] hover:underline focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50">{t('orchestration.collaboration.feedback')}</button>}
     </div>
     {task.review && (task.review.decision === 'accept' && task.phase !== 'completed'
       ? <details className="mt-1 text-xs leading-5 text-[var(--ink-muted)]"><summary className="cursor-pointer">{t('orchestration.collaboration.historicalReview')}</summary><p className="whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{task.review.evidence}</p></details>
