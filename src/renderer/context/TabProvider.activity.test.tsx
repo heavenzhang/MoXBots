@@ -16,6 +16,8 @@ import {
 } from '@/utils/sessionDeletionCoordinator';
 import { useTabState } from './TabContext';
 import { useSubagentViews } from '@/components/agent-status/useSubagentViews';
+import { RecoveryActionReview } from '@/components/RecoveryActionReview';
+import type { RecoveryActionSnapshot } from '../../shared/recoveryReconciliation';
 import { AskUserQuestionPrompt } from '@/components/AskUserQuestionPrompt';
 import type { Message } from '@/types/chat';
 import { ToastProvider } from '@/components/Toast';
@@ -3996,4 +3998,39 @@ describe('rendered orchestration proposal target in the original chat send', () 
     expect(payload().orchestrationPlanTarget).toBeUndefined();
   });
 
+});
+
+
+it.each(['before-response', 'after-response'])('refreshes a failed cold recovery read only on the current Session readiness revision (%s)', async order => {
+  sseHarness.state.connected = false;
+  sseHarness.state.eventHandler = null;
+  const sessionId = 'pending-cold-review';
+  let rejectCold!: (error: Error) => void;
+  const inspect = vi.fn().mockImplementationOnce(() => new Promise((_, reject) => { rejectCold = reject; }))
+    .mockResolvedValue({ sessionId, sdkSessionId: sessionId, epoch: 1, reviewAuthority: 'fixture', ledgerDigest: 'fixture', resolvedCount: 0,
+      unresolvedTurn: { turnId: 'stopped', actionHashes: ['unknown'] },
+      actions: [{ actionHash: 'unknown', tool: 'Bash', eligible: false, reason: 'external_receipt_required',
+        presentation: { kind: 'write_file', target: 'cold-review-fixture.txt' } }] } satisfies RecoveryActionSnapshot);
+  const reconcile = vi.fn();
+  function ColdReview() {
+    const tab = useTabState();
+    return <RecoveryActionReview sessionId={tab.sessionId!} disabled={false}
+      inspectRevision={`history:0:${tab.recoveryReviewRevision ?? ''}`} inspect={inspect} reconcile={reconcile} />;
+  }
+  const view = render(<TabProvider tabId="cold-review" agentDir="/tmp/workspace" sessionId={sessionId}
+    claimSessionOpeningTransition={allowSessionOpening}><ColdReview /></TabProvider>);
+  await waitFor(() => expect(inspect).toHaveBeenCalledTimes(1));
+  if (order === 'after-response') await act(async () => rejectCold(new Error('recovery_review_changed_or_unavailable')));
+  emit('chat:status', { sessionId: 'unrelated-real-session', sessionState: 'idle', recoveryReviewRevision: 'other:1' });
+  expect(inspect).toHaveBeenCalledTimes(1);
+  emit('chat:status', { sessionId, sessionState: 'idle', recoveryReviewRevision: 'owner:1' });
+  if (order === 'before-response') await act(async () => rejectCold(new Error('recovery_review_changed_or_unavailable')));
+  await waitFor(() => expect(inspect).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText(/cold-review-fixture.txt/)).toBeVisible();
+  emit('chat:status', { sessionId, sessionState: 'idle', recoveryReviewRevision: 'owner:1' });
+  emit('chat:status', { sessionId, sessionState: 'idle' });
+  await act(async () => {});
+  expect(inspect).toHaveBeenCalledTimes(2);
+  expect(reconcile).not.toHaveBeenCalled();
+  view.unmount();
 });
