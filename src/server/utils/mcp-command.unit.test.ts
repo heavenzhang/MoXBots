@@ -4,6 +4,7 @@ import { dirname, join } from 'path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const runtimeMocks = vi.hoisted(() => ({
+  getScriptDir: vi.fn(() => '/missing-moxbots-resources'),
   findExistingPath: vi.fn(),
   getBundledNodeDir: vi.fn(),
   getBundledRuntimePath: vi.fn(),
@@ -41,6 +42,7 @@ describe('resolveNpxMcpInvocation', () => {
 
   beforeEach(() => {
     testRoot = mkdtempSync(join(tmpdir(), 'myagents-npx-'));
+    runtimeMocks.getScriptDir.mockReset().mockReturnValue(testRoot);
     runtimeMocks.findExistingPath.mockReset().mockReturnValue(null);
     runtimeMocks.getBundledNodeDir.mockReset().mockReturnValue(null);
     runtimeMocks.getBundledRuntimePath.mockReset().mockReturnValue('node');
@@ -50,6 +52,34 @@ describe('resolveNpxMcpInvocation', () => {
   afterEach(() => {
     vi.restoreAllMocks();
     rmSync(testRoot, { recursive: true, force: true });
+  });
+
+  it.each(['darwin', 'win32'] as const)('launches the packaged preset without npm bin shims on %s', (platform) => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue(platform);
+    const nodeDir = join(testRoot, 'nodejs', 'bin');
+    const node = join(nodeDir, platform === 'win32' ? 'node.exe' : 'node');
+    const cli = join(testRoot, 'node_modules', '@playwright', 'mcp', 'cli.js');
+    touch(node);
+    touch(cli);
+    writeFileSync(join(dirname(cli), 'package.json'), JSON.stringify({ version: '0.0.68' }));
+    runtimeMocks.getBundledNodeDir.mockReturnValue(nodeDir);
+    expect(resolveNpxMcpInvocation(['-y', '@playwright/mcp@latest', '--isolated'], { pinPresetPackages: true }))
+      .toEqual({ command: node, args: [cli, '--isolated'], source: 'bundled' });
+  });
+
+  it('keeps custom packages and mismatched bundled versions on npm resolution', () => {
+    vi.spyOn(process, 'platform', 'get').mockReturnValue('darwin');
+    const nodeDir = join(testRoot, 'nodejs', 'bin');
+    touch(join(nodeDir, 'node'));
+    const cli = join(testRoot, 'node_modules', '@playwright', 'mcp', 'cli.js');
+    touch(cli);
+    writeFileSync(join(dirname(cli), 'package.json'), JSON.stringify({ version: '0.0.67' }));
+    runtimeMocks.getBundledNodeDir.mockReturnValue(nodeDir);
+    runtimeMocks.findExistingPath.mockReturnValue('/usr/local/bin/npx');
+    for (const pinPresetPackages of [true, false]) {
+      expect(resolveNpxMcpInvocation(['@playwright/mcp@0.0.68'], { pinPresetPackages }).command)
+        .toBe('/usr/local/bin/npx');
+    }
   });
 
   it('projects Windows system npx through node.exe and the absolute npx CLI entry', () => {
