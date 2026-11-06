@@ -1,6 +1,6 @@
 <!-- git-project-sync-task:source-digest=e81f319dd89458aaa92f36be341e379c49bd904d504c1dcc3390ea9bd9ebeebe -->
 <!-- git-project-sync-task:id=3bb2b55f-d155-40af-b279-4ebea97758b3 -->
-<!-- git-project-sync-task:version=2 -->
+<!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/form-scrollbars-integration-20261106 -->
 <!-- git-project-sync-task:base=13fb88204108a3b1ad9dc1b9a72cea6e673e94f4 -->
 <!-- git-project-sync-task:status=ready-for-review -->
