@@ -69,6 +69,7 @@ pub fn stamp_session_request(
             path,
             "/api/session/task-orchestration/plan"
                 | "/api/session/task-orchestration/bot-group"
+                | "/api/session/task-orchestration/bot-group/send"
                 | "/chat/send"
                 | "/api/session/recovery/reconcile"
         )
@@ -205,7 +206,7 @@ mod tests {
             ),
             (
                 "POST",
-                "/api/session/task-orchestration/bot-group/send",
+                "/api/session/task-orchestration/bot-group/send/unsafe",
                 true,
             ),
         ] {

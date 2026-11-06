@@ -27,6 +27,7 @@ export interface SessionTaskLedger {
   revision: number;
   /** Stable Bot membership; persisted by this Session's existing metadata CAS. */
   botGroup?: import('./botGroup').BotGroup;
+  botGroupDeliveries?: import('./botGroupDelivery').BotGroupDelivery[];
   recoveryFollowups?: import('./recoveryReconciliation').RecoveryFollowup[];
   /** Original human ingress and bounded ordinary execution, owned by this ledger. */
   executionInputs?: {

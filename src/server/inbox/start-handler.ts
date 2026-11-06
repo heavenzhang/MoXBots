@@ -13,6 +13,7 @@ import type { DispatchGuard } from '../session-core/turn-queue';
 import { buildSessionEventPrompt, buildTurnMeta } from './drain-handler';
 import type { PendingInboxMessage } from './types';
 import { compileLocalProjectHandoff } from './project-handoff';
+import { compileBotGroupDispatch } from './bot-group-dispatch';
 
 export interface FreshSessionStartContext {
   sessionId: string;
@@ -22,6 +23,7 @@ export interface FreshSessionStartContext {
   runtimeSource?: RuntimeSource;
   managedCodexProviderReady?: boolean;
   inheritProject?: boolean;
+  groupDispatch?: unknown;
 }
 
 export type FreshSessionInjector = (
@@ -76,8 +78,12 @@ export async function handleFreshSessionStart(
   const origin = { kind: 'session-inbox', surface: 'session_send' } as const;
   // Validate before creating prepared metadata or admitting any model work.
   let projectSpace;
+  let groupHistory: string | undefined;
+  const readGroup = () => compileBotGroupDispatch(message, { ...context, botId: context.agent.id, groupDispatch: context.groupDispatch });
   try {
-    projectSpace = context.inheritProject
+    if (context.groupDispatch !== undefined) {
+      const group = readGroup(); projectSpace = group.projectSpace; groupHistory = group.history;
+    } else projectSpace = context.inheritProject
       ? compileLocalProjectHandoff(message, context.agent.id, context.workspacePath)
       : undefined;
   } catch (error) {
@@ -101,6 +107,10 @@ export async function handleFreshSessionStart(
 
   const beforeDispatch = Object.assign(
     async () => {
+      if (context.groupDispatch !== undefined) {
+        try { readGroup(); }
+        catch (error) { return { accepted: false as const, error: error instanceof Error ? error.message : String(error) }; }
+      }
       const claim = await claimPreparedSessionForTurnAdmission(
         context.sessionId,
         message.messageId,
@@ -127,7 +137,7 @@ export async function handleFreshSessionStart(
   );
 
   try {
-    const result = await inject(buildSessionEventPrompt(message, projectSpace), {
+    const result = await inject(buildSessionEventPrompt(message, projectSpace, groupHistory), {
       inboxMeta: buildTurnMeta(message),
       queueId: message.messageId,
       beforeDispatch,

@@ -131,6 +131,7 @@ pub(crate) async fn prepare(
             prompt: params.prompt.clone(),
             reply_back: params.reply_back,
             inherit_project: false,
+            group_dispatch: None,
         };
         let mut prepared = crate::inbox::deliver::prepare_fresh_session(
             app,

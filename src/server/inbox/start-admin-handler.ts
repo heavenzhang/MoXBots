@@ -60,6 +60,7 @@ const FORBIDDEN_OVERRIDE_FIELDS = [
   'enabledPluginIds',
   'enabledOfficialToolIds',
   'inheritProject',
+  'groupDispatch',
   'projectSpace',
   'projectSpaceSelection',
 ] as const;

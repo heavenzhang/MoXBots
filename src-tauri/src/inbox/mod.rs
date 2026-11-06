@@ -17,6 +17,7 @@
 //     → 同一 `cmd_inbox_deliver`(kind=Reply, reply_back=false)→ caller sidecar
 //     `/api/inbox/drain` → 包裹 send.result session event 注入
 
+pub mod bot_group_dispatch;
 pub mod deliver;
 pub mod types;
 pub mod watch;

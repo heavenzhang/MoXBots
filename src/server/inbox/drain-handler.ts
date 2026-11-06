@@ -61,7 +61,7 @@ function legacySendResultEvent(msg: PendingInboxMessage): SessionEvent {
   };
 }
 
-export function buildSessionEventPrompt(msg: PendingInboxMessage, projectSpace?: ProjectSpaceSessionSnapshot): string {
+export function buildSessionEventPrompt(msg: PendingInboxMessage, projectSpace?: ProjectSpaceSessionSnapshot, groupHistory?: string): string {
   if (msg.kind === 'event' && msg.sessionEvent?.type === 'space.issue_delivery') {
     return msg.text;
   }
@@ -77,7 +77,7 @@ export function buildSessionEventPrompt(msg: PendingInboxMessage, projectSpace?:
     });
   }
   if (msg.sessionEvent) {
-    return renderSessionEventPrompt(msg.sessionEvent, projectSpace);
+    return renderSessionEventPrompt(msg.sessionEvent, projectSpace, groupHistory);
   }
   if (msg.kind === 'reply') {
     return renderSessionEventPrompt(legacySendResultEvent(msg));
@@ -99,7 +99,7 @@ export function buildSessionEventPrompt(msg: PendingInboxMessage, projectSpace?:
       latestResult: msg.text || 'Missing structured session event payload.',
     });
   }
-  return renderSessionEventPrompt(legacySendRequestEvent(msg), projectSpace);
+  return renderSessionEventPrompt(legacySendRequestEvent(msg), projectSpace, groupHistory);
 }
 
 /// Build per-turn InboxTurnMeta to bind on the dequeued message. Only present
@@ -163,6 +163,7 @@ function scenarioForInboxMessage(msg: PendingInboxMessage): InteractionScenario 
 export async function handleInboxDrain(
   messages: PendingInboxMessage[],
   injector: InboxInjector,
+  recordGroupReply?: (message: PendingInboxMessage) => Promise<boolean>,
 ): Promise<DrainResponse> {
   if (!Array.isArray(messages) || messages.length === 0) {
     return { accepted: false, reason: 'empty message batch' };
@@ -173,6 +174,7 @@ export async function handleInboxDrain(
 
   for (const msg of messages) {
     try {
+      if (recordGroupReply && await recordGroupReply(msg)) { acceptedAny = true; continue; }
       const prompt = buildSessionEventPrompt(msg);
       const meta = buildTurnMeta(msg);
       const allowLazySessionMaterialization =

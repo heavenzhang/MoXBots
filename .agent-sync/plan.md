@@ -1405,3 +1405,10 @@ G02实际Chat入口依赖G03真实独立Bot收发，尚未开放；G03/G04交接
 用户要求继续简洁Bot协作开发。codex/bot-collaboration-20261107基于mainbfbc92f：本地项目会话session start沿原Inbox保留来源固定projectSpace背景，按当前成员/工作区重新核对目标出生，模型/权限仍取接收Bot；单个隐藏send.request携带固定配置，外部/跨设备不继承，不放宽动态历史。无新Store/队列/持久群schema。稳定清单与验证见dev-docs/bot-collaboration-20261107/；群主题、成员入口与真实模型联调仍未完成。
 
 原desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4；本分支只本地检查/保存/交接，不触发共享CI/正式构建/安装或分配版本。无其他单元/迁移依赖。前两批SimpleUX组合8240ddbc仍是独立待收源，当前分支不把其main/发行门禁算作已完成。
+
+
+## GROUP-01 G03 source delivery (2026-11-07)
+
+分支codex/bot-group-delivery-20261107，task7c436dfa-3288-45f3-b5f6-05f7be340abc，基于maina650939d，包含G01/G02 producer7d67045b与固定项目交接1471ec01f。原ledger先记唯一请求、原native FreshStart计划身份/已有目标拒绝、目标prepared admission重验、有限群上下文与原Inbox回报归属已实现并隔离验证；不新建群Store/队列，不读私聊，不把ACK或idle当完成。详细ToDo/验收：dev-docs/bot-group-delivery-20261107/。
+
+61 unit/24 integration/实际Rust模块11项与Rust→Node签名/类型/lint/依赖/本地server build通过；尚缺整个Tauri/实际Chat入口/原目标只读未知查证/真实双Bot/G04任务交接/main/正式安装下载。唯一desktop owner01a12bc2-907a-7702-b6dd-788225c5dfe4继续统一审阅与发行，当前稳定性修复批不因本批源码而变化。NAV80a58f3与PROJECT8c51051保持独立待集成，不将它们冒称本批已上线。另一collaboration-entry未提交树保持原样，群成员权威需统一审阅后接入。

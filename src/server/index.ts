@@ -11952,6 +11952,7 @@ description: >
             agentId?: unknown;
             message?: unknown;
             inheritProject?: unknown;
+            groupDispatch?: unknown;
           } | null;
           const agentId = typeof body?.agentId === 'string' ? body.agentId : '';
           const message = body?.message as
@@ -12013,6 +12014,7 @@ description: >
               workspacePath: identity.workspacePath,
               agent: identity.agent as unknown as AgentConfig,
               inheritProject: body?.inheritProject === true,
+              groupDispatch: body?.groupDispatch,
               runtime: runtimeIdentity.runtime,
               runtimeSource: runtimeIdentity.runtimeSource,
               managedCodexProviderReady: isManagedCodexProviderReady(
@@ -12105,9 +12107,11 @@ description: >
                 birthOrigin: inboxOrigin,
               });
             };
+          const { receiveBotGroupReply } = await import('./session-engine/bot-group-delivery');
           const result = await handleInboxDrain(
             body.messages as import('./inbox/types').PendingInboxMessage[],
             injector,
+            message => receiveBotGroupReply(engine, message),
           );
           return jsonResponse(result, result.accepted ? 200 : 409);
         } catch (error) {

@@ -7,8 +7,9 @@ import { getSessionData, getSessionMetadata } from '../SessionStore';
 import { loadConfig, loadProjects } from '../utils/admin-config';
 import { mutateSessionTaskLedger } from './task-orchestration';
 import type { SessionEngine } from './types';
+import { isBotGroupDeliverySettled } from '../../shared/botGroupDelivery';
 
-function assertIdle(engine: SessionEngine, ledger?: SessionTaskLedger) {
+export function assertBotGroupRootIdle(engine: SessionEngine, ledger?: SessionTaskLedger, sending = false) {
   const live = engine.getLiveSessionState();
   if (live.sessionState !== 'idle' || live.isBusy || live.hasNativeWork || live.waitingForUser ||
     live.backgroundWorkActive || live.hasBackgroundWork || live.backgroundWork?.active.length || engine.getQueueStatus().length ||
@@ -16,7 +17,8 @@ function assertIdle(engine: SessionEngine, ledger?: SessionTaskLedger) {
     ledger?.planStart && ledger.planStart.state !== 'dispatched' ||
     ledger?.delegationClaims?.some(claim => claim.state !== 'settled') ||
     ledger?.executionEvidence?.some(fact => fact.pending) ||
-    ledger && projectSessionTasks(ledger, [], 'idle').some(task => ['running', 'unknown', 'awaiting_review'].includes(task.phase))) {
+    ledger && projectSessionTasks(ledger, [], 'idle').some(task => ['running', 'unknown', 'awaiting_review'].includes(task.phase)) ||
+    !sending && ledger?.botGroupDeliveries?.some(delivery => !isBotGroupDeliverySettled(delivery))) {
     throw new BotGroupError('BOT_GROUP_WORK_UNSETTLED');
   }
 }
@@ -46,7 +48,7 @@ export async function configureSessionBotGroup(engine: SessionEngine, input: unk
   const initial = current();
   const initialGroup = initial.metadata.taskOrchestration?.botGroup;
   if (initialGroup && hasBotGroupReceipt(botGroupSchema.parse(initialGroup), command, digest)) return { sessionId: command.sessionId, group: structuredClone(initialGroup) };
-  assertIdle(engine, initial.metadata.taskOrchestration);
+  assertBotGroupRootIdle(engine, initial.metadata.taskOrchestration);
   const history = await getSessionData(command.sessionId);
   if (!history || history.transcriptRecovery) throw new BotGroupError('BOT_GROUP_HISTORY_UNAVAILABLE');
   const historyBoundaryMessageId = history.messages.at(-1)?.id ?? null;
@@ -63,7 +65,7 @@ export async function configureSessionBotGroup(engine: SessionEngine, input: unk
   const fingerprint = JSON.stringify(resolved);
   const isCurrent = () => {
     const { metadata } = current();
-    assertIdle(engine, metadata.taskOrchestration);
+    assertBotGroupRootIdle(engine, metadata.taskOrchestration);
     if (JSON.stringify(resolve(command)) !== fingerprint) throw new BotGroupError('BOT_GROUP_CATALOG_CHANGED');
     return true;
   };

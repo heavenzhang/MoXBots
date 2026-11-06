@@ -84,6 +84,8 @@ pub struct FreshSessionStartRequest {
     /// Network and external CLI callers never inherit a local source project.
     #[serde(default)]
     pub inherit_project: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub group_dispatch: Option<super::bot_group_dispatch::BotGroupDispatch>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -215,20 +217,21 @@ async fn http_post_fresh_start(
     agent_id: &str,
     message: &PendingInboxMessage,
     inherit_project: bool,
+    group_dispatch: Option<&super::bot_group_dispatch::BotGroupDispatch>,
 ) -> Result<FreshStartTargetResponse, String> {
     let url = format!("http://127.0.0.1:{}/api/inbox/start", port);
     let client = crate::local_http::json_client(Duration::from_secs(30));
+    let mut body = serde_json::json!({ "agentId": agent_id, "message": message, "inheritProject": inherit_project });
+    if let Some(binding) = group_dispatch {
+        body["groupDispatch"] = serde_json::to_value(binding).map_err(|error| error.to_string())?;
+    }
     let response = client
         .post(&url)
         .header(
             crate::external_cli::INTERNAL_TOKEN_HEADER,
             crate::external_cli::internal_token(),
         )
-        .json(&serde_json::json!({
-            "agentId": agent_id,
-            "message": message,
-            "inheritProject": inherit_project
-        }))
+        .json(&body)
         .send()
         .await
         .map_err(|error| format!("admission acknowledgement was not confirmed: {error}"))?;
@@ -341,6 +344,7 @@ impl PreparedFreshSession {
             &self.request.agent_id,
             &self.message,
             self.request.inherit_project,
+            self.request.group_dispatch.as_ref(),
         )
         .await;
         let result = match target {
@@ -397,7 +401,11 @@ pub(crate) async fn prepare_fresh_session(
     mut request: FreshSessionStartRequest,
     network_message_id: Option<String>,
 ) -> Result<PreparedFreshSession, FreshSessionStartOutcome> {
-    let session_id = uuid::Uuid::new_v4().to_string();
+    let session_id = request
+        .group_dispatch
+        .as_ref()
+        .map(|binding| binding.target_session_id.clone())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
     let mut message = if request.source_kind == InboxSourceKind::ExternalCli {
         PendingInboxMessage::new_external_request(
             session_id.clone(),
@@ -424,8 +432,11 @@ pub(crate) async fn prepare_fresh_session(
             request.reply_back,
         )
     };
-    if let Some(id) = network_message_id {
-        message.message_id = id;
+    if let Some(binding) = request.group_dispatch.as_ref() {
+        message.message_id = binding.message_id.clone();
+    }
+    if let Some(id) = network_message_id.as_ref() {
+        message.message_id = id.clone();
     }
     let owner_id = format!("inbox-start-{}", uuid::Uuid::new_v4());
     let transient_owner = SidecarOwner::Agent(owner_id);
@@ -442,6 +453,52 @@ pub(crate) async fn prepare_fresh_session(
         owner: Some(transient_owner.clone()),
         lifecycle: Some(lifecycle.clone()),
     };
+
+    if let Some(binding) = prepared.request.group_dispatch.as_ref() {
+        let validate = || -> Result<(), String> {
+            if network_message_id.is_some()
+                || prepared.request.source_kind != InboxSourceKind::InternalSession
+                || prepared.request.from_session_id.as_ref() != Some(&binding.group_id)
+                || !prepared.request.inherit_project
+                || !prepared.request.reply_back
+            {
+                return Err("BOT_GROUP_DISPATCH_MISMATCH".into());
+            }
+            let data =
+                crate::app_dirs::myagents_data_dir().ok_or("BOT_GROUP_SOURCE_UNAVAILABLE")?;
+            let raw = std::fs::read_to_string(data.join("sessions.json"))
+                .map_err(|_| "BOT_GROUP_SOURCE_UNAVAILABLE")?;
+            let rows: Vec<serde_json::Value> =
+                serde_json::from_str(crate::utils::bom::strip_bom(&raw))
+                    .map_err(|_| "BOT_GROUP_SOURCE_UNAVAILABLE")?;
+            super::bot_group_dispatch::validate_claim(
+                binding,
+                &rows,
+                &prepared.request.agent_id,
+                &prepared.request.workspace_path,
+                &prepared.message.text,
+                crate::cron_task::normalize_path,
+            )?;
+            // Inspect existence, not visibility: even hidden prepared targets or
+            // an orphaned transcript cannot be reused for another execution.
+            match std::fs::symlink_metadata(data.join("sessions").join(&session_id)) {
+                Ok(_) => return Err("BOT_GROUP_TARGET_EXISTS".into()),
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+                Err(_) => return Err("BOT_GROUP_TARGET_UNAVAILABLE".into()),
+            }
+            let state = manager.lock().map_err(|_| "BOT_GROUP_TARGET_UNAVAILABLE")?;
+            if state.get_session_sidecar(&session_id).is_some()
+                || state.session_has_owners(&session_id)
+            {
+                return Err("BOT_GROUP_TARGET_EXISTS".into());
+            }
+            Ok(())
+        };
+        if let Err(reason) = validate() {
+            prepared.owner.take();
+            return Err(prepared.outcome("rejected", Some(reason)));
+        }
+    }
 
     let runtime_identity = crate::sidecar::resolve_agent_runtime_identity_by_id_from_config(
         &prepared.request.agent_id,
@@ -726,6 +783,7 @@ mod tests {
             prompt: "Review this".to_string(),
             reply_back: true,
             inherit_project: true,
+            group_dispatch: None,
         };
 
         assert_eq!(
@@ -764,6 +822,7 @@ mod tests {
             prompt: "Review this".to_string(),
             reply_back: false,
             inherit_project: false,
+            group_dispatch: None,
         };
 
         assert_eq!(

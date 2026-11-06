@@ -1,0 +1,126 @@
+{
+  "baseline": {
+    "binding": {
+      "groupId": "group-root",
+      "requestId": "11111111-1111-4111-8111-111111111111",
+      "targetSessionId": "22222222-2222-4222-8222-222222222222",
+      "messageId": "33333333-3333-4333-8333-333333333333"
+    },
+    "botId": "other",
+    "workspacePath": "/work/other",
+    "prompt": "Review the public group brief",
+    "sessions": [
+      {
+        "id": "group-root",
+        "agentDir": "/work/bot",
+        "projectSpace": {
+          "projectId": "A",
+          "botId": "bot"
+        },
+        "taskOrchestration": {
+          "botGroup": {
+            "schemaVersion": 1,
+            "groupId": "group-root",
+            "projectId": "A",
+            "rootBotId": "bot",
+            "title": "Project group",
+            "revision": 1,
+            "createdAt": "2026-11-07T00:00:00Z",
+            "updatedAt": "2026-11-07T00:00:00Z",
+            "historyBoundaryMessageId": "private-before-group",
+            "members": [
+              {
+                "botId": "bot",
+                "name": "bot",
+                "workspacePath": "/work/bot",
+                "active": true,
+                "joinedAt": "2026-11-07T00:00:00Z"
+              },
+              {
+                "botId": "other",
+                "name": "other",
+                "workspacePath": "/work/other",
+                "active": true,
+                "joinedAt": "2026-11-07T00:00:00Z"
+              }
+            ],
+            "receipts": []
+          },
+          "botGroupDeliveries": [
+            {
+              "groupId": "group-root",
+              "requestId": "11111111-1111-4111-8111-111111111111",
+              "targetSessionId": "22222222-2222-4222-8222-222222222222",
+              "messageId": "33333333-3333-4333-8333-333333333333",
+              "groupRevision": 1,
+              "botId": "other",
+              "botName": "other",
+              "workspacePath": "/work/other",
+              "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+              "text": "Review the public group brief",
+              "createdAt": "2026-11-07T00:00:00Z",
+              "state": "reserved"
+            }
+          ]
+        }
+      }
+    ]
+  },
+  "cases": [
+    {
+      "name": "wrong recipient",
+      "path": "/botId",
+      "value": "bot"
+    },
+    {
+      "name": "wrong text",
+      "path": "/prompt",
+      "value": "Other task"
+    },
+    {
+      "name": "wrong workspace",
+      "path": "/workspacePath",
+      "value": "/work/unrelated"
+    },
+    {
+      "name": "wrong message",
+      "path": "/binding/messageId",
+      "value": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "name": "wrong request",
+      "path": "/binding/requestId",
+      "value": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "name": "wrong target",
+      "path": "/binding/targetSessionId",
+      "value": "44444444-4444-4444-8444-444444444444"
+    },
+    {
+      "name": "stale revision",
+      "path": "/sessions/0/taskOrchestration/botGroup/revision",
+      "value": 2
+    },
+    {
+      "name": "removed member",
+      "path": "/sessions/0/taskOrchestration/botGroup/members/1/active",
+      "value": false
+    },
+    {
+      "name": "member moved workspace",
+      "path": "/sessions/0/taskOrchestration/botGroup/members/1/workspacePath",
+      "value": "/work/moved"
+    },
+    {
+      "name": "different group",
+      "path": "/sessions/0/taskOrchestration/botGroupDeliveries/0/groupId",
+      "value": "another-group"
+    },
+    {
+      "name": "rejected claim",
+      "path": "/sessions/0/taskOrchestration/botGroupDeliveries/0/state",
+      "value": "rejected"
+    }
+  ]
+}
