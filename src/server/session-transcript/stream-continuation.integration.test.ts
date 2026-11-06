@@ -10,7 +10,7 @@ import type { TurnTerminalOutcome } from '../session-core/turn-queue';
 import { NO_CHANNEL_DELIVERY } from '../session-core/channel-delivery';
 
 const state = vi.hoisted(() => ({
-  home: '', query: vi.fn(), sdkRead: vi.fn(), events: [] as [string, unknown][],
+  home: '', query: vi.fn(), sdkRead: vi.fn(), nativeRecords: [] as unknown[], events: [] as [string, unknown][],
   inputs: [] as SDKUserMessage[], sources: [] as unknown[], owners: [] as unknown[],
   gateway: vi.fn<(input: SDKUserMessage, turn: number, options: Options) => Promise<void>>(),
   faults: [] as unknown[], delay: 20,
@@ -20,6 +20,10 @@ vi.mock('@anthropic-ai/claude-agent-sdk', async original => ({
   ...await original<typeof import('@anthropic-ai/claude-agent-sdk')>(),
   query: (...args: unknown[]) => state.query(...args),
   getSessionMessages: (...args: unknown[]) => state.sdkRead(...args),
+}));
+vi.mock('../builtin-session/native-denial-review', async original => ({
+  ...await original<typeof import('../builtin-session/native-denial-review')>(),
+  readNativeRecoveryRecords: async () => state.nativeRecords,
 }));
 vi.mock('../runtimes/builtin-media-attachments', () => ({ buildBuiltinMediaAttachments: async () => [] }));
 vi.mock('../sse', async original => ({
@@ -139,7 +143,7 @@ beforeEach(async () => {
   state.home = await mkdtemp(join(tmpdir(), 'moxbots-stream-turn-'));
   vi.stubEnv('HOME', state.home);
   state.events.length = state.inputs.length = state.sources.length = state.owners.length = state.faults.length = 0;
-  state.delay = 20;
+  state.delay = 20; state.nativeRecords = [];
   state.query.mockReset().mockImplementation(fakeQuery);
   state.sdkRead.mockReset().mockResolvedValue([]);
   state.gateway.mockReset();
@@ -195,7 +199,7 @@ afterEach(async () => {
   await rm(state.home, { recursive: true, force: true });
 });
 
-async function initialize() {
+async function initialize(seed?: (workspace: string) => Promise<string>) {
   const workspace = join(state.home, 'workspace');
   await mkdir(workspace);
   const providers = join(state.home, '.myagents', 'providers');
@@ -203,13 +207,73 @@ async function initialize() {
   await writeFile(join(providers, 'stream-fixture.json'), JSON.stringify({ id: 'stream-fixture', name: 'fixture',
     type: 'api', models: [{ model: 'fixture-model' }] }));
   agent.setSidecarPort(15432);
-  await agent.initializeAgent(workspace, null, undefined, { preWarmDisabled: true });
-  await agent.setSessionProviderEnv({ providerId: 'stream-fixture', baseUrl: upstreamBaseUrl,
-    apiProtocol: 'anthropic', apiKey: 'synthetic-fixture' });
+  const providerEnv = { providerId: 'stream-fixture', baseUrl: upstreamBaseUrl,
+    apiProtocol: 'anthropic' as const, apiKey: 'synthetic-fixture' };
+  // A restored session already owns its provider; this is not a provider switch.
+  if (seed) (await import('../builtin-session/config')).setProviderEnv(providerEnv);
+  const resume = seed ? await seed(workspace) : null;
+  await agent.initializeAgent(workspace, null, resume ?? undefined, { preWarmDisabled: true });
+  if (seed) await agent.applySessionModelSelection({ model: 'fixture-model', providerEnv });
+  else await agent.setSessionProviderEnv(providerEnv);
   await agent.setSessionModel('fixture-model');
 }
 
 describe('production original-turn stream continuation with synthetic SDK protocol', () => {
+  it('reconciles an old compacted failure through the production owner and durable stores without sending a model input', async () => {
+    const { recoveryActionHash, recoveryEvidenceDigest, ContextRecoveryController } = await import('../openai-bridge/context-recovery');
+    const { createSessionExecution } = await import('../../shared/sessionExecution');
+    const { executionToolObservationDigest } = await import('../session-engine/session-execution');
+    const { mutateSessionTaskLedger } = await import('../session-engine/task-orchestration');
+    const input = { command: 'git -C /synthetic/missing status --short' };
+    const output = 'Exit code 128\nfatal: not a git repository';
+    const hash = recoveryActionHash('Bash', input);
+    let sid = '';
+    await initialize(async workspace => {
+      sid = (await store.createSession(workspace)).id;
+      await store.saveBuiltinContextLedger(sid, sid, {
+        version: 1, completed: [], uncertain: [hash], denied: [], blocked: false,
+        projectionActive: false, streamArmedOnly: true, noDispatch: [], nativeErrors: [],
+        operationAttempts: { version: 1, legacyUncertain: [hash], entries: [{
+          id: randomUUID(), queryEpoch: randomUUID(), queryGeneration: 1, sessionId: sid, sdkSessionId: sid,
+          scope: 'original-queue', toolUseId: 'old-failure', toolName: 'Bash', actionHash: hash,
+          reservedAt: new Date().toISOString(), returnedAt: new Date().toISOString(),
+          status: 'unresolved', outcome: 'error', resultDigest: recoveryEvidenceDigest(output),
+        }] },
+      }, () => true);
+      const execution = createSessionExecution({ id: 'original-task', requestId: 'original-human',
+        originalInput: 'Check the artifact', queueId: 'original-queue', now: Date.now(),
+        intent: { kind: 'execute', objective: 'Check the artifact', scope: 'workspace', acceptanceCriteria: ['verified'] } });
+      await mutateSessionTaskLedger(sid, next => ({ ...next,
+        execution: { ...execution, phase: 'paused', reason: 'TOOL_OUTCOME_UNKNOWN', lastSettledQueueId: 'original-queue' },
+        executionEvidence: [{ id: 'old-failure', name: 'Bash', queueId: 'original-queue',
+          digest: executionToolObservationDigest('Bash', input, output), successful: false, mutating: true, pending: true, observationOrder: 1 }],
+      }));
+      const use = { type: 'assistant', uuid: 'old-use', parentUuid: null, sessionId: sid, isSidechain: false,
+        message: { content: [{ type: 'tool_use', id: 'old-failure', name: 'Bash', input }] } };
+      const result = { type: 'user', uuid: 'old-result', parentUuid: use.uuid, sessionId: sid, isSidechain: false,
+        sourceToolAssistantUUID: use.uuid, toolUseResult: `Error: ${output}`,
+        message: { content: [{ type: 'tool_result', tool_use_id: 'old-failure', is_error: true, content: output }] } };
+      const compact = { type: 'system', subtype: 'compact_boundary', uuid: 'compact', parentUuid: null,
+        logicalParentUuid: result.uuid, sessionId: sid, isSidechain: false };
+      const summary = { type: 'user', uuid: 'summary', parentUuid: compact.uuid, sessionId: sid, isSidechain: false,
+        message: { content: 'Earlier task summarized' } };
+      state.nativeRecords = [use, result, compact, summary];
+      state.sdkRead.mockResolvedValue([{ ...summary, session_id: sid }]);
+      return sid;
+    });
+    await agent.reconcileBuiltinExecutionEvidence();
+    const ledger = store.getSessionMetadata(sid)!.taskOrchestration!;
+    expect(ledger.execution).toMatchObject({ id: 'original-task', phase: 'paused', reason: 'turn_error' });
+    expect(ledger.executionEvidence![0]).toMatchObject({ pending: false, successful: false, settledFailure: 'native-bash-exit' });
+    const cold = new ContextRecoveryController({ initialLedger: store.loadBuiltinContextLedger(sid, sid),
+      recoveryOwner: { sessionId: sid, sdkSessionId: sid }, scope: () => undefined, isActive: () => false,
+      backup: async () => { throw new Error('must not execute'); } });
+    expect(cold.inspectSettledBashFailures()).toMatchObject([{ exitCode: 128, toolUseId: 'old-failure' }]);
+    expect(cold.inspectActionLedger().uncertainCount).toBe(1);
+    expect(state.inputs).toHaveLength(0);
+    expect(upstreamRequests).toBe(0);
+  });
+
   it.each(['TOOL_OUTCOME_UNKNOWN', 'WAITING_FOR_USER', 'BACKGROUND_WORK_ACTIVE'])(
     'shows a rejected continuation reason without dispatching it (%s)', async error => {
       await initialize();
