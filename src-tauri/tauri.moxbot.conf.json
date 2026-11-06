@@ -92,7 +92,7 @@
     },
     "macOS": {
       "infoPlist": "Info.moxbot.plist",
-      "bundleVersion": "542.2",
+      "bundleVersion": "542.3",
       "signingIdentity": null
     },
     "icon": [
