@@ -1,6 +1,7 @@
 import { forwardRef, lazy, Suspense, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useWorkspaceFileService } from '@/hooks/useWorkspaceFileService';
+import BotCareDocumentDraft from './BotCareDocumentDraft';
 import { discoverBotCareDocuments, memoryNoteFilename, type BotCareDocumentInventory, type BotCareDocumentKind } from './documentInventory';
 
 const FilePreviewModal = lazy(() => import('@/components/FilePreviewModal'));
@@ -26,7 +27,7 @@ const BotCareDocuments = forwardRef<BotCareDocumentsRef, Props>(function BotCare
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
-  const [creating, setCreating] = useState(false);
+  const [draft, setDraft] = useState<{ workspacePath: string; path: string; save: (content: string) => Promise<void> } | null>(null);
   const [noteName, setNoteName] = useState('');
   const [refresh, setRefresh] = useState(0);
   const generation = useRef(0);
@@ -78,65 +79,66 @@ const BotCareDocuments = forwardRef<BotCareDocumentsRef, Props>(function BotCare
     }
   }, [agentDir, files, t]);
 
-  const createFile = useCallback(async (definition?: string) => {
+  const createFile = useCallback((definition?: string) => {
     if (locked.current || !inventory) return;
     const name = definition || memoryNoteFilename(noteName);
     if (!name) { setError(t('botCare.docs.invalidName', { defaultValue: '请输入有效的笔记文件名，不能包含路径。' })); return; }
-    const version = generation.current;
-    const current = () => mounted.current && generation.current === version;
-    locked.current = true;
-    setCreating(true);
-    setError(null);
-    let handedToPreview = false;
-    try {
-      if (!definition && !inventory.memoryDirectoryExists) {
-        const folder = await files.newFolder({ parentDir: '', name: 'memory' });
-        if (!folder.success) throw new Error(t('botCare.docs.createFailed', { defaultValue: '创建失败，请刷新后重试。' }));
-        if (!current()) return;
-        setInventory(old => old && ({ ...old, memoryDirectoryExists: true }));
+    const parentDir = definition ? '' : 'memory';
+    let memoryReady = inventory.memoryDirectoryExists;
+    // Capture the original service and target. Later parent selection changes
+    // must not redirect an already-open draft to another workspace.
+    const save = async (content: string) => {
+      if (parentDir && !memoryReady) {
+        try {
+          const folder = await files.newFolder({ parentDir: '', name: parentDir });
+          if (!folder.success) throw new Error(t('botCare.docs.createFailed', { defaultValue: '创建失败，请刷新后重试。' }));
+        } catch (reason) {
+          // A directory may have appeared concurrently. Only a confirmed real
+          // directory is reusable; never replace another file or clear a failure.
+          const checked = await files.checkPaths({ paths: [parentDir] });
+          const status = checked.results[parentDir];
+          if (!status?.exists || status.type !== 'dir' || status.error) throw reason;
+        }
+        memoryReady = true;
       }
-      const created = await files.newFile({ parentDir: definition ? '' : 'memory', name });
+      const input = { parentDir, name, content };
+      const created = await files.newFile(input);
       if (!created.success) throw new Error(t('botCare.docs.createFailed', { defaultValue: '创建失败，请刷新后重试。' }));
-      if (!current()) return;
-      // newFile owns exclusive creation; all subsequent saves stay in the normal
-      // editor with its baseline, conflict handling and draft preservation.
-      locked.current = false;
-      handedToPreview = true;
-      await openFile(created.path, true);
-      if (current()) { setNoteName(''); setRefresh(value => value + 1); }
-    } catch (reason) {
-      if (current()) setError(message(reason));
-    } finally {
-      if (mounted.current) {
-        setCreating(false);
-        if (!handedToPreview) locked.current = false;
-      }
-    }
-  }, [files, inventory, noteName, openFile, t]);
+    };
+    locked.current = true;
+    setError(null);
+    setDraft({ workspacePath: agentDir, path: parentDir ? `${parentDir}/${name}` : name, save });
+  }, [agentDir, files, inventory, noteName, t]);
 
   const closePreview = useCallback(() => {
     request.current += 1;
     locked.current = false;
     setPreview(null);
+    setDraft(null);
     setRefresh(value => value + 1);
   }, []);
 
   return <section className="mx-auto max-w-3xl space-y-4 p-6" aria-label={t(kind === 'definition' ? 'botCare.docs.definitionTitle' : 'botCare.docs.memoryTitle', { defaultValue: kind === 'definition' ? '定义文档' : '记忆文档' })}>
     <p className="text-sm text-[var(--ink-muted)]">{t('botCare.docs.description', { defaultValue: '直接查看和编辑此 Bot 工作区中的真实文件。' })}</p>
-    <p className="rounded-lg bg-[var(--paper-inset)] px-4 py-3 text-sm leading-relaxed text-[var(--ink-muted)]">{t(kind === 'definition' ? 'botCare.docs.definitionHint' : 'botCare.docs.memoryHint')}</p>
-    <button type="button" disabled={loading || creating || !!preview} onClick={() => setRefresh(value => value + 1)} className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm disabled:opacity-50">{t('botCare.docs.refresh', { defaultValue: '刷新文件' })}</button>
+    <details className="rounded-lg bg-[var(--paper-inset)] px-4 py-3 text-sm text-[var(--ink-muted)]">
+      <summary className="cursor-pointer">{t(kind === 'definition' ? 'botCare.docs.definitionDetails' : 'botCare.docs.memoryDetails')}</summary>
+      <p className="mt-2 leading-relaxed">{t(kind === 'definition' ? 'botCare.docs.definitionHint' : 'botCare.docs.memoryHint')}</p>
+    </details>
+    <button type="button" disabled={loading || !!draft || !!preview} onClick={() => setRefresh(value => value + 1)} className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm disabled:opacity-50">{t('botCare.docs.refresh', { defaultValue: '刷新文件' })}</button>
     {loading && <p role="status">{t('botCare.docs.loading', { defaultValue: '正在查找文档…' })}</p>}
     {error && <p role="alert" className="text-sm text-[var(--error)]">{error}</p>}
     {!loading && inventory && <>
       {inventory.paths.length === 0 && <p className="text-sm text-[var(--ink-muted)]">{t('botCare.docs.empty', { defaultValue: '此工作区尚未发现相关 Markdown 文档。' })}</p>}
-      <ul className="space-y-2">{inventory.paths.map(path => <li key={path}><button type="button" disabled={creating || !!preview} onClick={() => { void openFile(path); }} className="w-full rounded-xl border border-[var(--line)] bg-[var(--paper)] px-4 py-3 text-left text-sm hover:bg-[var(--paper-inset)] disabled:opacity-50">{path}</button></li>)}</ul>
+      <ul className="space-y-2">{inventory.paths.map(path => <li key={path}><button type="button" disabled={!!draft || !!preview} onClick={() => { void openFile(path); }} className="w-full rounded-xl border border-[var(--line)] bg-[var(--paper)] break-all px-4 py-3 text-left text-sm hover:bg-[var(--paper-inset)] disabled:opacity-50">{path}</button></li>)}</ul>
       {inventory.truncated && <p role="status" className="text-sm text-[var(--ink-muted)]">{t('botCare.docs.truncated', { defaultValue: '文件较多，当前仅显示部分文档。' })}</p>}
-      {kind === 'definition' && inventory.missingDefinitions.map(path => <button key={path} type="button" disabled={creating || !!preview} onClick={() => { void createFile(path); }} className="mr-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50">{t('botCare.docs.createDefinition', { defaultValue: '创建 {{path}}', path })}</button>)}
+      {kind === 'definition' && inventory.missingDefinitions.map(path => <button key={path} type="button" disabled={!!draft || !!preview} onClick={() => { void createFile(path); }} className="mr-2 rounded-lg border border-[var(--line)] px-3 py-2 text-sm disabled:opacity-50">{t('botCare.docs.createDefinition', { defaultValue: '创建 {{path}}', path })}</button>)}
       {kind === 'memory' && <form onSubmit={event => { event.preventDefault(); void createFile(); }} className="flex flex-wrap gap-2">
-        <input aria-label={t('botCare.docs.noteName', { defaultValue: '记忆笔记文件名' })} placeholder={t('botCare.docs.notePlaceholder', { defaultValue: '例如：项目经验.md' })} value={noteName} disabled={creating || !!preview} onChange={event => setNoteName(event.target.value)} className="rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm" />
-        <button type="submit" disabled={creating || !!preview} className="rounded-lg bg-[var(--button-primary-bg)] px-3 py-2 text-sm text-[var(--button-primary-text)] disabled:opacity-50">{t('botCare.docs.createNote', { defaultValue: '新建记忆笔记' })}</button>
+        <input aria-label={t('botCare.docs.noteName', { defaultValue: '记忆笔记文件名' })} placeholder={t('botCare.docs.notePlaceholder', { defaultValue: '例如：项目经验.md' })} value={noteName} disabled={!!draft || !!preview} onChange={event => setNoteName(event.target.value)} className="rounded-lg border border-[var(--line)] bg-[var(--paper)] px-3 py-2 text-sm" />
+        <button type="submit" disabled={!!draft || !!preview} className="rounded-lg bg-[var(--button-primary-bg)] px-3 py-2 text-sm text-[var(--button-primary-text)] disabled:opacity-50">{t('botCare.docs.createNote', { defaultValue: '新建记忆笔记' })}</button>
       </form>}
     </>}
+    {draft && <BotCareDocumentDraft workspacePath={draft.workspacePath} path={draft.path} onSave={draft.save}
+      onCancel={closePreview} onSaved={() => { setNoteName(''); closePreview(); }} />}
     {preview && <Suspense fallback={<p role="status">{t('botCare.docs.opening', { defaultValue: '正在打开编辑器…' })}</p>}>
       <FilePreviewModal {...preview} workspacePath={preview.workspacePath} onClose={closePreview} onRenamed={(path, name) => setPreview(old => old && ({ ...old, path, name }))} />
     </Suspense>}

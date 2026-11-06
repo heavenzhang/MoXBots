@@ -84,35 +84,139 @@ describe('Bot care workspace documents', () => {
     expect(ref.current?.isEditing()).toBe(true);
   });
 
-  it('creates missing definitions through newFile and opens the existing editor without a separate save path', async () => {
+  it('opens a missing definition as memory-only draft and creates the full content only after explicit save', async () => {
+    const files = mocks.services.get('/bot-a')!;
     render(<BotCareDocuments agentDir="/bot-a" kind="definition" />);
     fireEvent.click(await screen.findByRole('button', { name: '创建 AGENTS.md' }));
-    await screen.findByRole('textbox', { name: 'Document draft' });
-    const files = mocks.services.get('/bot-a')!;
-    expect(files.newFile).toHaveBeenCalledWith({ parentDir: '', name: 'AGENTS.md' });
-    expect(files.readPreview).toHaveBeenCalledWith({ path: 'AGENTS.md' });
+    const input = screen.getByRole('textbox', { name: '文档内容（Markdown）' });
+    expect(screen.getByRole('button', { name: '保存并创建' })).toBeDisabled();
+    expect(files.newFile).not.toHaveBeenCalled();
+    expect(files.readPreview).not.toHaveBeenCalled();
+    const content = '\ufeff# Agent definition\r\nUse these instructions.\r\n';
+    fireEvent.change(input, { target: { value: content } });
+    // A browser textarea normalizes CRLF; exact submitted value remains the
+    // editor's content without a blank-file creation / saveFile round trip.
+    const submitted = (input as HTMLTextAreaElement).value;
+    fireEvent.click(screen.getByRole('button', { name: '保存并创建' }));
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: '文档内容（Markdown）' })).toBeNull());
+    expect(files.newFile).toHaveBeenCalledExactlyOnceWith({ parentDir: '', name: 'AGENTS.md', content: submitted });
+    expect(submitted).toContain('Use these instructions.');
     expect(files.saveFile).not.toHaveBeenCalled();
-    expect(screen.getByTestId('preview')).toHaveAttribute('data-edit', 'true');
+    expect(files.readPreview).not.toHaveBeenCalled();
   });
 
-  it('creates an explicit memory note in the same workspace and reports filename collisions without overwriting or losing its name', async () => {
+  it('cancels an AGENTS draft without leaving an empty file that would shadow existing CLAUDE instructions', async () => {
+    const files = mocks.services.get('/bot-a')!;
+    const ref = createRef<BotCareDocumentsRef>();
+    render(<BotCareDocuments ref={ref} agentDir="/bot-a" kind="definition" />);
+    fireEvent.click(await screen.findByRole('button', { name: '创建 AGENTS.md' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '文档内容（Markdown）' }), { target: { value: '# Unsaved replacement' } });
+    expect(ref.current?.isEditing()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(ref.current?.isEditing()).toBe(false);
+    expect(files.newFile).not.toHaveBeenCalled();
+    expect(files.newFolder).not.toHaveBeenCalled();
+    expect(files.saveFile).not.toHaveBeenCalled();
+    expect(files.readPreview).not.toHaveBeenCalled();
+    expect(await screen.findByRole('button', { name: 'CLAUDE.md' })).toBeInTheDocument();
+  });
+
+  it('does not create a memory directory or file when its draft is cancelled', async () => {
+    const files = mocks.services.get('/bot-a')!;
+    render(<BotCareDocuments agentDir="/bot-a" kind="memory" />);
+    fireEvent.change(await screen.findByRole('textbox', { name: '记忆笔记文件名' }), { target: { value: 'project-notes' } });
+    fireEvent.click(screen.getByRole('button', { name: '新建记忆笔记' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '文档内容（Markdown）' }), { target: { value: '# Unsaved memory' } });
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(screen.queryByRole('textbox', { name: '文档内容（Markdown）' })).toBeNull();
+    expect(files.newFolder).not.toHaveBeenCalled();
+    expect(files.newFile).not.toHaveBeenCalled();
+  });
+
+  it('preserves a colliding memory draft and retries exclusive creation without overwriting', async () => {
     const files = mocks.services.get('/bot-a')!;
     files.newFile.mockRejectedValueOnce(new Error('File already exists'));
     const ref = createRef<BotCareDocumentsRef>();
     render(<BotCareDocuments ref={ref} agentDir="/bot-a" kind="memory" />);
-    const name = await screen.findByRole('textbox', { name: '记忆笔记文件名' });
-    fireEvent.change(name, { target: { value: 'project-notes' } });
+    fireEvent.change(await screen.findByRole('textbox', { name: '记忆笔记文件名' }), { target: { value: 'project-notes' } });
     fireEvent.click(screen.getByRole('button', { name: '新建记忆笔记' }));
+    const input = screen.getByRole('textbox', { name: '文档内容（Markdown）' });
+    fireEvent.change(input, { target: { value: '# Retained memory\nDetails stay here.\n' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存并创建' }));
     expect(await screen.findByRole('alert')).toHaveTextContent('File already exists');
-    expect(name).toHaveValue('project-notes');
-    expect(files.newFolder).toHaveBeenCalledWith({ parentDir: '', name: 'memory' });
-    expect(files.newFile).toHaveBeenCalledWith({ parentDir: 'memory', name: 'project-notes.md' });
+    expect(input).toHaveValue('# Retained memory\nDetails stay here.\n');
+    expect(files.newFile).toHaveBeenCalledWith({ parentDir: 'memory', name: 'project-notes.md', content: '# Retained memory\nDetails stay here.\n' });
     expect(files.saveFile).not.toHaveBeenCalled();
+    expect(ref.current?.isEditing()).toBe(true);
+    fireEvent.click(screen.getByRole('button', { name: '保存并创建' }));
+    await waitFor(() => expect(screen.queryByRole('textbox', { name: '文档内容（Markdown）' })).toBeNull());
+    expect(files.newFolder).toHaveBeenCalledExactlyOnceWith({ parentDir: '', name: 'memory' });
     expect(ref.current?.isEditing()).toBe(false);
+  });
+
+  it('keeps a draft bound to its original workspace if parent props change before save', async () => {
+    const view = render(<BotCareDocuments agentDir="/bot-a" kind="definition" />);
+    fireEvent.click(await screen.findByRole('button', { name: '创建 AGENTS.md' }));
+    const input = screen.getByRole('textbox', { name: '文档内容（Markdown）' });
+    fireEvent.change(input, { target: { value: '# Original Bot A draft' } });
+    view.rerender(<BotCareDocuments agentDir="/bot-b" kind="definition" />);
+    expect(screen.getByRole('textbox', { name: '文档内容（Markdown）' })).toBe(input);
+    expect(input).toHaveValue('# Original Bot A draft');
+    expect(screen.getByText('/bot-a')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: '保存并创建' }));
+    await waitFor(() => expect(mocks.services.get('/bot-a')!.newFile).toHaveBeenCalledWith({ parentDir: '', name: 'AGENTS.md', content: '# Original Bot A draft' }));
+    expect(mocks.services.get('/bot-b')!.newFile).not.toHaveBeenCalled();
+    expect(mocks.services.get('/bot-b')!.saveFile).not.toHaveBeenCalled();
+  });
+
+  it('permits an already-created memory directory only after checking that it is a directory', async () => {
+    const files = mocks.services.get('/bot-a')!;
+    files.newFolder.mockRejectedValueOnce(new Error('Directory already exists'));
+    render(<BotCareDocuments agentDir="/bot-a" kind="memory" />);
+    fireEvent.change(await screen.findByRole('textbox', { name: '记忆笔记文件名' }), { target: { value: 'race-note.md' } });
     fireEvent.click(screen.getByRole('button', { name: '新建记忆笔记' }));
-    await screen.findByRole('textbox', { name: 'Document draft' });
-    expect(files.newFolder).toHaveBeenCalledTimes(1);
-    expect(screen.getByTestId('preview')).toHaveAttribute('data-path', 'memory/project-notes.md');
+    files.checkPaths.mockResolvedValue({ results: { memory: { exists: true, type: 'dir' } } });
+    fireEvent.change(screen.getByRole('textbox', { name: '文档内容（Markdown）' }), { target: { value: '# Complete note' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存并创建' }));
+    await waitFor(() => expect(files.newFile).toHaveBeenCalledWith({ parentDir: 'memory', name: 'race-note.md', content: '# Complete note' }));
+    expect(files.checkPaths).toHaveBeenCalledWith({ paths: ['memory'] });
+  });
+
+  it('keeps the memory draft if a conflicting path is a file rather than a directory', async () => {
+    const files = mocks.services.get('/bot-a')!;
+    files.newFolder.mockRejectedValueOnce(new Error('Path already exists'));
+    render(<BotCareDocuments agentDir="/bot-a" kind="memory" />);
+    fireEvent.change(await screen.findByRole('textbox', { name: '记忆笔记文件名' }), { target: { value: 'my-note' } });
+    fireEvent.click(screen.getByRole('button', { name: '新建记忆笔记' }));
+    files.checkPaths.mockResolvedValue({ results: { memory: { exists: true, type: 'file' } } });
+    fireEvent.change(screen.getByRole('textbox', { name: '文档内容（Markdown）' }), { target: { value: '# Keep this draft' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存并创建' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Path already exists');
+    expect(files.newFile).not.toHaveBeenCalled();
+    expect(screen.getByRole('textbox', { name: '文档内容（Markdown）' })).toHaveValue('# Keep this draft');
+  });
+
+  it('blocks cancel, Escape and repeated saves while atomic creation is pending', async () => {
+    const pending = deferred<{ success: boolean; path: string }>();
+    const files = mocks.services.get('/bot-a')!;
+    files.newFile.mockReturnValueOnce(pending.promise);
+    const ref = createRef<BotCareDocumentsRef>();
+    render(<BotCareDocuments ref={ref} agentDir="/bot-a" kind="definition" />);
+    fireEvent.click(await screen.findByRole('button', { name: '创建 AGENTS.md' }));
+    fireEvent.change(screen.getByRole('textbox', { name: '文档内容（Markdown）' }), { target: { value: '# Complete definition' } });
+    fireEvent.click(screen.getByRole('button', { name: '保存并创建' }));
+    expect(screen.getByRole('button', { name: '取消' })).toBeDisabled();
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    document.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(true);
+    expect(screen.getByRole('textbox', { name: '文档内容（Markdown）' })).toHaveValue('# Complete definition');
+    expect(ref.current?.isEditing()).toBe(true);
+    expect(files.newFile).toHaveBeenCalledTimes(1);
+    await act(async () => { pending.resolve({ success: true, path: 'AGENTS.md' }); });
+    expect(screen.queryByRole('textbox', { name: '文档内容（Markdown）' })).toBeNull();
+    expect(ref.current?.isEditing()).toBe(false);
   });
 
   it('shows discovery failures and supports an explicit retry', async () => {
