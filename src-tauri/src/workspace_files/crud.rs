@@ -56,6 +56,7 @@ pub async fn cmd_workspace_new_file(
     workspace: String,
     parent_dir: String,
     name: String,
+    content: Option<String>,
 ) -> Result<CreatePathResult, String> {
     validate_item_name(name.trim())?;
     let workspace_root = validate_workspace_root(&workspace)?;
@@ -75,7 +76,11 @@ pub async fn cmd_workspace_new_file(
         .replace('\\', "/");
     // Atomic no-replace publication: a concurrent editor or symlink must never
     // be truncated between the existence probe and creation.
-    create_workspace_file_no_follow(&workspace_root, &rel, b"")?;
+    create_workspace_file_no_follow(
+        &workspace_root,
+        &rel,
+        content.as_deref().unwrap_or("").as_bytes(),
+    )?;
     Ok(CreatePathResult {
         success: true,
         path: rel,
@@ -293,11 +298,37 @@ mod tests {
             ws.to_string_lossy().to_string(),
             "".to_string(),
             "hello.txt".to_string(),
+            None,
         )
         .await
         .unwrap();
         assert_eq!(res.path, "hello.txt");
         assert!(ws.join("hello.txt").is_file());
+        let _ = fs::remove_dir_all(&ws);
+    }
+
+    #[tokio::test]
+    async fn creates_definition_with_complete_content_without_replacing_existing_files() {
+        let ws = make_test_workspace("crud_new_definition");
+        let body = "# Bot duties\nKeep existing work requirements.\n";
+        cmd_workspace_new_file(
+            ws.to_string_lossy().to_string(),
+            "".into(),
+            "AGENTS.md".into(),
+            Some(body.into()),
+        )
+        .await
+        .unwrap();
+        assert_eq!(fs::read_to_string(ws.join("AGENTS.md")).unwrap(), body);
+        let collision = cmd_workspace_new_file(
+            ws.to_string_lossy().to_string(),
+            "".into(),
+            "AGENTS.md".into(),
+            Some("replacement".into()),
+        )
+        .await;
+        assert!(collision.is_err());
+        assert_eq!(fs::read_to_string(ws.join("AGENTS.md")).unwrap(), body);
         let _ = fs::remove_dir_all(&ws);
     }
 
@@ -309,6 +340,7 @@ mod tests {
             ws.to_string_lossy().to_string(),
             "".to_string(),
             "a.txt".to_string(),
+            None,
         )
         .await;
         assert!(res.is_err());
@@ -326,6 +358,7 @@ mod tests {
             ws.to_string_lossy().to_string(),
             "".to_string(),
             "../escape.txt".to_string(),
+            None,
         )
         .await;
         assert!(res.is_err());
@@ -450,6 +483,7 @@ mod tests {
             ws.to_string_lossy().to_string(),
             "".to_string(),
             "foo.txt".to_string(),
+            None,
         )
         .await;
         assert!(res.is_err());
