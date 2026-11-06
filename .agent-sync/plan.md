@@ -1356,3 +1356,8 @@ Existing sole desktop/macOS/updater/sharedCI/main owner01a12bc2 integrates revie
 原生 543.2 出现 positional `session tasks review` 未被记账解析器识别，native start 增 revision 导致步骤评审自冲突；已确认模型暂停随后阻断新的人工补充。独立分支 codex/task-revision-continue-20261107 基于 main bfbc92f3800a3ee4da5785b0f25fc61e2b7a32c2，修复精确命令识别与原根评审暂停后的人工重新核对，保留 CAS、未知结果、审批、后台/前轮门禁；原原因继续注入 runtime，不伪造任务接受。验收 dev-docs/task-revision-continue-20261107/acceptance.md，任务记录 codex-task-revision-continue-20261107-2b8d6d9a。
 
 desktop/macOS-arm64/updater/sharedCI/main 唯一负责人仍 01a12bc2-907a-7702-b6dd-788225c5dfe4，已接收下一未冻结批登记；作者提交精确 SHA 与证据后由原负责人审阅、集成、CI/版本/不可变制品/安全安装及原会话验收。开发会话未操作运行数据、未重放业务、未触发共享 CI。其他端不发布。
+
+
+## MB-TASK-REVISION-CONTINUE-20261107 Root local5433
+
+Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exactproducer07dc from mainbfbc, preserving PR257 cleanup. Allocate0.5.43/build543.3 for a different localrepair artifact; installed543.2 and published542.6 remain immutable. Fix only exact positional task-review classification and newtrustedhuman response to an exactsettled rootconfirmed pausedassessment, keeping original intent/ledger/unknown/Stop/approval/background guards. Actualsourcechecks/main, newimmutablelocalbuild/safeinstall and originalsession behavior are separate acceptance claims. LocalMac repair doesnot wait for unavailable hostedrunner; publicpublication/tag is not admitted by localcandidate record. No business replay, ledger edits, cloud/mobile/website release or laterfeature batching. Root task codex-release-task-revision-0543-20261107-7734669b; private controls work/task-revision-continue-root-20261107/owner.
