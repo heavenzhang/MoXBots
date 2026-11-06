@@ -1,8 +1,8 @@
 import ProjectContextBadge from '@/features/project-spaces/ProjectContextBadge';
 import { SessionRecoveryPanels } from '../components/SessionRecoveryPanels';
 import { RECOVERY_REVIEW_ACTIONS_PATH, RECOVERY_RECONCILE_PATH, type RecoveryActionSnapshot } from '../../shared/recoveryReconciliation';
-import { SessionTaskOrchestrationProvider, useSessionTaskOrchestrationContext } from '@/components/agent-status/useSessionTaskOrchestration';
-import { SessionTaskActionsContext, resolveTaskActionTargets, type TaskReviewTarget } from '@/components/agent-status/SessionTaskActionsContext';
+import { SessionTaskOrchestrationProvider } from '@/components/agent-status/useSessionTaskOrchestration';
+import { SessionTaskActionsContext } from '@/components/agent-status/SessionTaskActionsContext';
 import SessionTaskResults from '@/components/agent-status/SessionTaskResults';
 import { isComposerUpdateCheckpointLocked } from '@/utils/composerUpdateCheckpoint';
 import type { ContinuationRequest } from '@/components/SessionContinuationBanner';
@@ -5826,40 +5826,7 @@ function ChatContent({
       textarea.scrollTop = textarea.scrollHeight;
     });
   }, [sessionId]);
-  const taskState = useSessionTaskOrchestrationContext();
-  const taskStateRef = useRef(taskState);
-  taskStateRef.current = taskState;
-  const resolveActionTargets = useCallback((targets: readonly TaskReviewTarget[], purpose: 'review' | 'feedback' = 'review') => {
-    const current = taskStateRef.current;
-    if (!current || current.stale || !targets.length || sessionIdRef.current !== current.sessionId
-      || targets.some(target => target.sessionId !== current.sessionId)) return null;
-    return resolveTaskActionTargets(current.tasks, targets, current.sessionId, purpose);
-  }, []);
-  const taskActions = useMemo(() => ({
-    disabled: isSessionLoading || !isConnected || sessionState === 'stopping'
-      || !!pendingPermission || !!pendingAskUserQuestion || !!pendingExitPlanMode || !!pendingEnterPlanMode
-      || !!questionTarget || !!goalDraftConfig || (cronState.isEnabled && !cronState.task),
-    onInspect: openSubagent,
-    onReview: async (targets: readonly TaskReviewTarget[]) => {
-      if (isComposerUpdateCheckpointLocked()) return false;
-      const selected = resolveActionTargets(targets);
-      if (!selected) return false;
-      const entries = selected.map(task => `- ${task.title} [task:${task.id}] (${task.reviewAttemptId ?? 'main'})`).join('\n');
-      // This is a request in the original queue, never a direct review mutation.
-      // The captured attempt prevents a later retry from inheriting this request.
-      return (await handleSendMessageRef.current(t('orchestration.inline.reviewPrompt', { ns: 'app', entries }))) === true;
-    },
-    onComposeRework: (targets: readonly TaskReviewTarget[]) => {
-      const selected = resolveActionTargets(targets, 'feedback');
-      if (!selected || !chatInputRef.current || isComposerUpdateCheckpointLocked()) return;
-      const entries = selected.map(task => `- ${task.title} [task:${task.id}] (${task.reviewAttemptId ?? 'main'})`).join('\n');
-      const existing = chatInputRef.current.getCurrentValue();
-      const prompt = t('orchestration.inline.reworkPrompt', { ns: 'app', entries });
-      chatInputRef.current.setValue(existing ? `${existing}\n\n${prompt}` : prompt);
-    },
-  }), [isSessionLoading, isConnected, sessionState, pendingPermission, pendingAskUserQuestion,
-    pendingExitPlanMode, pendingEnterPlanMode, questionTarget, goalDraftConfig, cronState.isEnabled,
-    cronState.task, openSubagent, resolveActionTargets, t]);
+  const taskActions = useMemo(() => ({ onInspect: openSubagent }), [openSubagent]);
   const taskResults = useMemo(() => <SessionTaskResults />, []);
   const agentActivity = useMemo(
     () => !supportsAgentStatusPanel ? undefined : ({

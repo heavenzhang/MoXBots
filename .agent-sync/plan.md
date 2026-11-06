@@ -1324,3 +1324,8 @@ MB-FORM-SCROLLBARS-20261106 continuinguserdelivery: soleRootowner reserves0.5.42
 MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with main66f includes scrollbarproducerbacd/source0d plus existingPlaywright+Codexmetadata fixes. RootindependentactualWebKit samefixtureoldmotionFAIL/currentPASS and combined94DOM/type/lint PASS. Freeze thisnecessaryfix scope; laterindependentfeatures nextbatch. ExactnewheadCI/main/formal/safeinstall/actualoriginalKevin110percentcoldJSONandtaskfooter>=30s/read-bottom-expand-switch plus project/settings/chat andPlaywright/Codex/sameartifact101 stillrequired. 542.5 firstpipeline completedonce throughApple, no rebuild/resubmit; preserveunpromoted and combine one safe maintenance installation usinglatestacceptedcandidate. SoleRoot01a12bc2 desktop/sharedCI/main; authorworkspaces and otherunits unchanged.
 
 - 542.6 sourceR2：原R1精确CI DOM一个旧被动effect结清断言失败，Root仅修RecoveryActionReview测试等待，全部生产字节不变；同PR254待原全部job终态后唯一FFpush，再按新exacthead检查。最终范围仍滚动条+jitter+Playwright+Codexmetadata，不扩功能或重复正式构建。
+
+
+## MB-CHAT-REVIEW-CLEANUP-20261106 — chat review controls removal
+
+用户明确要求聊天保持简洁，删除截图中的人工请求验收/重试/返工及内部回执说明。独立codex/chat-review-cleanup-20261106基于main045b30eef；仅renderer只读成果展示及预设消息路径清理，保留内部核验/权限/历史消息。48DOM、类型/lint/分类及IAB实际组件1280浅色与390深色通过；真实Chat/原生发布另验。记录.agent-sync/tasks/codex-chat-review-cleanup-20261106-56025a7a.md及dev-docs/chat-review-cleanup-20261106/acceptance.md。desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，开发保存远端分支和证据后交其独立审阅/main/下一未冻结批；不新建PR、触发共享CI、分配版本或自行安装；无其他单元变更。
