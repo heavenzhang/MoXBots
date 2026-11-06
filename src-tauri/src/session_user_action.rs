@@ -68,6 +68,7 @@ pub fn stamp_session_request(
         || !matches!(
             path,
             "/api/session/task-orchestration/plan"
+                | "/api/session/task-orchestration/bot-group"
                 | "/chat/send"
                 | "/api/session/recovery/reconcile"
         )
@@ -176,6 +177,52 @@ mod tests {
                 .unwrap();
             assert!(unsigned.is_none());
         }
+    }
+
+    #[test]
+    fn bot_group_configuration_requires_exact_tab_body_and_path() {
+        let path = "/api/session/task-orchestration/bot-group";
+        let headers = stamped(path);
+        let bytes = STANDARD.decode(&headers[ENVELOPE_HEADER]).unwrap();
+        let envelope: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+        assert_eq!(envelope["path"], path);
+        assert_eq!(
+            envelope["bodySha256"],
+            format!("{:x}", Sha256::digest(BODY.as_bytes()))
+        );
+        let public = STANDARD.decode(public_key_spki_base64()).unwrap();
+        let verifier = VerifyingKey::from_public_key_der(&public).unwrap();
+        let signature =
+            Signature::from_der(&STANDARD.decode(&headers[SIGNATURE_HEADER]).unwrap()).unwrap();
+        assert!(verifier.verify(&bytes, &signature).is_ok());
+        for (method, path, tab) in [
+            ("GET", path, true),
+            ("POST", path, false),
+            (
+                "POST",
+                "/api/session/task-orchestration/bot-group?force=1",
+                true,
+            ),
+            (
+                "POST",
+                "/api/session/task-orchestration/bot-group/send",
+                true,
+            ),
+        ] {
+            let mut headers = None;
+            stamp_session_request(&mut headers, method, path, Some(BODY), "session-a", tab)
+                .unwrap();
+            assert!(headers.is_none());
+        }
+        assert!(stamp_session_request(
+            &mut None,
+            "POST",
+            path,
+            Some(BODY),
+            "another-session",
+            true
+        )
+        .is_err());
     }
 
     #[test]

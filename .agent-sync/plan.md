@@ -1361,3 +1361,10 @@ desktop/macOS-arm64/updater/sharedCI/main 唯一负责人仍 01a12bc2-907a-7702-
 ## MB-TASK-REVISION-CONTINUE-20261107 Root local5433
 
 Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exactproducer07dc from mainbfbc, preserving PR257 cleanup. Allocate0.5.43/build543.3 for a different localrepair artifact; installed543.2 and published542.6 remain immutable. Fix only exact positional task-review classification and newtrustedhuman response to an exactsettled rootconfirmed pausedassessment, keeping original intent/ledger/unknown/Stop/approval/background guards. Actualsourcechecks/main, newimmutablelocalbuild/safeinstall and originalsession behavior are separate acceptance claims. LocalMac repair doesnot wait for unavailable hostedrunner; publicpublication/tag is not admitted by localcandidate record. No business replay, ledger edits, cloud/mobile/website release or laterfeature batching. Root task codex-release-task-revision-0543-20261107-7734669b; private controls work/task-revision-continue-root-20261107/owner.
+
+
+## MB-BOT-NAV-20261102 GROUP-01 · 稳定 Bot 群组基础合同
+
+codex/bot-groups-20261107 基于main4ceeb2d21；实现G01-A/B：成员引用已有Bot稳定ID并由项目/工作区权威名册解析，显式groupId+botId+revision，原Session task ledger CAS和原Tab/Rust签名配置POST；同名/停用/冲突/未知结果/旧私聊边界保留。110项回归、真实临时SessionStore/路由、实际Rust签名模块8项及Rust→Node验签通过，类型/lint/分类/依赖边界通过。记录dev-docs/bot-groups-20261107/PLAN.md、acceptance.md。
+
+G02/G03/HANDOFF实际成员UI、独立Bot真实收发与交接尚未完成；不将配置API或测试夹具作为群功能交付。旧group-phase1未提交树保持原样。唯一desktop/macOS-arm64/updater/sharedCI/main owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，阶段源交其审阅与统一集成；开发未开PR、触发共享CI、正式构建/安装或改动冻结修复批。
