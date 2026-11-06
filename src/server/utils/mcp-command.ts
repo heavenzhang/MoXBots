@@ -1,7 +1,7 @@
-import { accessSync, constants, existsSync, statSync } from 'fs';
+import { accessSync, constants, existsSync, readFileSync, statSync } from 'fs';
 import { dirname, resolve } from 'path';
 
-import { pinPresetMcpPackageVersions } from '../../shared/mcpPackages';
+import { PLAYWRIGHT_MCP_PACKAGE_SPEC, PLAYWRIGHT_MCP_PACKAGE_VERSION, pinPresetMcpPackageVersions } from '../../shared/mcpPackages';
 import type { McpServerDefinition } from '../../shared/config-types';
 import { buildMcpSubprocessEnv } from '../session-core/mcp-env-policy';
 import { buildSessionExecutablePath } from './session-executable-path';
@@ -10,6 +10,7 @@ import {
   getBundledNodeDir,
   getBundledRuntimePath,
   getSystemNpxPaths,
+  getScriptDir,
 } from './runtime';
 
 /** One stdio launch policy for config probes, warmup and runtime projection.
@@ -131,6 +132,25 @@ export function resolveNpxMcpInvocation(
   const normalizedArgs = options.pinPresetPackages
     ? pinPresetMcpPackageVersions(args)
     : [...args];
+  // Packaged resources contain the dependency but no npm .bin
+  // shims. npx sees that local package and then fails to find playwright-mcp.
+  // Use the pinned preset's actual CLI with our Node distribution instead;
+  // never reinterpret custom packages or npm flags as a bundled invocation.
+  const presetArgs = normalizedArgs[0] === '-y' ? normalizedArgs.slice(1) : normalizedArgs;
+  if (options.pinPresetPackages && presetArgs[0] === PLAYWRIGHT_MCP_PACKAGE_SPEC) {
+    const packageDir = resolve(getScriptDir(), 'node_modules', '@playwright', 'mcp');
+    const cli = resolve(packageDir, 'cli.js');
+    const nodeDir = getBundledNodeDir();
+    const node = nodeDir && resolve(nodeDir, process.platform === 'win32' ? 'node.exe' : 'node');
+    if (node && existsSync(node) && existsSync(cli)) {
+      try {
+        const metadata = JSON.parse(readFileSync(resolve(packageDir, 'package.json'), 'utf8'));
+        if (metadata.version === PLAYWRIGHT_MCP_PACKAGE_VERSION) {
+          return { command: node, args: [cli, ...presetArgs.slice(1)], source: 'bundled' };
+        }
+      } catch { /* An incomplete resource tree retains the normal npm resolver. */ }
+    }
+  }
   const withYes = normalizedArgs.includes('-y') ? normalizedArgs : ['-y', ...normalizedArgs];
 
   if (process.platform === 'win32') {
