@@ -1332,3 +1332,8 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 - 旧Message DOM2/2 RED；修复71DOM、type/lint/分类、独立源码审查通过。真实MessageList/Virtuoso WebKit旧码1569→113px反事实；WebKit/Chromium修复3次间隙高度/滚动变化0px、手动阅读及真实终态展开通过。见dev-docs/stream-stability-20261106/acceptance.md。
 - desktop/macOS-arm64/updater/sharedCI/main唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发共享CI或正式构建。冻结542.6不修改，原owner接收精确SHA并在下一未冻结批集成、发布和原会话复验；源码/离线与main/正式/真实验收分别记录。
 - 原会话执行失败另有模型命令schema漏参/任务版本冲突与native证据epoch检查；不通过UI折叠隐藏，不放宽门禁或重放原unknown操作。私有诊断只留本地工作区。
+
+
+## MB-CHAT-STYLE-20261104 / CHAT08–11（2026-11-06）
+
+新授权先补待确认/unknown真实原生验收，再保护终态阅读并合入main交原owner统一发布。codex/chat-reading-protection-20261106基于05ea1e2，保留PR256间隙live修复；Message终态采样原follow/选区/手动详情，阅读者保留原树，正常跟随/历史默认/搜索保留。104DOM和双引擎真实组件受控页面通过，旧码2388px跳动反事实已复现；不是原生卡片通过。CHAT08仍由原owner协调无业务副作用的正常产品路径样本。desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4，543.1当前冻结批不覆盖，新成果下一未冻结批。详见dev-docs/chat-reading-protection-20261106/acceptance.md与当前任务记录，开发不运行共享CI/正式包。

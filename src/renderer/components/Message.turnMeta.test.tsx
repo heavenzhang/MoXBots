@@ -169,6 +169,77 @@ describe('completed turn process disclosure', () => {
     expect(screen.getByText('接下来汇总。')).toBeVisible();
   });
 
+  it('keeps selected progress and its DOM node when the live turn completes', () => {
+    const { rerender } = render(<Message message={message} isLoading />);
+    const progress = screen.getByText('先查看文件。');
+    const selection = window.getSelection()!;
+    const range = document.createRange();
+    range.selectNodeContents(progress);
+    selection.removeAllRanges();
+    selection.addRange(range);
+    rerender(<Message message={message} />);
+    expect(progress).toBeVisible();
+    expect(screen.getByText('先查看文件。')).toBe(progress);
+    expect(selection.toString()).toBe('先查看文件。');
+    expect(screen.getByRole('button', { name: '收起执行过程' })).toBeVisible();
+    selection.removeAllRanges();
+    fireEvent.click(screen.getByRole('button', { name: '收起执行过程' }));
+    expect(progress).not.toBeVisible();
+    expect(screen.getByText('成果已经交付。')).toBeVisible();
+  });
+
+  it('still folds a live turn at completion when the reader has not interacted', () => {
+    const { rerender } = render(<Message message={message} isLoading />);
+    rerender(<Message message={message} />);
+    expect(screen.getByRole('button', { name: '查看执行过程' })).toBeVisible();
+    expect(screen.getByText('先查看文件。')).not.toBeVisible();
+  });
+
+  it('samples the latest reading intent at completion and keeps it until explicit collapse', () => {
+    let reading = false;
+    const isReadingProcess = () => reading;
+    const { rerender, unmount } = render(<Message message={message} isLoading isReadingProcess={isReadingProcess} />);
+    reading = true;
+    rerender(<Message message={message} isReadingProcess={isReadingProcess} />);
+    expect(screen.getByText('先查看文件。')).toBeVisible();
+    reading = false;
+    rerender(<Message message={{ ...message, durationMs: 1000 }} isReadingProcess={isReadingProcess} />);
+    expect(screen.getByText('先查看文件。')).toBeVisible();
+    fireEvent.click(screen.getByRole('button', { name: '收起执行过程' }));
+    expect(screen.getByText('先查看文件。')).not.toBeVisible();
+    unmount();
+    render(<Message message={message} isReadingProcess={() => true} />);
+    expect(screen.getByText('先查看文件。')).not.toBeVisible();
+  });
+
+  it('waits for delayed transcript completion before deciding whether to fold', () => {
+    let reading = false;
+    const isReadingProcess = () => reading;
+    const streaming = { ...message, transcriptState: 'streaming' as const };
+    const { rerender } = render(<Message message={streaming} isLoading isReadingProcess={isReadingProcess} />);
+    rerender(<Message message={streaming} isReadingProcess={isReadingProcess} />);
+    reading = true;
+    rerender(<Message message={message} isReadingProcess={isReadingProcess} />);
+    expect(screen.getByText('先查看文件。')).toBeVisible();
+    expect(screen.getByRole('button', { name: '收起执行过程' })).toBeVisible();
+  });
+
+  it('preserves manually expanded tool detail through the terminal boundary', () => {
+    const row = assistantMsg({ ...message, content: [
+      { type: 'text', text: '检查中。', textPhase: 'commentary', isComplete: true },
+      read('details.txt', 'READER_DETAIL_CONTENT'),
+      { type: 'text', text: '检查完成。', textPhase: 'final_answer', isComplete: true },
+    ] });
+    const { container, rerender } = render(<Message message={row} isLoading />);
+    const tool = container.querySelector('[data-process-row] button[aria-expanded="false"]')!;
+    fireEvent.click(tool);
+    expect(tool).toHaveAttribute('aria-expanded', 'true');
+    rerender(<Message message={row} />);
+    expect(tool).toBeVisible();
+    expect(tool).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('检查中。')).toBeVisible();
+  });
+
   it('reveals successful legacy process rows during search without changing their default fold', () => {
     const legacy = assistantMsg({
       content: [read('search-one.txt', 'checked'), read('search-two.txt', 'checked')],
