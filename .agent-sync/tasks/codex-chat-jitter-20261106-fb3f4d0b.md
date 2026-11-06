@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=aa1fbec843783fb9dbf364c57443fa8cd7d32a52440eac9da05b413aeb30ad50 -->
+<!-- git-project-sync-task:source-digest=6fc5b599750c5c9fac0679de356ac8a3587f837706fd1ee2b1c166d53f81a62b -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=1520b587-2cdb-4730-bfb7-355f23cbdb7f -->
 <!-- git-project-sync-task:branch=codex/chat-jitter-20261106 -->
@@ -29,6 +29,8 @@ MB-CHAT-JITTER-20261106：修复长历史会话静止时反复上下跳动。只
 
 ## Verification
 
+- Source digest: `6fc5b599750c5c9fac0679de356ac8a3587f837706fd1ee2b1c166d53f81a62b`; git diff --check: pass; native Q4 full-window 20 seconds: start/end 68714/69463/749, scrollTo=0 scroll=0 layout mutations=0; original long reply and existing-chat round-trip stable in current state; not a fix or full acceptance; no product source edits or shared CI
+
 - Source digest: `aa1fbec843783fb9dbf364c57443fa8cd7d32a52440eac9da05b413aeb30ad50`; Native UI visual failure observed; 120/300 scoped read-only samples recorded; isolated WebKit/WKWebView comparisons stable; existing full scroll baseline FAIL row-shrink assertion; product code unchanged.
 
 实际结果与反证见 dev-docs/chat-jitter-20261106/acceptance.md。21组开发、6组生产及原生WK隔离对照未复现持续抖动；原生日常截图确认异常，120/300帧采样几何稳定。现有全套基线另有row shrink断言FAIL，尚未关联。没有产品源码修改，不把只读诊断当修复；UI owner为当前Agent。
@@ -47,4 +49,4 @@ Chronicle 当前未运行，没有读取历史录屏。真实窗口最初处于�
 
 ## Next step
 
-等待用户完成/允许离开当前新建项目表单，再安全还原临时translateZ(0)诊断样式并继续原生A/B定位；先用实测确认几何或绘制原因，避免猜测性产品修改。
+用户已允许切回；临时样式恢复，计数探针到期，诊断面板关闭。完整窗口20秒Q4采样起止均为68714/69463/749，滚动调用、scroll事件、布局DOM变化均0；原长回复与已有聊天往返目前稳定。另一既有排错任务新增的文本验收已改变原尾部场景；当前未复现不等于已修复。交回既有桌面owner协调下一次安装后的原会话冷打开、110%缩放与原JSON长回复静置验收；再次出现时须同步采集画面与几何。当前无产品修复可交付，保留未完成项，不触发共享CI或修改版本。
