@@ -274,11 +274,11 @@ describe('production original-turn stream continuation with synthetic SDK protoc
     expect(upstreamRequests).toBe(0);
   });
 
-  it.each(['TOOL_OUTCOME_UNKNOWN', 'WAITING_FOR_USER', 'BACKGROUND_WORK_ACTIVE'])(
+  it.each(['TOOL_OUTCOME_UNKNOWN', 'WAITING_FOR_USER', 'BACKGROUND_WORK_ACTIVE', 'dispatch_canceled'])(
     'shows a rejected continuation reason without dispatching it (%s)', async error => {
       await initialize();
       const terminal = vi.fn();
-      const guard = Object.assign(vi.fn(async () => ({ accepted: false, error })), { cancel: vi.fn() });
+      const guard = Object.assign(vi.fn(async () => ({ accepted: false, error, ...(error === 'dispatch_canceled' ? { code: error } : {}) })), { cancel: vi.fn() });
       await agent.enqueueUserMessage('Continue original task', undefined, undefined, undefined,
         undefined, undefined, undefined, undefined, undefined, undefined, undefined,
         { channelDelivery: NO_CHANNEL_DELIVERY, fromDesktopChatSend: true,
@@ -287,7 +287,8 @@ describe('production original-turn stream continuation with synthetic SDK protoc
       expect(state.inputs).toHaveLength(0);
       expect(upstreamRequests).toBe(0);
       expect(guard.cancel).toHaveBeenCalled();
-      expect(state.events).toContainEqual(['chat:agent-error', { message: expect.stringContaining('本次消息未执行') }]);
+      if (error === 'dispatch_canceled') expect(state.events.some(([event]) => event === 'chat:agent-error')).toBe(false);
+      else expect(state.events).toContainEqual(['chat:agent-error', { message: expect.stringContaining('本次消息未执行') }]);
       expect(state.events.some(([event]) => event === 'queue:cancelled')).toBe(true);
     });
 

@@ -15344,9 +15344,10 @@ async function rejectPromotedMessageBeforeDispatch(
   item.resolve();
   if (!item.deferVisibleAdmission) {
     broadcast('queue:cancelled', { queueId: item.id });
-    broadcast('chat:agent-error', {
-      message: preDispatchFailureMessage(result),
-    });
+    // Explicit queue cancellation already has its own visible acknowledgement.
+    if (result.code !== 'dispatch_canceled') {
+      broadcast('chat:agent-error', { message: preDispatchFailureMessage(result) });
+    }
   }
   console.warn(`[goal] pre-dispatch gate rejected builtin queue item ${item.id}: ${result.error ?? result.code ?? 'stale admission'}`);
   settleCancelledInputActivity();

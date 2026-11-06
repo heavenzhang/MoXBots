@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=fe70f56b6910fc880f725b52b0078167ddf31cdf1d76d28829c0b864728ee062 -->
+<!-- git-project-sync-task:source-digest=f8f075c7110863164baf90ece51f5171c1d9fb4c53b45005e4eac0465f754bfc -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=c8ef069a-e630-4ec1-905e-622e7ca00404 -->
 <!-- git-project-sync-task:branch=codex/continue-recovery-20261106 -->
@@ -28,6 +28,8 @@
 
 ## Verification
 
+- Source digest: `f8f075c7110863164baf90ece51f5171c1d9fb4c53b45005e4eac0465f754bfc`; 17 production queue/recovery integration tests pass, typecheck and changed-file ESLint pass; explicit user cancellation remains acknowledged without false system-error warning. Total 238 distinct targeted tests.
+
 - Source digest: `fe70f56b6910fc880f725b52b0078167ddf31cdf1d76d28829c0b864728ee062`; Production recovery owner and durable Store cold-path test passed; all 16 stream-continuation tests passed; typecheck and changed test ESLint passed. Total 237 distinct targeted tests. Production code unchanged from reviewed ea3c678.
 
 - Source digest: `d8812a55031837db882b2635ac270d70cf58bf4de35af5d6f5b76b2948354d5a`; Main ce11d2a merged cleanly; only independent website content changed; tested production recovery/UI bytes unchanged; 236 targeted tests/typecheck/lint and actual history memory proof remain applicable.
@@ -39,7 +41,7 @@
 - 7 文件 224 项 unit / DOM / integration 通过，覆盖拒绝不 dispatch、原 execution 接续、压缩历史核对、超时与信号不解除。
 - 类型检查通过；改动文件 ESLint 通过；依赖检查 0 error（20 项原有 orphan warnings）；测试分类通过。
 - 实际历史只读内存验证匹配 exit 128；其他 7 个历史 uncertainty 保留，未执行工具、未写生产账本。原始证据只留本机。
-- 新增 legacy uncertainty 保留、容量检查和真实 Store 冷重载回归；补充 3 文件 66 项通过（与上组部分重叠），总计 8 个不同文件 237 项通过。
+- 新增 legacy uncertainty 保留、容量检查和真实 Store 冷重载回归；补充 3 文件 66 项通过（与上组部分重叠），总计 8 个不同文件 238 项通过。
 
 ## Blockers and unknowns
 
@@ -58,4 +60,6 @@
 
 原发布负责人接收精确 SHA，审阅和集成后统一构建安装；安装期间保留原会话，随后由本会话发送一次续办请求并检查原任务实际完成。
 
-- 补充通过真实 production recovery owner + SessionStore 隔离联调：冷启动同一 provider、压缩历史失败128核对、持久执行事实修复；保留 legacy unknown，无模型输入或上游请求。完整 stream-continuation 文件16项通过，类型与lint通过。
+- 补充通过真实 production recovery owner + SessionStore 隔离联调：冷启动同一 provider、压缩历史失败128核对、持久执行事实修复；保留 legacy unknown，无模型输入或上游请求。完整 stream-continuation 文件17项通过，类型与lint通过。
+
+- 最终审查保留主动取消语义：dispatch_canceled 仍发送 queue:cancelled，不新增 chat:agent-error；真实系统拦截继续显示原因。17项生产队列联调与类型/lint复核通过。
