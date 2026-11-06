@@ -6,7 +6,7 @@
 | --- | --- | --- |
 | G01-A 稳定身份与目标 | 本地完成 | 权威 Bot/项目/工作区解析，同名不合并；显式 groupId + botId + revision，无默认接收者 |
 | G01-B 原账本保存 | 本地完成 | 原 SessionStore/task ledger CAS；签名配置 POST、冷读、幂等、冲突、停用历史、未知执行保护通过 |
-| G02 实际成员界面 | 待实施 | 原 Chat 观察者/Composer/原主题；选择已有 Bot、显示群成员与单一收件人；不得开放假发送 |
+| G02 实际成员界面 | 组件/原观察者本地完成，Chat 入口待 G03 | 原主题、已有 Bot、明确接收者和配置恢复完成；48项及 WebKit 验证，见 ../bot-group-ui-20261107/PLAN.md；真实收发前不开放入口 |
 | G03 真实成员会话收发 | 待实施 | 既有 Bot 自身 Session birth/Inbox/Runtime，真实消费与回报，ACK 未知不重放 |
 | G04 / HANDOFF-01 任务交接 | 待实施 | 原 task/attempt/owner 精确跨 Session 引用，回报与真实检查分开，旧结果不覆盖新尝试 |
 | G05 停止/重开/恢复 | 待实施 | 打开和读取零派发，保留未知结果、原预算、权限和群历史 |

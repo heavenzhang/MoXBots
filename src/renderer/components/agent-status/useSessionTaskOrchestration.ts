@@ -6,6 +6,8 @@ import { collectTaskAttempts, emptyTaskLedger, mergeTaskObservations, projectSes
 import type { ProgressTodo } from '../../../shared/sessionWorkProgress';
 import type { SessionPlanProposal } from '../../../shared/sessionPlanConfirmation';
 import type { PlanUserAction } from './OrchestrationPlanCard';
+import { botGroupSchema, type BotGroupConfiguration } from '../../../shared/botGroup';
+import { BotGroupSaveError, readBotGroupConfiguration, saveBotGroupConfiguration } from '@/features/bot-groups/botGroupClient';
 
 type PlanLedger = SessionTaskLedger & { proposal?: SessionPlanProposal };
 const EMPTY_PLAN: readonly ProgressTodo[] = [];
@@ -43,10 +45,15 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
   const scope = useRef({ sessionId, runtimeKey, epoch: 0 });
   if (scope.current.sessionId !== sessionId || scope.current.runtimeKey !== runtimeKey)
     scope.current = { sessionId, runtimeKey, epoch: scope.current.epoch + 1 };
-  const [snapshot, setSnapshot] = useState<{ sessionId: string; ledger: PlanLedger;
+  const groupEpoch = scope.current.epoch;
+  const [snapshot, setSnapshot] = useState<{ sessionId: string; epoch: number; ledger: PlanLedger;
     planSupport?: SessionTaskSnapshot['planSupport']; executionRecovery?: SessionExecutionRecoveryProjection; runtimeKey: string } | null>(null);
   const [failure, setFailure] = useState<{ sessionId: string; message: string } | null>(null);
   const [refresh, setRefresh] = useState(0);
+  const mounted = useRef(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const groupScopeReady = useRef(false);
+  groupScopeReady.current = enabled && !tab?.isSessionLoading;
   type RecoveryReview = { sessionId: string; count: number; checking: boolean; failed: boolean; inline: boolean; open: () => void };
   const [recoveryReview, publishRecoveryReview] = useState<RecoveryReview>();
   const planSupport = snapshot?.sessionId === sessionId && snapshot.runtimeKey === runtimeKey
@@ -62,16 +69,16 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
       if (disposed || currentRuntimeKey.current !== runtimeKey || value.sessionId !== sessionId || !value.ledger || !Number.isSafeInteger(value.ledger.revision)) return;
       const ledger = value.ledger;
       setSnapshot(prior => {
-        const sameScope = prior?.sessionId === sessionId && prior.runtimeKey === runtimeKey;
+        const sameScope = prior?.sessionId === sessionId && prior.runtimeKey === runtimeKey && prior.epoch === groupEpoch;
         const support = fromSnapshot ? value.planSupport : sameScope ? prior.planSupport : undefined;
         // The 2s snapshot owns recovery. Ledger-only SSE events may update the
         // task projection but can neither synthesize nor erase model recovery.
         const executionRecovery = fromSnapshot ? value.executionRecovery : sameScope ? prior.executionRecovery : undefined;
-        const latestLedger = prior?.sessionId === sessionId && prior.ledger.revision > ledger.revision ? prior.ledger : ledger;
+        const latestLedger = sameScope && prior.ledger.revision > ledger.revision ? prior.ledger : ledger;
         return sameScope && JSON.stringify(prior.ledger) === JSON.stringify(latestLedger)
           && JSON.stringify(prior.planSupport) === JSON.stringify(support)
           && JSON.stringify(prior.executionRecovery) === JSON.stringify(executionRecovery) ? prior
-          : { sessionId, ledger: latestLedger, planSupport: support, executionRecovery, runtimeKey };
+          : { sessionId, epoch: groupEpoch, ledger: latestLedger, planSupport: support, executionRecovery, runtimeKey };
       });
       if (fromSnapshot) setFailure(null);
     };
@@ -96,7 +103,7 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     window.addEventListener(BACKGROUND_TASK_STATUS_EVENT, background);
     void read();
     return () => { disposed = true; clearTimeout(timer); window.removeEventListener('session-task-orchestration', event); window.removeEventListener(BACKGROUND_TASK_STATUS_EVENT, background); };
-  }, [enabled, sessionId, apiGet, tab?.isSessionLoading, runtimeKey, refresh]);
+  }, [enabled, sessionId, apiGet, tab?.isSessionLoading, runtimeKey, refresh, groupEpoch]);
   const submitPlanAction = useCallback(async (kind: 'confirm' | 'request_revision', action: PlanUserAction & { feedback?: string }) => {
     if (!apiPost || !sessionId || action.sessionId !== sessionId || currentSession.current !== sessionId) throw new Error('PLAN_SESSION_CHANGED');
     if (currentSupport.current?.supported !== true) throw new Error('PLAN_RUNTIME_DELEGATION_UNAVAILABLE');
@@ -109,7 +116,7 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     }
     // A transport acknowledgment cannot manufacture a confirmation receipt.
     const ledger = response.ledger;
-    setSnapshot(prior => ({ sessionId, runtimeKey,
+    setSnapshot(prior => ({ sessionId, runtimeKey, epoch,
       ledger: prior?.sessionId === sessionId && prior.ledger.revision > ledger.revision ? prior.ledger : ledger,
       executionRecovery: prior?.sessionId === sessionId && prior.runtimeKey === runtimeKey ? prior.executionRecovery : undefined,
       planSupport: response.planSupport }));
@@ -117,6 +124,20 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
   }, [apiPost, sessionId, runtimeKey]);
   const confirmPlan = useCallback((action: PlanUserAction) => submitPlanAction('confirm', action), [submitPlanAction]);
   const requestPlanRevision = useCallback((action: PlanUserAction & { feedback: string }) => submitPlanAction('request_revision', action), [submitPlanAction]);
+  const saveBotGroup = useCallback(async (command: BotGroupConfiguration) => {
+    const isCurrent = () => mounted.current && groupScopeReady.current && scope.current.epoch === groupEpoch && currentSession.current === sessionId;
+    if (!apiPost || !sessionId || command.sessionId !== sessionId || !isCurrent()) throw new BotGroupSaveError('scope-changed', 'BOT_GROUP_SESSION_CHANGED');
+    const group = await saveBotGroupConfiguration(command, (path, body) => apiPost(path, body), isCurrent);
+    // A group receipt is not a whole-ledger revision. Refresh via the existing
+    // observer instead of grafting a partial response onto task/execution state.
+    setRefresh(value => value + 1);
+    return group;
+  }, [apiPost, sessionId, groupEpoch]);
+  const reloadBotGroup = useCallback(async () => {
+    const isCurrent = () => mounted.current && groupScopeReady.current && scope.current.epoch === groupEpoch && currentSession.current === sessionId;
+    if (!apiGet || !sessionId || !isCurrent()) throw new BotGroupSaveError('scope-changed', 'BOT_GROUP_SESSION_CHANGED');
+    return readBotGroupConfiguration(sessionId, path => apiGet(path), isCurrent);
+  }, [apiGet, sessionId, groupEpoch]);
   const tasks = useMemo(() => {
     if (!enabled) return [];
     const ledger = snapshot?.sessionId === sessionId ? snapshot.ledger : emptyTaskLedger();
@@ -130,6 +151,11 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
   const proposal = snapshot?.sessionId === sessionId && snapshot.ledger.proposal?.sessionId === sessionId ? snapshot.ledger.proposal : undefined;
   const sameSessionSnapshot =
     snapshot?.sessionId === sessionId && snapshot.runtimeKey === runtimeKey;
+  const sameGroupSnapshot = sameSessionSnapshot && snapshot.epoch === groupEpoch;
+  const parsedGroup = botGroupSchema.safeParse(sameGroupSnapshot ? snapshot.ledger.botGroup : undefined);
+  const botGroup = parsedGroup.success && parsedGroup.data.groupId === sessionId ? parsedGroup.data : undefined;
+  const botGroupUnknown = Boolean(tab?.isSessionLoading || failure?.sessionId === sessionId || !sameGroupSnapshot
+    || (snapshot.ledger.botGroup !== undefined && !botGroup));
   const executionAdmission = sameSessionSnapshot
     ? snapshot.ledger.executionAdmission
     : undefined;
@@ -173,6 +199,7 @@ function useSessionTaskSnapshot(fallbackPlan: readonly ProgressTodo[], enabled =
     executionAdmission,
     executionRecovery,
     executionUnknown,
+    botGroup, botGroupUnknown, saveBotGroup, reloadBotGroup,
     planSupport, planStart, confirmPlan, requestPlanRevision, stale: failure?.sessionId === sessionId, retry: () => setRefresh(v => v + 1),
   };
 }
