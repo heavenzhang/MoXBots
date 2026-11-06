@@ -1301,3 +1301,7 @@ Existing desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exac
 
 ### MB-PLAYWRIGHT-20261106
 内置Playwright预设启用127：打包资源已有包但无npm .bin，npx在Resources错误命中本地包。统一stdio owner对精确匹配随包预设使用内置Node+CLI，保留自定义命令/用户参数。证据dev-docs/playwright-launch-20261106/acceptance.md；任务codex-playwright-launch-20261106-a65c105c。desktop/macOS-arm64/updater/sharedCI/main唯一owner保持01a12bc2-907a-7702-b6dd-788225c5dfe4，由其统一下一未冻结批；源码与真实CLI已验证，main/CI/新包/原生验收待完成，无其他单元发布。
+
+## Root MB-PLAYWRIGHT-20261106 /542.4
+
+Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates producer45f9f5e5 on main14956e2f. Exact bundled Playwright preset directNode+CLI resolves missingnpm-bin127; custom/nonmatching fallback and arguments remain. Allocate0.5.42/build542.4 including already-main Codexmetadatafix. Frozen542.3 is preserved and superseded before daily install/publication; currentApp542.2 remains. Rootaffectedchecks/exactCI/main/newimmutableformal/freshsafemaintenance/nativePlaywright+Codexlongturn/sameartifact101 separately tracked. No cloud/mobile/website deployment or SimpleUX batching. Private evidence work/release-0542-r4-20261106/owner.
