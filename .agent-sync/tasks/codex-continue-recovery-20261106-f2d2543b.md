@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=f3891f43d34eb3c401b69fa5e7ef7a5ebbb1672586ca614fa3b53126d924d98e -->
+<!-- git-project-sync-task:source-digest=d8812a55031837db882b2635ac270d70cf58bf4de35af5d6f5b76b2948354d5a -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=c8ef069a-e630-4ec1-905e-622e7ca00404 -->
 <!-- git-project-sync-task:branch=codex/continue-recovery-20261106 -->
@@ -27,6 +27,10 @@
 - 使用隔离临时目录测试与真实记录只读内存模拟，未重放操作、未更改会话数据。
 
 ## Verification
+
+- Source digest: `d8812a55031837db882b2635ac270d70cf58bf4de35af5d6f5b76b2948354d5a`; Main ce11d2a merged cleanly; only independent website content changed; tested production recovery/UI bytes unchanged; 236 targeted tests/typecheck/lint and actual history memory proof remain applicable.
+
+- 已同步最新 main ce11d2a332c8e276478048fdf3cf935b5dabaad6，只有独立网站下载页变更，无源码重叠或冲突。
 
 - Source digest: `f3891f43d34eb3c401b69fa5e7ef7a5ebbb1672586ca614fa3b53126d924d98e`; 236 distinct targeted unit/DOM/integration tests passed across 8 files; typecheck and changed-file ESLint passed; dependency check 0 errors (20 baseline warnings); classification and diff-check passed; real historical exit128 matched in memory, no production writes/replay.
 
