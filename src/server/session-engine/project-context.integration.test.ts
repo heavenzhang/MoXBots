@@ -166,6 +166,16 @@ describe('logical project scope through real SessionStore persistence', () => {
     expect(legacy).toContain('legacy-history-secret');
     expect(legacy).not.toMatch(/A-history-secret|B-history-secret|A-other-bot-history|fixed-description/);
   });
+  it('isolates distinct collaboration roots and ordinary project conversations in both directions', async () => {
+    catalog();
+    const scoped = (root?: string) => ({ ...projectSpaceSnapshot(projectPath), ...(root ? { collaboration: { leadSessionId: root, leadBotId: 'bot', members: [{ id: 'bot', name: 'Lead' }, { id: 'other-bot', name: 'Writer' }] } } : {}) });
+    for (const root of ['root-a', 'root-b', undefined]) await source([msg(`source-${root}`, 'user', `private-${root ?? 'ordinary'}-history`)], true, projectPath, { projectSpace: scoped(root) });
+    for (const root of ['root-a', 'root-b', undefined]) {
+      const target = await createPublishedSession(store, projectPath, { projectSpace: scoped(root) });
+      const result = (await prepare.prepareDesktopQuery({ ...request(), sessionId: target.id })).request.text;
+      for (const other of ['root-a', 'root-b', undefined]) expect(result.includes(`private-${other ?? 'ordinary'}-history`)).toBe(root === other);
+    }
+  });
   it('retains fixed configuration without sources and stops dynamic aggregation after archive/deletion', async () => {
     catalog();
     await source([msg('a', 'user', 'A-history-secret')], true, projectPath, { projectSpace: projectSpaceSnapshot(projectPath) });
@@ -259,6 +269,30 @@ describe('project owner birth transactions', () => {
     expect(committed.success).toBe(true);
     expect(store.getSessionMetadata(prepared.sessionId!)?.materializationState).toBeUndefined();
     expect(store.getSessionMetadata(prepared.sessionId!)?.projectSpace).toEqual(fixed);
+  });
+  it('binds a durable root once, retains it across repeated prepare, cold read and fork', async () => {
+    const binding = await import('./product-session-binding');
+    const { createSessionMetadata } = await import('../types/session');
+    const { snapshotForForkedSession } = await import('../utils/session-snapshot');
+    await binding.resetProductSessionBinding({ sessionId: 'pending-collaboration-test', workspacePath: projectPath, allowLazySessionMaterialization: true });
+    const draft = { ...projectSpaceSnapshot(projectPath), collaboration: { leadBotId: 'bot', members: [{ id: 'bot', name: 'Lead' }, { id: 'other-bot', name: 'Writer' }] } };
+    const create = vi.fn(() => { const metadata = createSessionMetadata(projectPath, { projectSpace: draft, origin: { kind: 'desktop', surface: 'agent_card' } }); return { targetSessionId: metadata.id, metadata, reusingNativeSession: false, snapshotKind: 'owned' }; });
+    const options = { hasActiveWork: false, createPreparedMetadata: create };
+    const prepared = await binding.preparePendingProductSession({ birthSnapshot: { projectSpace: draft } }, options);
+    expect(prepared.success).toBe(true); if (!prepared.success) throw new Error(prepared.error);
+    const repeated = await binding.preparePendingProductSession({ birthSnapshot: { projectSpace: { ...draft, capturedAt: '2026-11-07T01:00:00Z' } } }, options);
+    expect(repeated).toMatchObject({ success: true, sessionId: prepared.sessionId }); expect(create).toHaveBeenCalledOnce();
+    const conflict = await binding.preparePendingProductSession({ birthSnapshot: { projectSpace: { ...draft, collaboration: { ...draft.collaboration, members: [...draft.collaboration.members, { id: 'third', name: 'Third' }] } } } }, options);
+    expect(conflict).toMatchObject({ success: false, status: 409 });
+    await binding.commitPendingProductSession({ preparedSessionId: prepared.sessionId });
+    await store.drainSessionTranscripts();
+    vi.resetModules(); store = await import('../SessionStore');
+    const cold = await store.getSessionData(prepared.sessionId!);
+    expect(cold?.projectSpace?.collaboration?.leadSessionId).toBe(prepared.sessionId);
+    expect(JSON.parse(readFileSync(join(state.home, APP_DATA_DIR_NAME, 'sessions.json'), 'utf8')).find((row: { id: string }) => row.id === prepared.sessionId).projectSpace.collaboration.leadSessionId).toBe(prepared.sessionId);
+    const fork = await createPublishedSession(store, projectPath, snapshotForForkedSession(cold!));
+    expect(fork.id).not.toBe(prepared.sessionId);
+    expect(fork.projectSpace?.collaboration?.leadSessionId).toBe(prepared.sessionId);
   });
   it('rejects attaching scope to an already-materialized prewarm session without changing its binding or metadata', async () => {
     const binding = await import('./product-session-binding');

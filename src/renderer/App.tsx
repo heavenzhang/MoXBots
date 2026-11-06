@@ -5023,6 +5023,11 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
     if (!workspace || tabWorkspaceController.getSnapshot().activeTabId !== tabId) return;
     await handleLaunchProject(workspace, undefined, { surface: 'task_center', entryIntent: 'thought_alignment' }, birthHint);
   }, [clearInitialMessage, handleLaunchProject, handleOpenTargetSession, tabWorkspaceController]);
+  const handleOpenRelatedConversation = useCallback((session: import('@/api/sessionClient').SessionMetadata) => {
+    const matches = configProjects.filter(project => workspacePathsEqual(project.path, session.agentDir));
+    if (matches.length === 1) void handleOpenSidebarSession(session, matches[0]);
+    else toastRef.current.error(t('projectSpaces.workspaceConflict'));
+  }, [configProjects, handleOpenSidebarSession, t]);
   const chatBinding = useMemo<BuiltinTabBindings['chat']>(
     () => ({
       registerFileEditSubmitter,
@@ -5030,6 +5035,7 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
       startupError: (tabId) => tabErrors[tabId] ?? null,
       onRetryStartup: retryDiscussionStartup,
       onOpenHistorySession: handleOpenChatHistorySession,
+      onOpenRelatedConversation: handleOpenRelatedConversation,
       onOpenHistoryTag: handleOpenHistoryTag,
       onNewSession: handleNewSession,
       onLaunchRuntimeBackedProviderSession:
@@ -5059,6 +5065,7 @@ export default function App({ rendererAttachment = COLD_RENDERER_ATTACHMENT }: {
       handleLaunchRuntimeBackedProviderSession,
       handleNewSession,
       handleOpenChatHistorySession,
+      handleOpenRelatedConversation,
       handleOpenHistoryTag,
       handleRenameSession,
       markSidecarConfigAdopted,

@@ -1,4 +1,4 @@
-import { projectSpaceSnapshotsEqual } from '../../shared/projectSpaces';
+import { bindProjectCollaboration, projectSpaceSnapshotsEqual } from '../../shared/projectSpaces';
 import { randomUUID } from 'node:crypto';
 
 import { isPendingSessionId } from '../../shared/constants';
@@ -252,7 +252,7 @@ export async function preparePendingProductSession(
     const desired = request.birthSnapshot.projectSpace;
     if (previous === undefined && desired === undefined) return true;
     if (!previous || !desired) return false;
-    try { return projectSpaceSnapshotsEqual(previous, { ...desired, capturedAt: previous.capturedAt }); }
+    try { return projectSpaceSnapshotsEqual(previous, bindProjectCollaboration({ ...desired, capturedAt: previous.capturedAt }, metadata.id)); }
     catch { return false; }
   };
   const scopeConflict = { success: false as const, error: 'Pending conversation belongs to a different project scope', status: 409 };
@@ -318,6 +318,7 @@ export async function preparePendingProductSession(
   applyProductSessionSnapshotPatch(prepared.metadata, request.snapshotPatch);
   if (request.origin) prepared.metadata.origin = request.origin;
   prepared.metadata.materializationState = 'prepared';
+  if (prepared.metadata.projectSpace) prepared.metadata.projectSpace = bindProjectCollaboration(prepared.metadata.projectSpace, prepared.targetSessionId);
   prepared.metadata.materializationSourceSessionId = currentProductSessionId;
   await saveSessionMetadata(prepared.metadata);
   if (!getSessionMetadata(prepared.targetSessionId)) {

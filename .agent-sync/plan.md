@@ -1,3 +1,7 @@
+## BC-02 — 持久负责 Bot 协作对话入口（2026-11-07）
+
+任务 `.agent-sync/tasks/codex-bot-collaboration-entry-20261107-dd098257.md`，可勾验收 `dev-docs/bot-collaboration-entry-20261107/PLAN.md`。负责 Session 固定组、成员准入及历史隔离、侧栏持久入口、按需详情已实现；131项本地回归、独立87项与实际组件明暗/窄窗口/键盘验证通过。依赖1471ec01f；SimpleUX综合8240ddbc仍为独立待集成项。desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4统一选择下一未冻结候选；本开发会话不占用543.5、不触发共享CI或正式构建。下一步：精确源码保存交接，按实际主干和签名制品分别核验。
+
 ## MB-FORM-SCROLLBARS-20261106 — 输入框与项目表单滚动
 
 任务 `.agent-sync/tasks/codex-form-scrollbars-20261106-c4291ee9.md`，验收 `dev-docs/form-scrollbars-20261106/acceptance.md`。审计 40 个产品文件的 53 处 textarea，通过共享 base 样式统一软换行和仅纵向自动滚动，保留 wrap=off/编辑器内部例外；ProjectSpaceEditor 标题/footer 不压缩，由独立 div 负责表单滚动。真实组件双引擎 192 组、聊天缩放 120 组、59 个不同 DOM 用例、类型/lint/MoXBots Web 构建和主题检查通过。主 Agent 自验，未宣称独立审阅或原生安装验收。desktop/macOS-arm64/updater/sharedCI/main 沿用唯一负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，开发分支交接后由其统一 CI/main/版本/下一未冻结候选与安装版复验，不涉及其他部署单元。

@@ -40,7 +40,9 @@ export async function readProjectContext(request: Pick<DesktopMessageRequest, 's
       if (session.projectSpace === undefined) return false;
       try {
         const source = normalizeProjectSpaceSessionSnapshot(session.projectSpace);
-        return source.projectId === fixed.projectId && workspacePathsEqual(source.workspacePath, session.agentDir);
+        return source.projectId === fixed.projectId
+          && source.collaboration?.leadSessionId === fixed.collaboration?.leadSessionId
+          && workspacePathsEqual(source.workspacePath, session.agentDir);
       } catch { return false; }
     };
     snapshot = { projectId: fixed.projectId, projectSpace: fixed, sources: [], totalSessions: 0, scannedSessions: 0, unavailableSessions: 0 };

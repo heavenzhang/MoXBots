@@ -13,6 +13,8 @@ export interface BotConversation {
   projectSpaceId?: string;
   working: boolean;
   unread: number;
+  collaborators?: BotConversation[];
+  displayLastActiveAt?: string;
 }
 /** A pinned unread chat has one home, while retaining its unread badge. */
 export function groupBotConversations(items: readonly BotConversation[]) {
@@ -101,4 +103,22 @@ export function botConversationProjects(
   botId: string,
 ): Project[] {
   return projects.filter((project) => project.agentId === botId);
+}
+
+/** Fold only under the exact persisted lead. Orphaned/pinned chats stay reachable. */
+export function foldCollaborationConversations(items: readonly BotConversation[]): BotConversation[] {
+  const roots = new Map(items.filter(item => item.session.projectSpace?.collaboration?.leadSessionId === item.session.id
+    && item.session.projectSpace.collaboration.leadBotId === item.bot.id).map(item => [item.session.id, { ...item, displayLastActiveAt: item.session.lastActiveAt, collaborators: [] as BotConversation[] }]));
+  const result: BotConversation[] = [];
+  for (const item of items) {
+    const group = item.session.projectSpace?.collaboration;
+    const root = group && roots.get(group.leadSessionId ?? '');
+    if (root && root.session.id !== item.session.id && root.projectSpaceId === item.projectSpaceId && !item.session.pinnedAt) {
+      root.collaborators.push(item); root.unread += item.unread; root.working ||= item.working;
+      if (Date.parse(item.session.lastActiveAt) > Date.parse(root.displayLastActiveAt ?? root.session.lastActiveAt)) root.displayLastActiveAt = item.session.lastActiveAt;
+    } else result.push(roots.get(item.session.id) ?? item);
+  }
+  return result.sort((a, b) => Number(Boolean(b.session.pinnedAt)) - Number(Boolean(a.session.pinnedAt))
+    || Date.parse(b.session.pinnedAt || b.displayLastActiveAt || b.session.lastActiveAt) - Date.parse(a.session.pinnedAt || a.displayLastActiveAt || a.session.lastActiveAt)
+    || a.session.id.localeCompare(b.session.id));
 }

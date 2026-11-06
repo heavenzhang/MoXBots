@@ -18,9 +18,16 @@ export interface ProjectSpace {
 }
 export type ProjectSpaceDraft = Pick<ProjectSpace, 'name' | 'description' | 'instructions' | 'memberBotIds' | 'materials' | 'resources'>;
 /** IDs only. The server compiles the authoritative birth snapshot. */
-export interface ProjectSpaceSelection { projectId: string; botId: string; projectRevision: number }
+export interface ProjectSpaceSelection { projectId: string; botId: string; projectRevision: number; collaborationMemberBotIds?: string[] }
+export interface ProjectCollaboration {
+  /** Unbound only during desktop birth compilation, never persisted. */
+  leadSessionId?: string;
+  leadBotId: string;
+  members: ProjectSpaceBotIdentity[];
+}
 export interface ProjectSpaceSessionSnapshot {
   schemaVersion: 1;
+  collaboration?: ProjectCollaboration;
   projectId: string;
   projectName: string;
   projectRevision: number;
@@ -113,19 +120,46 @@ export function readProjectSpaces(raw: unknown): ProjectSpace[] {
 }
 export function parseProjectSpaceSelection(raw: unknown): ProjectSpaceSelection {
   const input = object(raw);
-  return { projectId: id(input.projectId), botId: id(input.botId), projectRevision: revision(input.projectRevision) };
+  const botId = id(input.botId);
+  const memberIds = input.collaborationMemberBotIds === undefined ? undefined : unique(array(input.collaborationMemberBotIds, 'collaboration members', 8).map(id), item => item);
+  if (memberIds && (memberIds.length < 2 || !memberIds.includes(botId))) return invalid('Collaboration requires a lead and at least one other Bot');
+  return { projectId: id(input.projectId), botId, projectRevision: revision(input.projectRevision),
+    ...(memberIds ? { collaborationMemberBotIds: memberIds } : {}) };
 }
-export function normalizeProjectSpaceSessionSnapshot(raw: unknown): ProjectSpaceSessionSnapshot {
+export function normalizeProjectSpaceSessionSnapshot(raw: unknown, allowUnboundCollaboration = false): ProjectSpaceSessionSnapshot {
   const input = object(raw);
   if (input.schemaVersion !== 1) return invalid('Unsupported project snapshot');
   const workspacePath = text(input.workspacePath, 'workspace path', 4_096, true);
   if (!isAbsoluteProjectResourcePath(workspacePath)) return invalid('Workspace path must be absolute');
+  let collaboration: ProjectCollaboration | undefined;
+  if (input.collaboration !== undefined) {
+    const value = object(input.collaboration);
+    const members = unique(array(value.members, 'collaboration members', 8).map(raw => {
+      const member = object(raw);
+      return { id: id(member.id), name: text(member.name, 'member name', 200, true),
+        ...(member.icon === undefined ? {} : { icon: text(member.icon, 'member icon', 4096) }) };
+    }), member => member.id);
+    const leadBotId = id(value.leadBotId);
+    if (members.length < 2 || !members.some(member => member.id === leadBotId) || !members.some(member => member.id === input.botId)) return invalid('Invalid collaboration membership');
+    const leadSessionId = value.leadSessionId === undefined && allowUnboundCollaboration ? undefined : id(value.leadSessionId);
+    if (leadSessionId?.startsWith('pending-')) return invalid('Collaboration requires a durable lead conversation');
+    collaboration = { ...(leadSessionId ? { leadSessionId } : {}), leadBotId, members };
+  }
   return bounded({ schemaVersion: 1, projectId: id(input.projectId), projectName: text(input.projectName, 'project name', 100, true),
     projectRevision: revision(input.projectRevision), botId: id(input.botId), botName: text(input.botName, 'Bot name', 200, true),
     ...(input.botIcon === undefined ? {} : { botIcon: text(input.botIcon, 'Bot icon', 4_096) }),
     workspacePath, capturedAt: timestamp(input.capturedAt), description: text(input.description, 'description', 2_000),
     instructions: text(input.instructions, 'instructions', 4_000), materials: materials(input.materials), resources: resources(input.resources),
+    ...(collaboration ? { collaboration } : {}),
   });
+}
+/** Only the original desktop birth owner calls this after allocating its final ID. */
+export function bindProjectCollaboration(snapshot: ProjectSpaceSessionSnapshot, sessionId: string): ProjectSpaceSessionSnapshot {
+  const source = normalizeProjectSpaceSessionSnapshot(snapshot, true);
+  if (source.collaboration && !source.collaboration.leadSessionId && source.collaboration.leadBotId !== source.botId) return invalid('Only the lead Bot can create a collaboration');
+  return normalizeProjectSpaceSessionSnapshot({ ...source, ...(source.collaboration ? { collaboration: {
+    ...source.collaboration, leadSessionId: source.collaboration.leadSessionId ?? sessionId,
+  } } : {}) });
 }
 export function projectSpaceSnapshotsEqual(left: unknown, right: unknown): boolean {
   return JSON.stringify(normalizeProjectSpaceSessionSnapshot(left)) === JSON.stringify(normalizeProjectSpaceSessionSnapshot(right));
@@ -161,11 +195,19 @@ export function compileProjectSpaceSessionSnapshot(input: {
   const workspace = findProjectSpaceBotWorkspace(selection.botId, input.workspaces);
   if (bots.length !== 1 || !workspace) throw new ProjectSpaceError('bot-unavailable', 'Bot identity or workspace is unavailable');
   if (!workspacePathsEqual(workspace.path, input.workspacePath)) throw new ProjectSpaceError('workspace-conflict', 'Selected Bot does not own this workspace');
+  const members = selection.collaborationMemberBotIds?.map(botId => {
+    const candidates = input.bots.filter(bot => bot.id === botId);
+    if (!project.memberBotIds.includes(botId)) throw new ProjectSpaceError('bot-not-member', 'A collaboration Bot is no longer a project member');
+    if (candidates.length !== 1 || !findProjectSpaceBotWorkspace(botId, input.workspaces)) throw new ProjectSpaceError('bot-unavailable', 'A collaboration Bot is unavailable');
+    const bot = candidates[0];
+    return { id: bot.id, name: bot.name, ...(bot.icon && bot.icon.length <= 512 ? { icon: bot.icon } : {}) };
+  });
   return normalizeProjectSpaceSessionSnapshot({ schemaVersion: 1, projectId: project.id, projectName: project.name, projectRevision: project.revision,
     botId: bots[0].id, botName: bots[0].name, ...(bots[0].icon && bots[0].icon.length <= 4_096 ? { botIcon: bots[0].icon } : {}), workspacePath: workspace.path,
     capturedAt: input.capturedAt, description: project.description, instructions: project.instructions,
     materials: project.materials, resources: project.resources,
-  });
+    ...(members ? { collaboration: { leadBotId: selection.botId, members } } : {}),
+  }, true);
 }
 /** A local handoff keeps the source's fixed brief, but the recipient owns its
  * identity and workspace. Current membership is admission, not a brief update. */
@@ -175,6 +217,9 @@ export function compileProjectSpaceHandoffSnapshot(input: {
   workspaces: readonly ProjectSpaceWorkspace[]; workspacePath: string; capturedAt: string;
 }): ProjectSpaceSessionSnapshot {
   const source = normalizeProjectSpaceSessionSnapshot(input.source);
+  if (source.collaboration && !source.collaboration.members.some(member => member.id === input.targetBotId)) {
+    throw new ProjectSpaceError('bot-not-member', 'Target Bot is not a member of this collaboration');
+  }
   if (!workspacePathsEqual(source.workspacePath, input.sourceWorkspacePath)) {
     throw new ProjectSpaceError('workspace-conflict', 'Source conversation does not own its project workspace');
   }

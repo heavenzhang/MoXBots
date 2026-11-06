@@ -27,6 +27,7 @@ import {
 } from "@/components/icons";
 import { formatTime } from "@/utils/taskCenterUtils";
 import {
+  foldCollaborationConversations,
   groupBotConversations,
   projectBotConversations,
 } from "./botConversationProjection";
@@ -228,7 +229,7 @@ export default function BotConversationNavigation({
       (!selectedBotId || item.bot.id === selectedBotId) &&
       (!selectedSpaceId || item.projectSpaceId === selectedSpaceId),
   );
-  const groups = groupBotConversations(conversations);
+  const groups = groupBotConversations(foldCollaborationConversations(conversations));
   const currentId = activeTab?.view === "chat" ? activeTab.sessionId : null;
   const states = projects
     .filter(
@@ -251,10 +252,9 @@ export default function BotConversationNavigation({
     (states.some((value) => value.isLoading) || data.isSessionsLoading);
   const error =
     states.find((value) => value.error)?.error || data.sessionsError;
-  const list = (items: typeof conversations) =>
+  const list = (items: typeof conversations): ReactNode =>
     items.map((item) => (
-      <ConversationMenuRow
-        key={item.session.id}
+      <div key={item.session.id}><ConversationMenuRow
         session={item.session}
         renderSessionMenu={renderSessionMenu}
         onMenuOpenChange={onMenuOpenChange}
@@ -292,7 +292,7 @@ export default function BotConversationNavigation({
             </span>
             <span className="mt-0.5 flex items-center gap-2">
               <span className="min-w-0 flex-1 truncate text-xs text-[var(--ink-secondary)]">
-                {item.bot.name}
+                {item.session.id === item.session.projectSpace?.collaboration?.leadSessionId ? `${t('projectSpaces.leadBot')} · ` : ''}{item.bot.name}
                 {(item.projectSpaceId ||
                   item.projectLabel !== item.bot.name) && (
                   <> · {item.projectLabel}</>
@@ -307,12 +307,14 @@ export default function BotConversationNavigation({
                 </span>
               ) : null}
               <time className="shrink-0 text-xs text-[var(--ink-muted)]">
-                {formatTime(item.session.lastActiveAt)}
+                {formatTime(item.displayLastActiveAt ?? item.session.lastActiveAt)}
               </time>
             </span>
           </span>
         </button>
       </ConversationMenuRow>
+      {!!item.collaborators?.length && <details className="mb-1 ml-5 border-l border-[var(--line-subtle)] pl-2" open={item.collaborators.some(child => child.session.id === currentId) || undefined}><summary className="min-h-7 cursor-pointer text-xs text-[var(--ink-muted)]">{t('projectSpaces.memberConversations')} · {item.collaborators.length}</summary>{list(item.collaborators)}</details>}
+      </div>
     ));
   return (
     <div

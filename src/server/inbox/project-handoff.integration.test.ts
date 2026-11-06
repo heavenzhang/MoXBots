@@ -72,6 +72,21 @@ describe('local Bot project handoff using real isolated SessionStore', () => {
     expect(reopened?.messages[0].content).toBe(prompt);
     expect(reopened?.origin).toEqual({ kind: 'session-inbox', surface: 'session_send' });
   });
+  it('persists the same collaboration through real local handoff and injects its roster once', async () => {
+    const leadPath = store.getSessionMetadata(message.fromSessionId!)!.agentDir;
+    const fixed = { ...projectSpaceSnapshot(leadPath, 'A', 'lead'), collaboration: { leadSessionId: 'frozen-root', leadBotId: 'lead', members: [{ id: 'lead', name: 'Lead' }, { id: 'worker', name: 'Worker' }] } };
+    const root = await createPublishedSession(store, leadPath, { projectSpace: fixed });
+    message.fromSessionId = root.id;
+    let prompt = '';
+    const inject: FreshSessionInjector = async (text, options) => { prompt = text; return accept(text, options); };
+    expect(await start.handleFreshSessionStart(message, context, inject)).toEqual({ accepted: true });
+    expect(store.getSessionMetadata(context.sessionId)?.projectSpace?.collaboration).toEqual(fixed.collaboration);
+    expect(prompt).toContain('frozen-root'); expect(prompt).toContain('leadBotId'); expect(prompt).toContain('Worker');
+    expect(prompt.match(/<system-reminder>/g)).toHaveLength(1);
+    expect(parseSessionSendRequestDisplay(parseLeadingSystemReminder(prompt))).toEqual({ payload: message.text, sourceLabel: 'Lead' });
+    await store.drainSessionTranscripts(); vi.resetModules(); store = await import('../SessionStore');
+    expect((await store.getSessionData(context.sessionId))?.projectSpace?.collaboration).toEqual(fixed.collaboration);
+  });
   it.each(['deleted', 'archived', 'removed', 'missing-source', 'external', 'corrupt'])('rejects %s before model admission or target metadata', async reason => {
     const project = (configuration.projectSpaces as Array<Record<string, unknown>>)[0];
     if (reason === 'deleted') configuration.projectSpaces = [];
