@@ -1329,5 +1329,5 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 ## MB-CONTINUE-RECOVERY-20261106 — continuation misclassification and visibility
 
 - 分支 codex/continue-recovery-20261106；修复 builtin Bash exit 128 被错误计作 unknown、压缩后历史失败无法核对，以及暂停原因被旧摘要遮盖、发送前拒绝没有界面反馈。
-- 源码与模拟验证完成；只读真实历史匹配，未手改运行数据、未重放业务操作。待远端 main、统一桌面构建安装及原任务真实完成验收。
+- 已完成：PR #257 交付远端 main bfbc92f3800a3ee4da5785b0f25fc61e2b7a32c2，543.2 安装，原任务 6/6 正式完成、默认工具 116 条原样本独立验证通过、原因说明原生可见及重开保持。未手改运行账本，未重放未知操作。用户后续报告的新修订号冲突另属 PR #258 / 543.3，不混同本次完成。
 - desktop/macOS-arm64/sharedCI/main 唯一负责人仍为 01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发会话不分配版本或触发共享 CI。任务记录 .agent-sync/tasks/codex-continue-recovery-20261106-f2d2543b.md，验收说明 dev-docs/continue-recovery-20261106/acceptance.md。
