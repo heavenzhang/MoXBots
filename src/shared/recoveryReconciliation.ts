@@ -22,7 +22,7 @@ export interface RecoveryReviewAction {
   reason: 'builtin_task_query' | 'native_hook_denied' | 'external_receipt_required' | 'native_evidence_missing' | 'native_success';
   check?: RecoveryResultCheck;
   followups?: RecoveryFollowup[];
-  association?: { taskId: string; title: string; blockedTaskIds: string[] };
+  association?: { taskId: string; title: string; blockedTaskIds: string[]; blockedTasks?: { taskId: string; title: string }[] };
   toolUseIds?: string[];
   /** Display only; never used to authorize settlement or execution. No command bodies. */
   presentation?: {

@@ -72,6 +72,9 @@ export function RecoveryActionDetails({ actions, completed = [], reviewed = [], 
             <p className="mt-1">{t(`recoveryReview.reasons.${action.reason}`)}</p>
             {action.check && <p className="mt-2 rounded-md bg-[var(--paper-inset)] p-2">{t(`recoveryReview.checks.${action.check.kind}`)}</p>}
             {action.association && <p className="mt-2">{t('recoveryReview.affected', {count: action.association.blockedTaskIds.length})}</p>}
+            {!!action.association?.blockedTasks?.length && <ul className="mt-1 list-inside list-disc break-words">
+              {action.association.blockedTasks.map(task => <li key={task.taskId}>{task.title}</li>)}
+            </ul>}
             <p className="mt-2">{t(`recoveryReview.nextSteps.${action.reason}`)}</p>
             {!!action.followups?.length && <div className="mt-3 space-y-2 border-t border-[var(--line)] pt-2">
               {action.followups.map(note => <p key={note.requestId} className="whitespace-pre-wrap break-words"><strong>{t(note.kind === 'defer' ? 'recoveryReview.deferred' : 'recoveryReview.userNote')}</strong>{note.text}</p>)}

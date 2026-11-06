@@ -1376,3 +1376,7 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 ## MB-CHAT-STYLE-20261104 / CHAT08–11（2026-11-06）
 
 新授权先补待确认/unknown真实原生验收，再保护终态阅读并合入main交原owner统一发布。codex/chat-reading-protection-20261106基于05ea1e2，保留PR256间隙live修复；Message终态采样原follow/选区/手动详情，阅读者保留原树，正常跟随/历史默认/搜索保留。104DOM和双引擎真实组件受控页面通过，旧码2388px跳动反事实已复现；不是原生卡片通过。CHAT08仍由原owner协调无业务副作用的正常产品路径样本。desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4，543.1当前冻结批不覆盖，新成果下一未冻结批。详见dev-docs/chat-reading-protection-20261106/acceptance.md与当前任务记录，开发不运行共享CI/正式包。
+
+## MB-EXECUTION-REMEDIATION-20261107 — 执行阻断整改与原报告恢复
+
+在原task-revision修复07dcf4d27上补齐已知取消/接续失败的说明与恢复详情的依赖任务名称。自动原生回执核对、已知失败纠正、未知结果保留、按原任务资源/依赖继续独立工作沿既有owner，回归矩阵见dev-docs/execution-remediation-20261107/acceptance.md。543.3冻结制品不修改；原报告由恢复会话单独接续。desktop/macOS-arm64/updater/sharedCI/main仍唯一负责人01a12bc2-907a-7702-b6dd-788225c5dfe4，本分支精确SHA交其下一未冻结批统一审阅/主干/发布。源码、安装、真实报告分别验收。

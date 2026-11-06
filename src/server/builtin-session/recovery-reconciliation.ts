@@ -155,7 +155,9 @@ async function inspect(deps: RecoveryReviewDependencies) {
       ...(checks.has(action.actionId) ? { check: checks.get(action.actionId) } : {}),
       ...(completions.has(action.actionId) ? { check: { kind: 'native_success' as const } } : {}),
       followups: taskLedger?.recoveryFollowups?.filter(note => note.actionHash === action.actionId && note.sdkSessionId === deps.owner.sdkSessionId) ?? [],
-      ...(task ? { association: { taskId: task.id, title: task.title, blockedTaskIds: [...blocked].filter(id => id !== task.id) } } : {}),
+      ...(task ? { association: { taskId: task.id, title: task.title, blockedTaskIds: [...blocked].filter(id => id !== task.id),
+        blockedTasks: taskLedger!.tasks.filter(item => !item.retired && item.id !== task.id && blocked.has(item.id))
+          .map(item => ({ taskId: item.id, title: item.title })) } } : {}),
       tool: (name && ['TaskGet', 'TaskList', 'Bash'].includes(name) ? name : 'Other') as RecoveryReviewAction['tool'],
       ...(use ? { presentation: describeAction(use.name, use.input) } : {}), eligible: candidates.has(action.actionId),
       reason: completions.has(action.actionId) ? 'native_success' : candidates.has(action.actionId) ? candidates.get(action.actionId)!.kind === 'native-pre-tool-denied-reviewed'

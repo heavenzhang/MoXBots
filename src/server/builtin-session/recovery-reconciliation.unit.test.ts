@@ -269,3 +269,24 @@ describe('background recovery and necessary user decisions', () => {
     expect(f.adopt).toHaveBeenCalledOnce();
   });
 });
+
+it('projects exact transitive affected task titles without treating missing bindings as independent', async () => {
+  const f = fixture('Write', { file_path: 'report.md', content: 'report' });
+  const ledger = emptyTaskLedger();
+  ledger.tasks = [
+    {id:'write',title:'整理报告',blockedBy:[]},
+    {id:'chart',title:'生成趋势图',blockedBy:['write']},
+    {id:'check',title:'检查图文报告',blockedBy:['chart']},
+    {id:'unrelated',title:'独立资料整理',blockedBy:[]},
+  ];
+  ledger.bindings = {'call-1':'write','call-2':'write'};
+  f.deps.taskLedger = () => ledger;
+  const result = await inspectRecoveryActions(f.deps);
+  expect(result.actions.find(action => action.actionHash === f.hash)?.association).toEqual({
+    taskId:'write',title:'整理报告',blockedTaskIds:['chart','check'],
+    blockedTasks:[{taskId:'chart',title:'生成趋势图'},{taskId:'check',title:'检查图文报告'}],
+  });
+  expect(result.independentTasks).toEqual([{taskId:'unrelated',title:'独立资料整理'}]);
+  delete ledger.bindings['call-2'];
+  expect((await inspectRecoveryActions(f.deps)).independentTasks).toEqual([]);
+});
