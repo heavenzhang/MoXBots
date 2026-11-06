@@ -255,3 +255,19 @@ it('keeps the same read-only details and unsent note through a busy transition',
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(p.reconcile).not.toHaveBeenCalled();
 });
+
+it('shows the affected dependency names beside the reason and next action without dispatching work', async () => {
+  const p = props();
+  p.inspect.mockResolvedValue({...snapshot,actions:[{...snapshot.actions[1],association:{
+    taskId:'write',title:'整理报告',blockedTaskIds:['chart','check'],
+    blockedTasks:[{taskId:'chart',title:'生成趋势图'},{taskId:'check',title:'检查图文报告'}],
+  }}],independentTasks:[{taskId:'separate',title:'独立资料整理'}]});
+  render(<RecoveryActionReview {...p} />);
+  fireEvent.click(await screen.findByText('recoveryReview.decision.resolve'));
+  const dialog = within(screen.getByRole('dialog'));
+  expect(dialog.getByText('生成趋势图')).toBeVisible();
+  expect(dialog.getByText('检查图文报告')).toBeVisible();
+  expect(dialog.getByText('独立资料整理')).toBeVisible();
+  expect(dialog.getByText('recoveryReview.nextSteps.external_receipt_required')).toBeVisible();
+  expect(p.reconcile).not.toHaveBeenCalled();
+});

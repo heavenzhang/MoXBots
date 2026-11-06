@@ -1356,3 +1356,7 @@ Existing sole desktop/macOS/updater/sharedCI/main owner01a12bc2 integrates revie
 原生 543.2 出现 positional `session tasks review` 未被记账解析器识别，native start 增 revision 导致步骤评审自冲突；已确认模型暂停随后阻断新的人工补充。独立分支 codex/task-revision-continue-20261107 基于 main bfbc92f3800a3ee4da5785b0f25fc61e2b7a32c2，修复精确命令识别与原根评审暂停后的人工重新核对，保留 CAS、未知结果、审批、后台/前轮门禁；原原因继续注入 runtime，不伪造任务接受。验收 dev-docs/task-revision-continue-20261107/acceptance.md，任务记录 codex-task-revision-continue-20261107-2b8d6d9a。
 
 desktop/macOS-arm64/updater/sharedCI/main 唯一负责人仍 01a12bc2-907a-7702-b6dd-788225c5dfe4，已接收下一未冻结批登记；作者提交精确 SHA 与证据后由原负责人审阅、集成、CI/版本/不可变制品/安全安装及原会话验收。开发会话未操作运行数据、未重放业务、未触发共享 CI。其他端不发布。
+
+## MB-EXECUTION-REMEDIATION-20261107 — 执行阻断整改与原报告恢复
+
+在原task-revision修复07dcf4d27上补齐已知取消/接续失败的说明与恢复详情的依赖任务名称。自动原生回执核对、已知失败纠正、未知结果保留、按原任务资源/依赖继续独立工作沿既有owner，回归矩阵见dev-docs/execution-remediation-20261107/acceptance.md。543.3冻结制品不修改；原报告由恢复会话单独接续。desktop/macOS-arm64/updater/sharedCI/main仍唯一负责人01a12bc2-907a-7702-b6dd-788225c5dfe4，本分支精确SHA交其下一未冻结批统一审阅/主干/发布。源码、安装、真实报告分别验收。
