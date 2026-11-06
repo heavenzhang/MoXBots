@@ -49,6 +49,20 @@ beforeEach(async () => {
 });
 
 describe("SessionExecutionStatus", () => {
+  it.each(['blocked', 'needs_user'] as const)('keeps the current descriptive pause reason visible (%s)', decision => {
+    const summary = '需要原附件才能继续核对';
+    render(<SessionExecutionStatus execution={{ ...base, phase: 'paused', reason: summary,
+      assessment: { decision, summary, checks: [] } }} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText(summary)).toBeInTheDocument();
+  });
+  it('does not use an old acceptance summary for an unrelated unknown pause code', () => {
+    render(<SessionExecutionStatus execution={{ ...base, phase: 'paused', reason: 'UNRECOGNIZED_GUARD',
+      assessment: { decision: 'accept', summary: '旧完成摘要', checks: [] } }} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.queryByText('旧完成摘要')).not.toBeInTheDocument();
+    expect(screen.getByText(i18n.t('executionStatus.execution.reasons.unconfirmed', { ns: 'app' }))).toBeInTheDocument();
+  });
   it('distinguishes a failed review handoff from missing business progress', () => {
     render(<SessionExecutionStatus execution={{ ...base, phase: 'incomplete', reason: 'turn_error', reviewReceiptFailures: 3, noProgress: 0 }} />);
     fireEvent.click(screen.getByRole('button'));
