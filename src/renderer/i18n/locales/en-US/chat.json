@@ -1631,5 +1631,18 @@
         "unknown": "Check the original conversation and describe the target and where its result can be checked."
       }
     }
+  },
+  "sessionFiles": {
+    "title": "Results & files",
+    "search": "Search files in this conversation",
+    "linked": "File linked in conversation",
+    "source": "Source",
+    "sourceFor": "Show source message for {{file}}",
+    "boundary": "Files recorded or linked in the loaded conversation. Availability is checked when opened.",
+    "empty": "No file records yet. Files created or linked by the Bot will appear here.",
+    "noMatch": "No matching files.",
+    "loading": "Loading earlier records…",
+    "loadOlder": "Load earlier records",
+    "loadFailed": "Could not load earlier records. Try again; existing records are preserved."
   }
 }

@@ -1334,9 +1334,15 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 - 原会话执行失败另有模型命令schema漏参/任务版本冲突与native证据epoch检查；不通过UI折叠隐藏，不放宽门禁或重放原unknown操作。私有诊断只留本地工作区。
 
 
-
 ## MB-SIMPLE-UX-20261105 — 简洁界面首批（2026-11-06）
 
 用户确认四场景示意并要求逐步实现。独立codex/simple-ux-20261105基于main39b344765：UX-01工作区默认收起并按workspace保存主动显隐；窄窗启动不恢复overlay；临时文件定位沿原disclosure不改默认。UX-02去摘要外围框，UX-05工具图标/自动模型紧凑且完整名称可键盘查看，权限常显。UX-03/04/06复用已有恢复卡/安全核对/草稿/滚动/IME/排队，228本地回归、8主题、类型/定向lint/分类和moxbot renderer构建通过。真实页面被Work浏览器设置禁用，原生/main/CI/正式发行未冒称通过。稳定清单与验收dev-docs/simple-ux-20261105/{PLAN,acceptance}.md，任务.agent-sync/tasks/codex-simple-ux-20261105-19cd5d6a.md。
 
 部署单元desktop/macOS-arm64/updater/sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；开发只保存精确源码与证据后提交下一未冻结批请求，不另触发PR/共享CI、不分配版本、不覆盖542.1、不重启日常客户端。无其他单元或迁移依赖；UI与源审门禁另列，G-02继续待owner统一处理。
+
+
+## MB-SIMPLE-UX-20261105-P2 — 会话成果入口（2026-11-06）
+
+继续用户确认的逐步实施，独立codex/simple-ux-results-20261106基于main59e0277。UX-09a/09b/10a提供标题栏按需“成果与文件”，从成功结构化记录与助手Markdown本地链接投影去重文件，搜索/原FileAction重验预览/回来源/原历史分页锚点与错误。无新持久索引或业务权限，默认关闭不解析，稳定文本WeakMap缓存，旧重命名链接不复活、删除不冒充可用；active沿原Chat useTabActive防缓存Tab portal残留。88unit+91DOM+8theme、类型/lint/分类/renderer构建与独立14项通过；IAB实际组件页1280/390/320通过，合成数据/委托不替代真实文件IO和完整原生。清单/验收dev-docs/simple-ux-results-20261106/{PLAN,acceptance}.md，task.agent-sync/tasks/codex-simple-ux-results-20261106-ae5e1f85.md。
+
+首批59faa99与本批各自交既有desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4统一审核/CI/main与下一未冻结包；不另触发PR/共享CI/版本/安装，不改542.2/stable0.5.36或其他制品。无其他单元/迁移依赖，真实原生文件路径与发行仍待验；其余UX项保持后续清单。
