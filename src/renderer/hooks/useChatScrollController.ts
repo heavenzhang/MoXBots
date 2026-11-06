@@ -78,7 +78,8 @@ const DEFAULT_WINDOW_PRESENTATION: MainWindowPresentation = {
 };
 
 function isDirectRowToggle(reason: RowLayoutChangeReason): boolean {
-  return reason === 'process-row-expand'
+  return reason === 'text-selection'
+    || reason === 'process-row-expand'
     || reason === 'process-row-collapse'
     || reason === 'user-message-expand'
     || reason === 'block-group-expand'

@@ -255,3 +255,60 @@ it('keeps the same read-only details and unsent note through a busy transition',
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(p.reconcile).not.toHaveBeenCalled();
 });
+
+it('keeps stopped-turn uncertainty outside collapsed process without implying a paused task or continuing it', async () => {
+  const p = props();
+  p.inspect.mockResolvedValue({ ...snapshot, attention: undefined,
+    unresolvedTurn: { turnId: 'stopped-turn', actionHashes: ['mutating'] }, actions: snapshot.actions.slice(1) });
+  const onViewOperation = vi.fn();
+  const view = render(<><div hidden>collapsed process</div><p>Final result and artifact</p>
+    <RecoveryActionReview {...p} onViewOperation={onViewOperation} /></>);
+  expect(await screen.findByText('recoveryReview.unresolved.title')).toBeVisible();
+  expect(screen.getByText('Final result and artifact')).toBeVisible();
+  expect(screen.queryByText('recoveryReview.decision.currentTask')).not.toBeInTheDocument();
+  expect(screen.queryByText('recoveryReview.decision.explanation')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText('recoveryReview.unresolved.details'));
+  expect(await screen.findByRole('dialog')).toBeVisible();
+  expect(screen.queryByText('recoveryReview.addNote')).not.toBeInTheDocument();
+  expect(p.reconcile).not.toHaveBeenCalled();
+  view.unmount();
+  render(<RecoveryActionReview {...p} />);
+  expect(await screen.findByText('recoveryReview.unresolved.title')).toBeVisible();
+  expect(p.reconcile).not.toHaveBeenCalled();
+});
+
+it('retains an already observed unresolved outcome during a refresh failure until a fresh snapshot clears it', async () => {
+  const p = props(); const known = { ...snapshot, attention: undefined,
+    unresolvedTurn: { turnId: 'stopped-turn', actionHashes: ['mutating'] }, actions: snapshot.actions.slice(1) };
+  p.inspect.mockResolvedValue(known);
+  const view = render(<RecoveryActionReview {...p} inspectRevision="first" />);
+  await screen.findByText('recoveryReview.unresolved.title');
+  let reject!: (reason: Error) => void;
+  p.inspect.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  view.rerender(<RecoveryActionReview {...p} inspectRevision="refresh" />);
+  await waitFor(() => expect(p.inspect).toHaveBeenCalledTimes(2));
+  expect(screen.getByText('recoveryReview.unresolved.title')).toBeVisible();
+  await act(async () => { reject(new Error('temporary read failure')); });
+  expect(screen.getByText('recoveryReview.unresolved.title')).toBeVisible();
+  expect(screen.getByText('recoveryReview.unresolved.refreshFailed')).toBeVisible();
+  expect(p.reconcile).not.toHaveBeenCalled();
+  p.inspect.mockResolvedValue({ ...known, actions: [], unresolvedTurn: undefined });
+  view.rerender(<RecoveryActionReview {...p} inspectRevision="confirmed" />);
+  await waitFor(() => expect(screen.queryByText('recoveryReview.unresolved.title')).not.toBeInTheDocument());
+});
+
+it('shows the affected dependency names beside the reason and next action without dispatching work', async () => {
+  const p = props();
+  p.inspect.mockResolvedValue({...snapshot,actions:[{...snapshot.actions[1],association:{
+    taskId:'write',title:'整理报告',blockedTaskIds:['chart','check'],
+    blockedTasks:[{taskId:'chart',title:'生成趋势图'},{taskId:'check',title:'检查图文报告'}],
+  }}],independentTasks:[{taskId:'separate',title:'独立资料整理'}]});
+  render(<RecoveryActionReview {...p} />);
+  fireEvent.click(await screen.findByText('recoveryReview.decision.resolve'));
+  const dialog = within(screen.getByRole('dialog'));
+  expect(dialog.getByText('生成趋势图')).toBeVisible();
+  expect(dialog.getByText('检查图文报告')).toBeVisible();
+  expect(dialog.getByText('独立资料整理')).toBeVisible();
+  expect(dialog.getByText('recoveryReview.nextSteps.external_receipt_required')).toBeVisible();
+  expect(p.reconcile).not.toHaveBeenCalled();
+});

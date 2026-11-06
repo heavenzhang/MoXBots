@@ -20,7 +20,10 @@ import { ClassifierTransportError, type ClassifierTransport, type ClassifierTran
 /** Room for a reasoning model to think before the number (Magpie: 2048). */
 const CLASSIFIER_MAX_TOKENS = 2048;
 const ANTHROPIC_VERSION = '2023-06-01';
-const ERROR_BODY_MAX = 300;
+const TRANSIENT_NETWORK_CODES = new Set([
+  'ECONNRESET', 'ECONNREFUSED', 'ETIMEDOUT', 'EAI_AGAIN',
+  'UND_ERR_SOCKET', 'UND_ERR_CONNECT_TIMEOUT', 'UND_ERR_HEADERS_TIMEOUT', 'UND_ERR_BODY_TIMEOUT',
+]);
 
 export interface ClassifierTransportDeps {
   /** Provider env for a model, or 'subscription' for the SDK-native one; undefined when unusable. */
@@ -69,7 +72,11 @@ export function readMessagesText(payload: unknown): string {
 async function readResponse(resp: { ok: boolean; status: number; text: () => Promise<string> }): Promise<string> {
   const body = await resp.text();
   if (!resp.ok) {
-    throw new ClassifierTransportError(`classifier HTTP ${resp.status}: ${body.slice(0, ERROR_BODY_MAX)}`);
+    // The upstream body may contain credentials or private request fragments.
+    throw new ClassifierTransportError(`classifier HTTP ${resp.status}`, undefined, {
+      status: resp.status,
+      retryable: resp.status === 408 || resp.status === 429 || resp.status >= 500,
+    });
   }
   let payload: unknown;
   try {
@@ -90,7 +97,13 @@ function asTransportError(error: unknown): ClassifierTransportError {
   const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : undefined;
   const message = error instanceof Error ? error.message : String(error);
   const causeMessage = cause instanceof Error ? cause.message : '';
-  return new ClassifierTransportError(causeMessage ? `${message} (${causeMessage})` : message);
+  const code = [cause, error].map(value => value && typeof value === 'object' && 'code' in value ? value.code : undefined)
+    .find((value): value is string => typeof value === 'string');
+  return new ClassifierTransportError(causeMessage ? `${message} (${causeMessage})` : message, undefined, {
+    retryable: !!code && TRANSIENT_NETWORK_CODES.has(code),
+    // Only known codes are safe to log; arbitrary upstream strings are not.
+    ...(code && /^[A-Z][A-Z_0-9]{1,63}$/.test(code) ? { code } : {}),
+  });
 }
 
 export function createClassifierTransport(deps: ClassifierTransportDeps): ClassifierTransport {

@@ -2088,6 +2088,15 @@
         "missing_execution_disposition": "The classifier did not specify whether to preserve the original task."
       },
       "admissionHint": "This request has no confirmed execution intent, so it will not continue automatically.",
+      "failures": {
+        "modelService": "The model service or connection failed. This turn stopped and progress was preserved. Continue the unfinished steps in this chat later.",
+        "modelLimit": "The model request hit a rate or quota limit. Check your quota or wait for the limit to clear before continuing.",
+        "modelAccess": "The model service denied access. Check the current model login, credentials or permissions before continuing.",
+        "modelRequest": "The model service rejected this request. Check the model configuration and input, then continue in this chat.",
+        "compaction": "Context compaction failed. Progress was preserved. Reduce the input or tool output before continuing.",
+        "context": "The model context is full. Compact the history or reduce the input before continuing.",
+        "replay": "A previous operation outcome remains unverified, so repeat execution was prevented. Check its actual result and affected steps in this chat."
+      },
       "reasons": {
         "stopped": "This execution turn was stopped",
         "assessmentRequired": "Waiting for an acceptance assessment",

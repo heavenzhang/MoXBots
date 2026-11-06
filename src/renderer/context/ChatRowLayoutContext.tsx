@@ -11,7 +11,8 @@ export type RowLayoutChangeReason =
   | 'expandable-container-collapse'
   | 'attachment-settle'
   | 'widget-resize'
-  | 'tool-complete';
+  | 'tool-complete'
+  | 'text-selection';
 
 export interface RowLayoutChangePayload {
   reason: RowLayoutChangeReason;

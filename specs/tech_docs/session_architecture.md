@@ -414,3 +414,8 @@ native UUID 优先按 SDK-to-SDK 的精确映射复制。仅当旧 Product user 
 
 
 Recovery investigation permission is active only while the original execution is RECOVERY_CHECKING. The durable recoveryPassDigest remains a deduplication record after settlement, not a permanent read-only mode. Unresolved prior settled effects keep their original resource reservations even when investigation pauses; current unsettled calls do not acquire synthetic unknown claims from their own PreToolUse pending fact.
+
+
+### 最近终态轮的结果不明提示
+
+无任务计划的普通Stop也可能留下已经启动但没有可信终态的原操作。恢复检查在同一RecoveryActionSnapshot中提供只读unresolvedTurn：仅最新已结算产品轮中的原tool ID，同时匹配已验证native journal未决attempt与原生选中链，才显示在过程之外。此显示不创建执行、不改写原始工具错误、不授予继续/重放权限；已知返回、可自动结清、运行中、其他轮或匿名历史不作为此提示。原有attention仍只表示当前任务确实因未知结果暂停，不能把两种状态相互替代。
