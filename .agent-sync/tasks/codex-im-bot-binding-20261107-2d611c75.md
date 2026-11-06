@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=2d503ededb97a66a33e061994e12c1233f9cab14b51c12b70fd328a693d3b4d7 -->
+<!-- git-project-sync-task:source-digest=943c3cf2c2927c074339be5f6e6bc01deb2e887b9e71473598cc0f2ad20a89c2 -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=c9e0f076-7e61-4567-8c18-1c1e0c14722f -->
 <!-- git-project-sync-task:branch=codex/im-bot-binding-20261107 -->
@@ -24,11 +24,13 @@
 
 ## Verification
 
+- Source digest: `943c3cf2c2927c074339be5f6e6bc01deb2e887b9e71473598cc0f2ad20a89c2`; Merged main a650939d normally; only append conflict in shared plan retained both; 12 files 80 tests and TypeScript PASS; official Feishu read-only preflight PASS; actual roundtrip/native/remote main pending
+
 - Source digest: `2d503ededb97a66a33e061994e12c1233f9cab14b51c12b70fd328a693d3b4d7`; Documentation-only follow-up; official Feishu credential/bot/member preflight code=0, no messages sent; runtime bytes unchanged from f8dc56e4; main/native/real roundtrip pending
 
 - Source digest: `794c45a4c417522c8d9660f80d21fece647c805322cd95e8f9bcf14b1f11540f`; 80 targeted tests PASS; TypeScript/lint/classification/Web build/theme/diff PASS; deps 0 errors; IAB actual components light/dark 390px PASS (synthetic only); real IM/native/main pending original release owner
 
-51 项功能/身份/向导回归与 29 项原配置/插件/回复隔离回归通过；TypeScript、定向 lint、diff、测试分类、Vite moxbot Web 构建、主题 CSS 检查通过，依赖检查 0 error / 20 未改动 orphan warning。内置浏览器 1280 浅色/390 深色、选择/取消/展开通过，纯合成数据。真实账号与原生验证未运行。
+已 merge 最新 main a650939d（保留两边计划追加），再次实跑 12 文件 80 项回归和 TypeScript 通过；51 项功能/身份/向导与 29 项原配置/插件/回复隔离回归保持通过；TypeScript、定向 lint、diff、测试分类、Vite moxbot Web 构建、主题 CSS 检查通过，依赖检查 0 error / 20 未改动 orphan warning。内置浏览器 1280 浅色/390 深色、选择/取消/展开通过，纯合成数据。真实账号与原生验证未运行。
 
 ## Blockers and unknowns
 

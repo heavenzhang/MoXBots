@@ -63,3 +63,8 @@ Node `/opt/homebrew/opt/node@24/bin/node`，使用现有锁文件匹配依赖；
 - [ ] 本次新 UI 安装版核查仍待原 desktop owner 发布，既有 543.4 技术联调不能冒充新 UI 已发布。
 
 私有证据在工作区 `work/MB-IM-BINDING-20261107/feishu-preflight.json`；不含 token/secret。桌面负责人当前协调 543.5，已请求设置窗口使用时段并通知飞书测试授权更新；未收到窗口交接前只做独立准备。没有发送测试消息或更改用户绑定。
+
+
+## 当前主干同步
+
+开发分支已正常 merge `main a650939d2c38b8dc04750e282b159ddaac8ea346`。唯一冲突为 `.agent-sync/plan.md` 的末尾追加，保留两边全部任务/发布归属。16 个产品/测试/夹具文件的本任务字节与原 `f8dc56e4` 一致；合并后再次实跑 12 文件 80 项回归、TypeScript 均通过。此次为开发分支同步，不代表远端 main 已接收本任务。

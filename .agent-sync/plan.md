@@ -1397,5 +1397,4 @@ R2真实验收补充：543.3原群报告已在同execution完成5项验收；真
 - [ ] 原 owner 独立审阅/共享 CI/远端 main 包含成果。
 - [ ] 下一未冻结桌面发行/原生与真实 IM 测试聊天验收。
 
-任务 `.agent-sync/tasks/codex-im-bot-binding-20261107-2d611c75.md`，证据 `dev-docs/im-bot-binding-20261107/acceptance.md`。desktop/macOS-arm64/updater/sharedCI/main 唯一 owner 仍 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；开发只本地检查、分支保存与精确源码交接，不分配版本或触发共享 CI。真实测试聊天及测试消息授权待用户指定，模拟检查不替代真实联调。
-
+任务 `.agent-sync/tasks/codex-im-bot-binding-20261107-2d611c75.md`，证据 `dev-docs/im-bot-binding-20261107/acceptance.md`。desktop/macOS-arm64/updater/sharedCI/main 唯一 owner 仍 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；开发只本地检查、分支保存与精确源码交接，不分配版本或触发共享 CI。用户已授权使用本人飞书验证，既有机器人凭据/启用/配对账号官方 API 预检查通过；真实接线和单条往返待原生窗口协调，模拟检查不替代真实联调。
