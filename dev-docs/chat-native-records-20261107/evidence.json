@@ -1,0 +1,36 @@
+{
+  "task": "CHAT08-RECORDS",
+  "base": "a650939d2c38b8dc04750e282b159ddaac8ea346",
+  "red": "summary undefined rejects valid SDK raw evidence",
+  "unitTests": 113,
+  "integrationTests": 33,
+  "typecheck": "PASS",
+  "lint": "PASS",
+  "classification": "PASS",
+  "sdkVersion": "0.3.296",
+  "sdkBytesEqualFrozen5435": true,
+  "sdkSHA256": "5cf6f15237f9c84e6e5b724a10180478732457168921d7aa3e02632037cce299",
+  "originalReadOnlyDiagnostic": {
+    "summaryAvailable": false,
+    "selectedRows": 12,
+    "rawRecords": 36,
+    "rawBytes": 101305,
+    "patchedInspectActions": 2,
+    "latestTurnUnknownActions": 1,
+    "ledgerUnchanged": true,
+    "productTranscriptUnchanged": true,
+    "businessOperations": 0
+  },
+  "nativeUIAccepted": false,
+  "logsSHA256": {
+    "red": "2133628927f21fc9957272c2e4c53b0b06446c4f7aff48272c2d5a324b4c6596",
+    "unit": "13ef1a59c77f9e6c0feba5d5e96ce7105744a5b2ed7fc1d07c0b517285d14f10",
+    "integration": "c97bfd16df6196501392a3880767db64edb101586b469c57a7fbd14826a29408",
+    "final-tests": "822960abf42e3db4a544d4a212ffab85d02da222fa643dc21d72fde742a4cf31",
+    "types": "cd706f960edcdd753fc8585520be847bc01652898e40a8906d39411191d57d6d",
+    "types-final": "6d6cc2ea06804dc34cefe024630935921e1f8ad137b74dc3992a7b1a83a40c04",
+    "types-final2": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "lint-final2": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "classification": "1be77aaf6d21ed19d6471c6527424cc42c79560cf0de3b3a882a79b6499a6ca3"
+  }
+}
