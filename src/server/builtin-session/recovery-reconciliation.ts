@@ -24,6 +24,7 @@ export interface RecoveryReviewDependencies {
   readNativeRecords?: () => Promise<readonly unknown[]>;
   save: (ledger: unknown, expectedDigest: string, current: () => boolean) => Promise<void>;
   adopt: (receipt: RecoveryActionResolution) => void;
+  reconcileNativeFailures?: (records: readonly unknown[], selected: readonly unknown[], current: () => boolean) => Promise<void>;
   repairToolErrors?: (evidence: readonly ReviewedToolError[]) => Promise<void>;
 }
 

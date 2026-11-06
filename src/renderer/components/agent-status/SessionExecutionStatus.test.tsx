@@ -326,3 +326,11 @@ describe("SessionExecutionStatus", () => {
     expect(container.firstChild).toBeNull();
   });
 });
+
+it('shows the actual pause reason instead of an earlier accepted assessment', () => {
+  render(<SessionExecutionStatus execution={{ ...base, phase: 'paused', reason: 'TOOL_OUTCOME_UNKNOWN',
+    assessment: { decision: 'accept', summary: '修复已经完成', checks: [] } }} />);
+  fireEvent.click(screen.getByRole('button'));
+  expect(screen.getByText(/先前工具的结果尚未确认/)).toBeInTheDocument();
+  expect(screen.queryByText('修复已经完成')).not.toBeInTheDocument();
+});

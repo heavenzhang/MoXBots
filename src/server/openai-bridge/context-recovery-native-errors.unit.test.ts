@@ -120,7 +120,7 @@ describe('native tool error settlement', () => {
     expect(h.ledger().nativeErrors).toEqual([]);
   });
 
-  it.each([failure, 'Exit code 1'])('continues correction after a native Bash exit and fences its recovery replay (%s)', async error => {
+  it.each([failure, 'Exit code 1', 'Exit code 128\nfatal: not a git repository'])('continues correction after a native Bash exit and fences its recovery replay (%s)', async error => {
     const h = fixture();
     await h.emit('failed-shell');
     expect(await h.controller.authorizeTool('Bash', command, 'failed-shell')).toBeUndefined();
@@ -243,4 +243,78 @@ describe('native tool error settlement', () => {
     expect(h.controller.beforeTool('Write', {})).toContain('automatic_replay_blocked');
     expect(h.ledger().uncertain).toHaveLength(1);
   });
+});
+
+
+function historicalFailure(output = 'Exit code 128\nfatal: not a git repository') {
+  const raw = [
+    { type: 'assistant', uuid: 'use', sessionId: 'native-1', isSidechain: false, parentUuid: null,
+      message: { content: [{ type: 'tool_use', id: 'old-failure', name: 'Bash', input: structuredClone(command) }] } },
+    { type: 'user', uuid: 'result', sessionId: 'native-1', isSidechain: false,
+      parentUuid: 'use', sourceToolAssistantUUID: 'use', toolUseResult: `Error: ${output}`,
+      message: { content: [{ type: 'tool_result', tool_use_id: 'old-failure', is_error: true, content: output }] } },
+  ];
+  const selected = raw.map(row => ({ type: row.type, uuid: row.uuid, session_id: row.sessionId, message: structuredClone(row.message) }));
+  return { raw, selected, output };
+}
+
+it('repairs an old exit-128 receipt without replay, records failure and survives restart', async () => {
+  const h = fixture(); const f = historicalFailure();
+  await h.emit('old-failure'); await h.controller.authorizeTool('Bash', command, 'old-failure');
+  // Reproduce the older binary's unresolved classification with no terminal proof.
+  await h.controller.commitToolResult('Bash', command, f.output, true, 'old-failure');
+  const restored = fixture(h.ledger());
+  await restored.controller.reconcileNativeBashFailures(f.raw, f.selected, () => true);
+  expect(restored.ledger().uncertain).toEqual([]);
+  expect(restored.controller.inspectSettledBashFailures()).toMatchObject([{ toolUseId: 'old-failure', exitCode: 128 }]);
+  h.result('old-failure', f.output);
+  const again = fixture(restored.ledger());
+  expect(again.controller.inspectSettledBashFailures()).toHaveLength(1);
+  await again.controller.protectInference(h.body);
+  expect(again.controller.beforeTool('Bash', command)).toContain('earlier command exited');
+});
+
+it.each(['wrong-result', 'wrong-input', 'duplicate', 'foreign-chain', 'off-chain', 'wrong-parent', 'not-native-error', 'background', 'owner', 'signal', 'timeout'])
+  ('does not repair historical failure with %s', async variant => {
+    const f = historicalFailure(variant === 'signal' ? 'Exit code 137\nKilled' : variant === 'timeout' ? 'Exit code 124\nTimed out' : undefined);
+    const h = fixture(); await h.emit('old-failure'); await h.controller.authorizeTool('Bash', command, 'old-failure');
+    await h.controller.commitToolResult('Bash', command, f.output, true, 'old-failure');
+    const restored = fixture(h.ledger());
+    if (variant === 'wrong-result') Object.assign(f.raw[1].message.content[0], { content: 'Exit code 128\nChanged' });
+    if (variant === 'wrong-input') Object.assign(f.raw[0].message.content[0], { input: { command: 'other' } });
+    if (variant === 'duplicate') f.raw.push({ ...f.raw[1] });
+    if (variant === 'foreign-chain') f.selected[1].session_id = 'another';
+    if (variant === 'off-chain') f.selected.pop();
+    if (variant === 'wrong-parent') f.raw[1].parentUuid = 'other';
+    if (variant === 'not-native-error') f.raw[1].toolUseResult = f.output;
+    if (variant === 'background') Object.assign(f.raw[0].message.content[0], { input: { ...command, run_in_background: true } });
+    await restored.controller.reconcileNativeBashFailures(f.raw, f.selected, () => variant !== 'owner');
+    expect(restored.controller.inspectActionLedger().uncertainCount).toBe(1);
+    expect(restored.controller.inspectSettledBashFailures()).toEqual([]);
+  });
+
+it('keeps failure repair fail-closed when persistence fails', async () => {
+  const f = historicalFailure(); const h = fixture();
+  await h.emit('old-failure'); await h.controller.authorizeTool('Bash', command, 'old-failure');
+  await h.controller.commitToolResult('Bash', command, f.output, true, 'old-failure');
+  const restored = fixture(h.ledger()); restored.state.storageFails = true;
+  await expect(restored.controller.reconcileNativeBashFailures(f.raw, f.selected, () => true)).rejects.toThrow('could not be committed');
+  expect(restored.controller.inspectActionLedger().blocked).toBe(true);
+});
+
+it('repairs the exact failed attempt while retaining unrelated legacy uncertainty and replay protection', async () => {
+  const f = historicalFailure(); const h = fixture();
+  await h.emit('old-failure'); await h.controller.authorizeTool('Bash', command, 'old-failure');
+  await h.controller.commitToolResult('Bash', command, f.output, true, 'old-failure');
+  const prior = structuredClone(h.ledger()) as ReturnType<typeof h.ledger> & {
+    operationAttempts: { legacyUncertain: string[] };
+  };
+  prior.operationAttempts.legacyUncertain = [...prior.uncertain];
+  const restored = fixture(prior);
+  await restored.controller.reconcileNativeBashFailures(f.raw, f.selected, () => true);
+  expect(restored.controller.inspectSettledBashFailures()).toMatchObject([{ exitCode: 128 }]);
+  expect(restored.ledger().uncertain).toEqual(prior.uncertain);
+  const cold = fixture(restored.ledger());
+  expect(cold.controller.inspectSettledBashFailures()).toHaveLength(1);
+  expect(cold.controller.inspectActionLedger().uncertainCount).toBe(1);
 });

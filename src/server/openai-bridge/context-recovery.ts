@@ -1,3 +1,4 @@
+import { nativeRecoveryAncestry } from './native-recovery-ancestry';
 import { safeStreamFailure, streamFailure, streamFailureMessage, type StreamFailureDiagnostic } from './stream-failure-diagnostic';
 import { createHash, randomUUID } from 'node:crypto';
 import { NativeOperationJournal, NativeOperationJournalCapacityError, type NativeOperationAttempt } from './native-operation-journal';
@@ -226,7 +227,7 @@ function settledBashExit(error: unknown, interrupted: boolean | undefined): numb
   // timeouts and arbitrary MCP/tool errors do not prove a settled shell process.
   const code = /^Exit code ([1-9][0-9]{0,2})(?:\r?\n|$)/.exec(error)?.[1];
   const exitCode = Number(code);
-  return Number.isInteger(exitCode) && exitCode < 128 && exitCode !== 124 ? exitCode : undefined;
+  return Number.isInteger(exitCode) && exitCode <= 128 && exitCode !== 124 ? exitCode : undefined;
 }
 
 function noDispatchKey(actionHash: string, toolUseId: string): string {
@@ -488,6 +489,81 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         && attempt.actionHash === proof.actionHash && attempt.status === 'returned'
         && attempt.outcome === 'bash-exit' && attempt.resultDigest === proof.resultDigest).length === 1)
       .map(proof => ({ ...proof }));
+  }
+
+  /** Repair the old exit-128 classification using the selected SDK chain and
+   * its original raw failure receipt. No command execution or success claim. */
+  async reconcileNativeBashFailures(records: readonly unknown[], selected: readonly unknown[],
+    stillCurrent: () => boolean): Promise<void> {
+    const owner = this.options.recoveryOwner;
+    if (!owner || !stillCurrent() || this.ledgerBlocked || this.state?.inFlight.size
+      || this.state?.recovering || !this.options.persistLedger || !this.actionProtectionActive
+      || records.length > 50_000 || selected.length > 50_000) return;
+    const ancestry = nativeRecoveryAncestry(records, selected, owner.sdkSessionId);
+    if (!ancestry) return;
+    const chain = new Map<string, Record<string, unknown>>();
+    for (const row of ancestry) {
+      if (!record(row) || typeof row.uuid !== 'string' || !row.uuid || row.session_id !== owner.sdkSessionId
+        || chain.has(row.uuid)) return;
+      chain.set(row.uuid, row);
+    }
+    const ids = new Set<string>();
+    const uses = new Map<string, { row: Record<string, unknown>; block: Record<string, unknown> }>();
+    const results = new Map<string, { row: Record<string, unknown>; block: Record<string, unknown> }[]>();
+    let blocks = 0;
+    for (const row of records) {
+      if (!record(row)) return;
+      if (typeof row.uuid === 'string') { if (ids.has(row.uuid)) return; ids.add(row.uuid); }
+      if (!record(row.message) || !Array.isArray(row.message.content)) continue;
+      blocks += row.message.content.length;
+      if (blocks > 200_000) return;
+      for (const block of row.message.content) {
+        if (!record(block)) continue;
+        if (block.type === 'tool_use' && typeof block.id === 'string') {
+          if (uses.has(block.id)) return;
+          uses.set(block.id, { row, block });
+        } else if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {
+          const pairs = results.get(block.tool_use_id) ?? [];
+          pairs.push({ row, block }); results.set(block.tool_use_id, pairs);
+        }
+      }
+    }
+    const onChain = (row: Record<string, unknown>, type: string) => typeof row.uuid === 'string'
+      && row.type === type && row.sessionId === owner.sdkSessionId && row.isSidechain === false
+      && !row.agentId && !row.teamName && chain.get(row.uuid)?.type === type
+      && !chain.get(row.uuid)?.parent_tool_use_id && !chain.get(row.uuid)?.parent_agent_id
+      && digest(chain.get(row.uuid)?.message) === digest(row.message);
+    const proven: NativeErrorEvidence[] = [];
+    for (const attempt of this.operations.serialize().entries) {
+      if (attempt.status !== 'unresolved' || attempt.outcome !== 'error' || attempt.toolName !== 'Bash') continue;
+      const use = uses.get(attempt.toolUseId); const pairs = results.get(attempt.toolUseId);
+      if (!use || pairs?.length !== 1 || !onChain(use.row, 'assistant') || use.block.name !== 'Bash'
+        || !record(use.block.input) || use.block.input.run_in_background === true
+        || recoveryActionHash('Bash', use.block.input) !== attempt.actionHash) continue;
+      const result = pairs[0]; const output = nativeResultText(result.block.content);
+      // The SDK's canonical foreground error record carries the same terminal
+      // error as the selected tool result. An error-looking stdout is not proof.
+      if (!onChain(result.row, 'user') || result.block.is_error !== true || !output
+        || settledBashExit(output, false) !== 128 || digest(output) !== attempt.resultDigest
+        || result.row.toolUseResult !== `Error: ${output}` || result.row.is_interrupt === true
+        || result.row.parentUuid !== use.row.uuid || result.row.sourceToolAssistantUUID !== use.row.uuid
+        || !record(result.row.message) || !Array.isArray(result.row.message.content)
+        || result.row.message.content.length !== 1 || result.row.toolDenialKind !== undefined) continue;
+      proven.push({ ...owner, queryGeneration: attempt.queryGeneration, scope: attempt.scope,
+        toolUseId: attempt.toolUseId, toolName: 'Bash', actionHash: attempt.actionHash,
+        reason: 'bash-exited', resultDigest: attempt.resultDigest, exitCode: 128 });
+    }
+    if (!proven.length || !stillCurrent()) return;
+    const added = proven.filter(proof => !this.nativeErrors.has(nativeErrorKey(proof.actionHash, proof.toolUseId))).length;
+    if (this.ledgerEntryCount() + added > MAX_LEDGER_ENTRIES) return;
+    for (const proof of proven) {
+      this.operations.reviewBashFailure(proof.toolUseId, proof.actionHash, proof.resultDigest!);
+      this.nativeErrors.set(nativeErrorKey(proof.actionHash, proof.toolUseId), proof);
+      if (!this.operations.isUncertain(proof.actionHash)) {
+        this.uncertainLedger.delete(proof.actionHash); this.state?.uncertain.delete(proof.actionHash);
+      }
+    }
+    await this.persist(stillCurrent);
   }
 
   /** Diagnostic only: never turns an ordinary error into a recovery candidate. */
@@ -796,7 +872,7 @@ export class ContextRecoveryController implements BridgeContextRecovery {
         && (item[1].reason === 'pre-tool-denied'
           || (item[1].reason === 'bash-exited' && item[1].toolName === 'Bash' && validKey(item[1].resultDigest)
             && Number.isInteger(item[1].exitCode) && (item[1].exitCode as number) > 0
-            && (item[1].exitCode as number) < 128 && item[1].exitCode !== 124)))
+            && (item[1].exitCode as number) <= 128 && item[1].exitCode !== 124)))
         || new Set(value.nativeErrors.map((item: unknown) => Array.isArray(item) ? item[0] : undefined)).size !== value.nativeErrors.length) {
         throw new Error('context_recovery_required: Native error evidence is corrupt or belongs to another history');
       }

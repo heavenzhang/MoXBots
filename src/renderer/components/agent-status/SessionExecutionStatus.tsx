@@ -100,23 +100,24 @@ export function useSessionExecutionPresentation({
     currentExecution?.phase === 'incomplete' && currentExecution.reason === 'turn_error'
       && (currentExecution.reviewReceiptFailures ?? 0) >= EXECUTION_LIMITS.maxReviewReceiptFailures
       ? t(`${root}.reasons.reviewReceiptUnconfirmed`)
-      : currentExecution?.assessment?.summary ??
-    (currentExecution?.reason
+      : currentExecution?.reason
       ? t(
           `${root}.reasons.${reasonKeys[currentExecution.reason] ?? "unconfirmed"}`,
         )
-      : undefined);
+      : currentExecution?.assessment?.summary;
 
   return {
     currentExecution,
     primaryStatus,
     summary,
     reasonText,
+    blockingReason: isCurrent && currentExecution && ["paused", "incomplete"].includes(currentExecution.phase) ? reasonText : undefined,
     recoveryText,
     provenChecks,
     attention: Boolean(
       status ||
         matchingRecovery ||
+        currentExecution?.phase === "paused" ||
         currentExecution?.phase === "incomplete" ||
         currentExecution?.phase === "rework",
     ),

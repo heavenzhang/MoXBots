@@ -210,6 +210,23 @@ async function initialize() {
 }
 
 describe('production original-turn stream continuation with synthetic SDK protocol', () => {
+  it.each(['TOOL_OUTCOME_UNKNOWN', 'WAITING_FOR_USER', 'BACKGROUND_WORK_ACTIVE'])(
+    'shows a rejected continuation reason without dispatching it (%s)', async error => {
+      await initialize();
+      const terminal = vi.fn();
+      const guard = Object.assign(vi.fn(async () => ({ accepted: false, error })), { cancel: vi.fn() });
+      await agent.enqueueUserMessage('Continue original task', undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+        { channelDelivery: NO_CHANNEL_DELIVERY, fromDesktopChatSend: true,
+          beforeDispatch: guard, onTerminal: terminal });
+      await vi.waitFor(() => expect(terminal).toHaveBeenCalledTimes(1));
+      expect(state.inputs).toHaveLength(0);
+      expect(upstreamRequests).toBe(0);
+      expect(guard.cancel).toHaveBeenCalled();
+      expect(state.events).toContainEqual(['chat:agent-error', { message: expect.stringContaining('本次消息未执行') }]);
+      expect(state.events.some(([event]) => event === 'queue:cancelled')).toBe(true);
+    });
+
   it.each(['permanent', 'half-frame', 'malformed', 'cancel'] as const)(
     'does not continue a native root after an unproven handler interruption (%s)', async cause => {
       failure = cause;

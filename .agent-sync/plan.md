@@ -1324,3 +1324,10 @@ MB-FORM-SCROLLBARS-20261106 continuinguserdelivery: soleRootowner reserves0.5.42
 MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with main66f includes scrollbarproducerbacd/source0d plus existingPlaywright+Codexmetadata fixes. RootindependentactualWebKit samefixtureoldmotionFAIL/currentPASS and combined94DOM/type/lint PASS. Freeze thisnecessaryfix scope; laterindependentfeatures nextbatch. ExactnewheadCI/main/formal/safeinstall/actualoriginalKevin110percentcoldJSONandtaskfooter>=30s/read-bottom-expand-switch plus project/settings/chat andPlaywright/Codex/sameartifact101 stillrequired. 542.5 firstpipeline completedonce throughApple, no rebuild/resubmit; preserveunpromoted and combine one safe maintenance installation usinglatestacceptedcandidate. SoleRoot01a12bc2 desktop/sharedCI/main; authorworkspaces and otherunits unchanged.
 
 - 542.6 sourceR2：原R1精确CI DOM一个旧被动effect结清断言失败，Root仅修RecoveryActionReview测试等待，全部生产字节不变；同PR254待原全部job终态后唯一FFpush，再按新exacthead检查。最终范围仍滚动条+jitter+Playwright+Codexmetadata，不扩功能或重复正式构建。
+
+
+## MB-CONTINUE-RECOVERY-20261106 — continuation misclassification and visibility
+
+- 分支 codex/continue-recovery-20261106；修复 builtin Bash exit 128 被错误计作 unknown、压缩后历史失败无法核对，以及暂停原因被旧摘要遮盖、发送前拒绝没有界面反馈。
+- 源码与模拟验证完成；只读真实历史匹配，未手改运行数据、未重放业务操作。待远端 main、统一桌面构建安装及原任务真实完成验收。
+- desktop/macOS-arm64/sharedCI/main 唯一负责人仍为 01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发会话不分配版本或触发共享 CI。任务记录 .agent-sync/tasks/codex-continue-recovery-20261106-f2d2543b.md，验收说明 dev-docs/continue-recovery-20261106/acceptance.md。

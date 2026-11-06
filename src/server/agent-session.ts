@@ -1,3 +1,4 @@
+import { preDispatchFailureMessage } from './builtin-session/dispatch-failure-message';
 import { projectOrchestrationProgress } from '../shared/sessionTaskOrchestration';
 import { canSessionDelegateSubagents, confirmSessionTaskReviewFromRootTool, observeSessionTasksInBackground, mutateSessionTaskLedger } from './session-engine/task-orchestration';
 import {
@@ -10747,6 +10748,10 @@ async function recoveryReviewDependencies(): Promise<RecoveryReviewDependencies>
     adopt: receipt => receipt.kind === 'native-completion-reviewed' ? activeSessionContextRecovery?.adoptNativeCompletion(receipt) : receipt.kind === 'native-pre-tool-denied-reviewed'
       ? activeSessionContextRecovery?.adoptPreToolDenialResolution(receipt)
       : activeSessionContextRecovery?.adoptReadonlyTaskResolution(receipt),
+    reconcileNativeFailures: async (records, selected, current) => {
+      if (!isCurrent() || !current() || !controller) return;
+      await controller.reconcileNativeBashFailures(records, selected, () => isCurrent() && current());
+    },
     repairToolErrors: async evidence => {
       if (!isCurrent()) throw new Error('recovery_review_owner_changed');
       const content = getBuiltinProductContent();
@@ -15339,11 +15344,9 @@ async function rejectPromotedMessageBeforeDispatch(
   item.resolve();
   if (!item.deferVisibleAdmission) {
     broadcast('queue:cancelled', { queueId: item.id });
-    if (result.code === 'turn_conflict') {
-      broadcast('chat:agent-error', {
-        message: `本次消息未执行：Goal 上一轮仍占用会话。${result.error ?? '请等待上一轮结算后再继续。'}`,
-      });
-    }
+    broadcast('chat:agent-error', {
+      message: preDispatchFailureMessage(result),
+    });
   }
   console.warn(`[goal] pre-dispatch gate rejected builtin queue item ${item.id}: ${result.error ?? result.code ?? 'stale admission'}`);
   settleCancelledInputActivity();
