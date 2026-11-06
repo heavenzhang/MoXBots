@@ -1,9 +1,10 @@
+import { shouldAutoSendInitialMessage } from '@/utils/initialMessageAutoSend';
 import { TASK_ALIGNMENT_SKILL_REQUIREMENT } from "../../shared/systemSkills";
 import { deriveSessionTodos } from '../../shared/sessionWorkProgress';
 import { projectErrorRecovery } from '../pages/errorMessageResend';
 import { SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { track } from '@/analytics';
@@ -621,6 +622,60 @@ describe('TabProvider session activity ownership', () => {
     tauriHarness.proxyFetch.mockRejectedValue(new Error('Unexpected proxyFetch call'));
     tauriHarness.isTauri = false;
     tauriHarness.listeners.clear();
+  });
+
+  it.each([false, true])('waits for persisted restore before consuming a connected launcher send (failure: %s)', async failRestore => {
+    const sessionId = 'session-initial-send';
+    let resolveRestore!: (response: Response) => void;
+    const restore = new Promise<Response>(resolve => { resolveRestore = resolve; });
+    const admitted = vi.fn();
+    const attempted = vi.fn();
+    tauriHarness.proxyFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes(`/sessions/${sessionId}?`) && !init?.method) return restore;
+      if (url.endsWith('/chat/send') && init?.method === 'POST') {
+        admitted(JSON.parse(String(init.body)).text);
+        return new Response(JSON.stringify({ success: true }));
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    function LauncherProbe() {
+      const { sessionId: targetId, isConnected, isSessionLoading, sendMessage } = useTabState();
+      const consumed = useRef(false);
+      const [receipt, setReceipt] = useState<boolean | null>(null);
+      useEffect(() => {
+        if (!shouldAutoSendInitialMessage({
+          hasInitialMessage: true, alreadyConsumed: consumed.current,
+          hasSessionId: !!targetId, isConnected,
+          isSessionLoading, isActive: false,
+        })) return;
+        consumed.current = true;
+        attempted();
+        void sendMessage('initial draft').then(setReceipt);
+      }, [targetId, isConnected, isSessionLoading, sendMessage]);
+      return <output data-testid="initial-send-state">{JSON.stringify({
+        connected: isConnected, loading: isSessionLoading, receipt,
+      })}</output>;
+    }
+    render(<TabProvider tabId="initial-send" agentDir="/tmp/workspace" sessionId={sessionId}
+      claimSessionOpeningTransition={allowSessionOpening}><LauncherProbe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('initial-send-state')).toHaveTextContent('"connected":true'));
+    expect(screen.getByTestId('initial-send-state')).toHaveTextContent('"loading":true');
+    expect(attempted).not.toHaveBeenCalled();
+    expect(admitted).not.toHaveBeenCalled();
+    await act(async () => resolveRestore(new Response(JSON.stringify(failRestore
+      ? { success: false, error: 'restore failed' }
+      : { success: true, session: {
+          id: sessionId, agentDir: '/tmp/workspace', title: 'New Chat', runtime: 'builtin',
+          messages: [], snapshotRevision: 0, liveSessionState: 'idle', hasMoreBefore: false,
+        } }))));
+    if (failRestore) {
+      expect(attempted).not.toHaveBeenCalled();
+      expect(screen.getByTestId('initial-send-state')).toHaveTextContent('"receipt":null');
+    } else {
+      await waitFor(() => expect(screen.getByTestId('initial-send-state')).toHaveTextContent('"receipt":true'));
+      expect(attempted).toHaveBeenCalledTimes(1);
+      expect(admitted).toHaveBeenCalledTimes(1);
+    }
   });
 
   it.each(['chat:message-complete', 'chat:message-stopped', 'chat:message-error'])(
