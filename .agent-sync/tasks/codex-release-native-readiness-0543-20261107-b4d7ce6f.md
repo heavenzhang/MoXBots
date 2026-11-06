@@ -1,0 +1,42 @@
+<!-- git-project-sync-task:version=1 -->
+<!-- git-project-sync-task:branch=codex/release-native-readiness-0543-20261107 -->
+<!-- git-project-sync-task:base=a650939d2c38b8dc04750e282b159ddaac8ea346 -->
+<!-- git-project-sync-task:status=in-progress -->
+<!-- git-project-sync-task:scaffold=false -->
+
+# Task: Repair first-send restore readiness and cold recovery inspection; preserve unknown evidence
+
+## Objective
+
+Close the installed first-message restore race and initial cold recovery inspection readiness gap, and the observed pre-header socket failure with bounded existing inference recovery. Correct two unsupported diagnostic cause claims. Preserve original business, drafts, unknown-operation records, prior immutable artifacts and rollback. The existing sole desktop/macOS-arm64/updater/sharedCI/main owner remains 01a12bc2-907a-7702-b6dd-788225c5dfe4. Only this deployment unit needs a new immutable candidate, 0.5.43/build543.5; cloud/mobile/site are outside this batch.
+
+## Acceptance criteria
+
+- The explicit New Chat launch payload waits for persisted restore and sends once; failed restore does not consume it or bypass the send guard.
+- Original QA unknown-operation notice survives a cold first inspection before SDK readiness, remains visible outside process collapse, locates the exact original tool and survives normal reopen. No business replay, automatic unknown resolution or ledger edits.
+- Exact affected checks and applicable CI/current-Mac ARM evidence, normal remote-main merge, one new signed/notarized archive, safe backup/normal maintenance install and actual native acceptance are separate required claims.
+- Supported real Codex approval and reading behavior, plus bounded native failure explanation/affected-step display, are verified without changing Agent/Project defaults or old report records. Actual product capability gaps remain explicit.
+- Only the same accepted immutable archive may reach the formal updater; preserve old public542.6 and original543.4 local artifacts.
+
+## Completed
+
+- Root reviewed all six files of exact first-send producer4894d637360490a1cb7ac08c0db6c7bc88a15593, its remote identity, parent0146039c and RED/GREEN originals. Merged once locally on fresh maina650939d; no push, CI dispatch or formal build yet.
+- Clean task-init ran before source modifications. The author worktree and installed543.4 remain unchanged.
+- Original543.4 N02 failure is preserved privately: first GET409 before SDK ready; no subsequent inspection, notice absent, original Bash reserved attempt/START/transcript/context file hashes unchanged. Root sent no message, continuation or reconcile request.
+
+## Verification
+
+- Producer RED/GREEN originals reviewed. Root combined actual190unit/193DOM/125integration, fulltype/scopedlint/classification passed. Both actualSDK/nativeBash synthetic socket modes passed with4failedrequests/1existingbackup/5distinctinferences/1write/0oldunknown executions; coldledger preserved. Native app acceptance remains pending.
+- Git sync observe/start/task-init: PASS against https://github.com/heavenzhang/MoXBots.git, basea650939d2c38b8dc04750e282b159ddaac8ea346. Current branch is not frozen and is not remotely delivered.
+- Private owner receipts: work/native-readiness-repair-20261107/owner; original native proof: work/intent-recovery-integration-20261107/owner/native-n02-5434.
+
+## Blockers and unknowns
+
+- Root reviewed and merged exact unknown-ready69f4 and neutralcopya90c; author workspaces remain untouched. Production composition had no conflicts; only shared-plan append conflict was resolved retaining both sides.
+- Current Codex0.160.0 product permission catalog excludes suggest. No hidden-mode workaround or global default change is permitted; the intended real approval profile and per-session route require an applicability review.
+- Native diagnostic loopback preparation only proves a controlled upstream fixture; no installed failure/real provider acceptance is inferred. Full model/Goal matrix questions remain pending.
+- Bridge432 has now passed full Root static review and is included within this still-unfrozen batch. Unrelated Bot/group/mobile changes remain outside scope.
+
+## Next step
+
+- Collect the final neutralcopy/version checks, freeze the four-source exact5435 candidate, save/push once with current project-sync handoff and create one PR/sourceCI. Build/install and actual native gates remain separate; never rebuild or resign5434.
