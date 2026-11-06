@@ -734,6 +734,23 @@ const MessageList = memo(function MessageList({
     },
     [cancelPendingLargeRowShrink],
   );
+  // One listener per list, including selections in older/user text. Selection
+  // pauses the existing follow owner; it does not create another scroll policy.
+  useEffect(() => {
+    if (!debugScroller || !canLayoutVirtualList) return;
+    const doc = debugScroller.ownerDocument;
+    const onSelection = () => {
+      const selection = doc.getSelection();
+      if (!selection || selection.isCollapsed) return;
+      const node = [selection.anchorNode, selection.focusNode].find(n => n && debugScroller.contains(n));
+      if (!node) return;
+      const element = node.nodeType === 1 ? node as Element : node.parentElement;
+      const messageId = element?.closest('[data-message-id]')?.getAttribute('data-message-id');
+      if (messageId) handleRowLayoutChanged(messageId, 'text-selection');
+    };
+    doc.addEventListener('selectionchange', onSelection);
+    return () => doc.removeEventListener('selectionchange', onSelection);
+  }, [debugScroller, canLayoutVirtualList, handleRowLayoutChanged]);
   useLayoutEffect(() => {
     if (canLayoutVirtualList) return;
     // A delayed ResizeObserver callback may already be queued when the host hides
@@ -779,6 +796,10 @@ const MessageList = memo(function MessageList({
     [conversationOperations, onFork, onRewind, onRetry, rewindableUserMessageIds, citationSources],
   );
 
+  // A read-only projection of the existing follow-intent owner, sampled in a
+  // row DOM commit, never a second scroll state or render-time ref read.
+  const isReadingProcess = useCallback(() => followEnabledRef.current === false, [followEnabledRef]);
+
   // ── Stable itemContent — volatile row actions arrive through Virtuoso context ──
   const renderItem = useMemo(
     () =>
@@ -816,6 +837,7 @@ const MessageList = memo(function MessageList({
             >
               <Message
                 message={message}
+                isReadingProcess={isReadingProcess}
                 revealTurnProcess={actionContext.revealTurnProcess}
                 citationSources={actionContext.citationSources.get(citationScope(message))}
                 isLoading={isStreamingMsg && actionContext.isLoading}
@@ -837,7 +859,7 @@ const MessageList = memo(function MessageList({
           </div>
         );
       },
-    [handleRowLayoutChanged, handleRetry],
+    [handleRowLayoutChanged, handleRetry, isReadingProcess],
   );
 
   // ── Stable computeItemKey ──

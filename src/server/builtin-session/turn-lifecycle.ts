@@ -246,6 +246,7 @@ export function createBuiltinTurnLifecycle(deps: BuiltinTurnLifecycleDeps): Buil
     afterPersist?: () => void,
     terminalKind: 'complete' | 'cancelled' = 'complete',
     terminalCode?: string,
+    apiErrorStatus?: number,
   ): boolean => {
     deps.setStreamingMessage(false);
     const turnStartTime = getCurrentTurnStartTime();
@@ -322,6 +323,7 @@ export function createBuiltinTurnLifecycle(deps: BuiltinTurnLifecycleDeps): Buil
       {
         durationMs: settledDurationMs,
         ...(terminalCode ? { code: terminalCode } : {}),
+        ...(apiErrorStatus !== undefined ? { apiErrorStatus } : {}),
         ...(terminalKind === 'cancelled'
           ? { error: 'Execution stopped' }
           : (terminalError ? { error: terminalError } : {})),
@@ -877,6 +879,7 @@ export function createBuiltinTurnLifecycle(deps: BuiltinTurnLifecycleDeps): Buil
         },
         isAbortResult ? 'cancelled' : 'complete',
         terminalCode,
+        isTerminalFailure ? apiErrorStatus ?? undefined : undefined,
       );
 
       if (terminalDisposition === 'complete' && !isAbortResult

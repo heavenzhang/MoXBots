@@ -287,6 +287,7 @@ describe('useChatScrollController', () => {
   });
 
   it.each([
+    'text-selection',
     'process-row-expand',
     'process-row-collapse',
     'user-message-expand',

@@ -398,6 +398,19 @@ describe('bounded native execution evidence view', () => {
 });
 
 describe("durable Session execution owner", () => {
+  it('finishes a reply-only calculation without tool evidence, review or automatic continuation', async () => {
+    const prepared = await prepare('1+1等于几？只回答数字。', 'reply-only', {
+      kind: 'answer', objective: '计算1+1', scope: '回复文本', acceptanceCriteria: [], continuationOf: null, preserveExecution: false,
+    });
+    expect(currentExecution()).toBeUndefined();
+    expect(prepared.request.runtimeReminder ?? '').not.toContain('execution_review');
+    expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Write', { file_path: '/unexpected' })).toBeTruthy();
+    await prepared.request.onTerminal?.({ status: 'complete', text: '2', assistantMessagePresent: true });
+    expect(currentExecution()).toBeUndefined();
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionEvidence ?? []).toEqual([]);
+    expect(continuationRequests).toHaveLength(0);
+  });
+
   it('gives a readonly follow-up current recovery guidance without restarting or replacing the original execution', async () => {
     const original = await prepare();
     await original.request.onTerminal?.({ status: 'error', text: 'Historical request failed', assistantMessagePresent: true });
@@ -1684,6 +1697,18 @@ describe("durable Session execution owner", () => {
     const guard = await prepared.request.beforeDispatch!();
     expect(guard.validateAtCommit?.().accepted).toBe(true);
     expect(currentExecution()?.requestId).toBe("human-during-classification");
+  });
+
+  it.each([false,true])('persists a bounded native failure explanation without changing unknown-operation protection (%s)', async pending => {
+    const prepared = await prepare(); const queueId=prepared.request.queueId!;
+    if(pending) await tool(queueId,{id:'pending-write-for-http',name:'Write',stage:'start'});
+    await prepared.request.onTerminal?.({status:'error',text:'',assistantMessagePresent:true,
+      error:'private provider body should not enter execution metadata',apiErrorStatus:502});
+    expect(currentExecution()).toMatchObject({phase:'incomplete',reason:pending?'TOOL_OUTCOME_UNKNOWN':'turn_error',
+      failure:{kind:'modelService',httpStatus:502}});
+    expect(JSON.stringify(currentExecution())).not.toContain('private provider');
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.execution?.failure).toEqual({kind:'modelService',httpStatus:502});
+    expect(continuationRequests).toHaveLength(0);
   });
 
   it("pauses on an unresolved mutating tool outcome instead of continuing", async () => {

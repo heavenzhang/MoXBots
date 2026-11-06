@@ -22,7 +22,7 @@ export interface RecoveryReviewAction {
   reason: 'builtin_task_query' | 'native_hook_denied' | 'external_receipt_required' | 'native_evidence_missing' | 'native_success';
   check?: RecoveryResultCheck;
   followups?: RecoveryFollowup[];
-  association?: { taskId: string; title: string; blockedTaskIds: string[] };
+  association?: { taskId: string; title: string; blockedTaskIds: string[]; blockedTasks?: { taskId: string; title: string }[] };
   toolUseIds?: string[];
   /** Display only; never used to authorize settlement or execution. No command bodies. */
   presentation?: {
@@ -47,6 +47,9 @@ export interface RecoveryActionSnapshot {
   /** Display only: the settled current task is blocked on these exact calls.
    * Absence means historical uncertainty is handled silently. Never admission. */
   attention?: { executionId: string; actionHashes: string[] };
+  /** Display only: exact unresolved calls in the latest settled product turn.
+   * A user Stop is retained; this notice never grants continuation or replay. */
+  unresolvedTurn?: { turnId: string; actionHashes: string[] };
 }
 
 export function recoveryAttention(snapshot: RecoveryActionSnapshot, ledger?: import('./sessionTaskOrchestration').SessionTaskLedger): RecoveryActionSnapshot['attention'] {

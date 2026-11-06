@@ -1,7 +1,7 @@
 import { useRemoteConversationContent } from '@/context/ConversationContentContext';
 import { AGENT_MENTIONS_TAG } from "../../shared/agentMentions";
 import AsyncQuestionCard from '@/components/AsyncQuestionCard';
-import { Fragment, memo, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   ChevronDownIcon,
   CopyIcon,
@@ -50,6 +50,8 @@ import {
 
 interface MessageProps {
   revealTurnProcess?: boolean;
+  /** Samples the existing scroll owner's intent at the terminal layout commit. */
+  isReadingProcess?: () => boolean;
   message: MessageType;
   citationSources?: CitationSources;
   isLoading?: boolean;
@@ -91,6 +93,7 @@ function getTurnMetaLabel(message: MessageType, t: (key: string, options?: Recor
  */
 function areMessagesEqual(prev: MessageProps, next: MessageProps): boolean {
   // Different loading state -> must re-render
+  if (prev.isReadingProcess !== next.isReadingProcess) return false;
   if (prev.isLoading !== next.isLoading || prev.citationSources !== next.citationSources) return false;
   // NOTE: isStreaming was removed from props — rewind button visibility is now
   // controlled via CSS ([data-streaming] selector on the scroll container).
@@ -287,11 +290,17 @@ function renderWidgetSegments(text: string, isLoading: boolean, unclosedNotice: 
   });
 }
 
+function hasSelectionWithin(root: HTMLElement): boolean {
+  const selection = root.ownerDocument.getSelection();
+  return !!selection && !selection.isCollapsed &&
+    (root.contains(selection.anchorNode) || root.contains(selection.focusNode));
+}
+
 /**
  * Message component with memo optimization.
  * History messages won't re-render when streaming message updates.
  */
-const Message = memo(function Message({ message, revealTurnProcess = false, citationSources, isLoading = false, onRewind, onRetry, onFork, exitPlanModeSlot, initialUserCollapsed = false }: MessageProps) {
+const Message = memo(function Message({ message, revealTurnProcess = false, isReadingProcess, citationSources, isLoading = false, onRewind, onRetry, onFork, exitPlanModeSlot, initialUserCollapsed = false }: MessageProps) {
   const remoteContent = useRemoteConversationContent();
   const { t } = useTranslation('app');
   const { openPreview } = useImagePreview();
@@ -300,6 +309,24 @@ const Message = memo(function Message({ message, revealTurnProcess = false, cita
   const { t: tChat } = useTranslation('chat');
   const processId = useId();
   const [showTurnProcess, setShowTurnProcess] = useState(false);
+  // Keep the live DOM intact through the terminal commit. Only then sample the
+  // scroll owner and DOM selection, before paint; history mounts stay compact.
+  const liveProcess = isLoading || message.transcriptState === 'streaming';
+  const [closeout, setCloseout] = useState<'live' | 'held' | 'auto'>(liveProcess ? 'live' : 'auto');
+  const [previousLiveProcess, setPreviousLiveProcess] = useState(liveProcess);
+  if (previousLiveProcess !== liveProcess) {
+    setPreviousLiveProcess(liveProcess);
+    if (liveProcess) setCloseout('live');
+  }
+  const attachProcessRoot = useCallback((root: HTMLDivElement | null) => {
+    if (root && !liveProcess && closeout === 'live') {
+      const selected = hasSelectionWithin(root);
+      const opened = root.querySelector('[data-process-group] button[aria-expanded="true"]');
+      if (selected) notifyRowLayoutChanged('text-selection');
+      setCloseout(isReadingProcess?.() || selected || opened ? 'held' : 'auto');
+    }
+  }, [liveProcess, closeout, isReadingProcess, notifyRowLayoutChanged]);
+  const preserveProcess = !isLoading && closeout !== 'auto';
   const [copied, setCopied] = useState(false);
   const copiedTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
   // User message collapse: default collapsed, expand on click (no re-collapse)
@@ -555,7 +582,7 @@ const Message = memo(function Message({ message, revealTurnProcess = false, cita
   const canFoldTool = (block: ContentBlock) => getProcessOutcome(block, false) === 'succeeded'
     && !(block.tool && isSubagentContainerTool(block.tool.name));
   const groupedBlocks = groupContentBlocksForDisplay(message.content).flatMap<ContentBlock | ContentBlock[]>(item => {
-    if (!canFoldTurn || !Array.isArray(item)) return [item];
+    if (!canFoldTurn || preserveProcess || !Array.isArray(item)) return [item];
     const runs: ContentBlock[][] = [];
     for (const block of item) {
       const last = runs.at(-1);
@@ -593,23 +620,26 @@ const Message = memo(function Message({ message, revealTurnProcess = false, cita
     }
   }
   const hasTurnProcess = foldedIndexes.size > 0;
-  const processExpanded = revealTurnProcess || showTurnProcess;
+  const processExpanded = revealTurnProcess || preserveProcess || showTurnProcess;
+
+  const turnProcessControl = hasTurnProcess ? (
+    <button type="button" aria-expanded={processExpanded} aria-controls={processId} disabled={revealTurnProcess}
+      className="mb-2 flex min-h-8 items-center gap-1.5 rounded-md px-1 text-xs text-[var(--ink-muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--ink)]"
+      onClick={() => {
+        notifyRowLayoutChanged(processExpanded ? 'block-group-collapse' : 'block-group-expand');
+        setCloseout('auto');
+        setShowTurnProcess(!processExpanded);
+      }}>
+      <ChevronDownIcon aria-hidden="true" className={`size-3 ${processExpanded ? '' : '-rotate-90'}`} />
+      {tChat(processExpanded ? 'process.hideTurnProcess' : 'process.showTurnProcess')}
+    </button>
+  ) : null;
 
   return (
-    <div className="group/reply flex justify-start select-none" data-role="assistant">
+    <div ref={attachProcessRoot} className="group/reply flex justify-start select-none" data-role="assistant">
       <div className="w-full">
         <article className="w-full py-2">
-          {hasTurnProcess && (
-            <button type="button" aria-expanded={processExpanded} aria-controls={processId} disabled={revealTurnProcess}
-              className="mb-2 flex min-h-8 items-center gap-1.5 rounded-md px-1 text-xs text-[var(--ink-muted)] hover:bg-[var(--hover-bg)] hover:text-[var(--ink)]"
-              onClick={() => {
-                notifyRowLayoutChanged(showTurnProcess ? 'block-group-collapse' : 'block-group-expand');
-                setShowTurnProcess(!showTurnProcess);
-              }}>
-              <ChevronDownIcon aria-hidden="true" className={`size-3 ${processExpanded ? '' : '-rotate-90'}`} />
-              {tChat(processExpanded ? 'process.hideTurnProcess' : 'process.showTurnProcess')}
-            </button>
-          )}
+          {!preserveProcess && turnProcessControl}
           <div id={hasTurnProcess ? processId : undefined} className="space-y-3">
             {groupedBlocks.map((item, index) => {
               const hiddenProcess = foldedIndexes.has(index) && !processExpanded;
@@ -672,8 +702,8 @@ const Message = memo(function Message({ message, revealTurnProcess = false, cita
                   <div hidden={hiddenProcess}>
                     <BlockGroup
                       blocks={item}
-                      revealProcess={revealTurnProcess || (hasTurnProcess && processExpanded)}
-                      compactHistory={!hasTurnProcess && !remoteContent && index !== exitPlanModeGroupIndex}
+                      revealProcess={revealTurnProcess || (hasTurnProcess && processExpanded && !preserveProcess)}
+                      compactHistory={!preserveProcess && !hasTurnProcess && !remoteContent && index !== exitPlanModeGroupIndex}
                       isLatestActiveSection={isLatestActiveSection}
                       // The message owner ends the live process, not an empty
                       // interval between native blocks. Completed rows still
@@ -691,6 +721,8 @@ const Message = memo(function Message({ message, revealTurnProcess = false, cita
               );
             })}
           </div>
+          {/* A reader's new closeout control must not push existing content down. */}
+          {preserveProcess && turnProcessControl}
         </article>
         {!remoteContent && <ExecutionQuality message={message} live={isLoading} />}
         {!isLoading && <AssistantActions citationSources={citationSources} className="px-4" message={message} onRetry={onRetry} onFork={onFork} />}

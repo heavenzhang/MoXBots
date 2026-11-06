@@ -533,7 +533,7 @@ export function failCurrentImRequest(emit: ImEmitter, data?: unknown): void {
 
 export function snapshotCurrentTurnTerminalOutcome(
   status: TurnTerminalOutcome['status'],
-  details: { error?: string; code?: string; durationMs?: number } = {},
+  details: { error?: string; code?: string; durationMs?: number; apiErrorStatus?: number } = {},
 ): TurnTerminalOutcome {
   return {
     status,
@@ -550,6 +550,8 @@ export function snapshotCurrentTurnTerminalOutcome(
     },
     ...(details.error ? { error: details.error } : {}),
     ...(details.code ? { code: details.code } : {}),
+    ...(Number.isInteger(details.apiErrorStatus) && details.apiErrorStatus! >= 400 && details.apiErrorStatus! <= 599
+      ? { apiErrorStatus: details.apiErrorStatus } : {}),
   };
 }
 

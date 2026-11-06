@@ -1361,3 +1361,29 @@ desktop/macOS-arm64/updater/sharedCI/main 唯一负责人仍 01a12bc2-907a-7702-
 ## MB-TASK-REVISION-CONTINUE-20261107 Root local5433
 
 Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exactproducer07dc from mainbfbc, preserving PR257 cleanup. Allocate0.5.43/build543.3 for a different localrepair artifact; installed543.2 and published542.6 remain immutable. Fix only exact positional task-review classification and newtrustedhuman response to an exactsettled rootconfirmed pausedassessment, keeping original intent/ledger/unknown/Stop/approval/background guards. Actualsourcechecks/main, newimmutablelocalbuild/safeinstall and originalsession behavior are separate acceptance claims. LocalMac repair doesnot wait for unavailable hostedrunner; publicpublication/tag is not admitted by localcandidate record. No business replay, ledger edits, cloud/mobile/website release or laterfeature batching. Root task codex-release-task-revision-0543-20261107-7734669b; private controls work/task-revision-continue-root-20261107/owner.
+
+
+## MB-INTENT-TRANSPORT-20261107
+
+修复发送前工具外分类的暂态失败无同模型重试，以及纯文字答复误分执行导致工具验收循环。任务 `.agent-sync/tasks/codex-intent-transport-20261107-26e0bfab.md`；范围仅 desktop builtin classifier/transport，沿用同一60秒/两次上限、候选池与Stop保护。desktop/macOS/sharedCI/main/updater唯一负责人仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发CI、不分配版本或自行安装；精确提交与真实分类证据交下一未冻结批。原543.2真实1+1测试暴露误分类，不作为修复后验收；原用户任务不重发、不改账本。
+
+
+## MB-CHAT-STYLE-20261104 · CHAT08 unknown visibility — 2026-11-07
+
+真实隔离Bash操作启动后普通Stop，journal仍reserved且无原生错误证明；当前UI仅失败，无unknown提示。codex/chat-unknown-visibility-20261107从mainbfbc92f补最近终态轮的精确未决调用只读提示，保留Stop和全部执行门禁；不把历史/匿名/在途调用投成用户待办。先补此真实验收，随后阅读保护1921独立交付。唯一桌面/sharedCI/main owner01a12bc2不变，543.3冻结批保留，新源下一未冻结批。详见当前任务记录。
+
+
+## MB-CHAT-STYLE-20261104 / CHAT08–11（2026-11-06）
+
+新授权先补待确认/unknown真实原生验收，再保护终态阅读并合入main交原owner统一发布。codex/chat-reading-protection-20261106基于05ea1e2，保留PR256间隙live修复；Message终态采样原follow/选区/手动详情，阅读者保留原树，正常跟随/历史默认/搜索保留。104DOM和双引擎真实组件受控页面通过，旧码2388px跳动反事实已复现；不是原生卡片通过。CHAT08仍由原owner协调无业务副作用的正常产品路径样本。desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4，543.1当前冻结批不覆盖，新成果下一未冻结批。详见dev-docs/chat-reading-protection-20261106/acceptance.md与当前任务记录，开发不运行共享CI/正式包。
+
+## MB-EXECUTION-REMEDIATION-20261107 — 执行阻断整改与原报告恢复
+
+在原task-revision修复07dcf4d27上补齐已知取消/接续失败的说明与恢复详情的依赖任务名称。自动原生回执核对、已知失败纠正、未知结果保留、按原任务资源/依赖继续独立工作沿既有owner，回归矩阵见dev-docs/execution-remediation-20261107/acceptance.md。543.3冻结制品不修改；原报告由恢复会话单独接续。desktop/macOS-arm64/updater/sharedCI/main仍唯一负责人01a12bc2-907a-7702-b6dd-788225c5dfe4，本分支精确SHA交其下一未冻结批统一审阅/主干/发布。源码、安装、真实报告分别验收。
+
+
+## MB-INTENT-RECOVERY-INTEGRATION-20261107 Root combined5434
+
+Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exact intent dd972c3, unknown23d98cdd, reading1921e850 and remediation9f818331 (including e2e025c) atop remote main4ceeb2d21, preserving PR257 cleanup and PR258 revision/human-response fixes. Reserve0.5.43/build543.4 for a new immutable artifact; frozen543.3 and published542.6 remain unchanged. Combined checks, exactCI/currentMac ARM, remote main, signed artifact, safe maintenance install and each actual native acceptance remain separate. Original report owner alone currently runs authorized business; no Root UI/restart while active. No unknown replay/ledger edits/permission expansion/cloud/mobile/website deployment or unrelated Bot feature batching. Root record codex-release-intent-recovery-0543-20261107-82a4ca2f; private controls work/intent-recovery-integration-20261107/owner.
+
+R2真实验收补充：543.3原群报告已在同execution完成5项验收；真实502暴露turn_error提示笼统。本分支经原native terminal传递有界HTTP状态，原execution持久保存闭集只读failure说明，UI显示原因/下一步，保持原code/status及未知保护不变。10文件403回归和实际组件通过，下一批由同一桌面owner集成安装；不将543.3原报告成功视为追加改动已安装。

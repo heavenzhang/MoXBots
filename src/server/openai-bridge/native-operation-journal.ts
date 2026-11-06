@@ -163,7 +163,7 @@ export class NativeOperationJournal {
       : { ...data, version: 1 };
   }
   inspect() {
-    return [...this.entries.values()].map(a => ({ attemptId: a.id, actionId: a.actionHash, status: a.status,
+    return [...this.entries.values()].map(a => ({ attemptId: a.id, actionId: a.actionHash, toolUseId: a.toolUseId, status: a.status,
       outcome: a.outcome, reservedAt: a.reservedAt, returnedAt: a.returnedAt }));
   }
 }

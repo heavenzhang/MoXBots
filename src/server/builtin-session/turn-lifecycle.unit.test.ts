@@ -723,6 +723,19 @@ describe('turn-lifecycle owner', () => {
     });
   });
 
+  it('retains native HTTP failure status through the durable terminal observer after streamed work', async () => {
+    const { deps } = makeDeps(); const terminal = vi.fn();
+    setCurrentTurnSourceItem({id:'native-http-error',message:{role:'user',content:'continue report'},
+      messageText:'continue report',wasQueued:false,resolve:()=>{},channelDelivery:NO_CHANNEL_DELIVERY,
+      turnOwner:{kind:'goal',id:'native-http-error'},onTerminal:terminal});
+    markCurrentTurnHasOutput(); setCurrentTurnToolCount(3);
+    const lifecycle = createBuiltinTurnLifecycle(deps);
+    await lifecycle.handleSdkResult(makeResult({is_error:true,terminal_reason:'api_error',api_error_status:502,
+      result:'API Error: 502 Upstream connection error'}));
+    await lifecycle.getLastTurnEndPersist(); await waitForCurrentTurnTerminalObserver();
+    expect(terminal).toHaveBeenCalledWith(expect.objectContaining({status:'error',apiErrorStatus:502}));
+  });
+
   it('surfaces provider error detail as agent-error even with output + tools (PRD 0.4.10)', async () => {
     const { deps, broadcasts } = makeDeps();
     const lifecycle = createBuiltinTurnLifecycle(deps);
