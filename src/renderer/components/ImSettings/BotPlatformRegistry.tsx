@@ -15,7 +15,7 @@ import { isTauriEnvironment } from '@/utils/browserMock';
 import { useToast } from '@/components/Toast';
 import ConfirmDialog from '@/components/ConfirmDialog';
 import type { Project } from '@/config/types';
-import type { ChannelType } from '../../../shared/types/agent';
+import type { AgentConfig, ChannelType } from '../../../shared/types/agent';
 import type { InstalledPlugin } from '../../../shared/types/im';
 import { upsertInstalledPlugin } from './pluginInstallState';
 import { PROMOTED_PLUGINS } from './promotedPlugins';
@@ -35,6 +35,7 @@ interface PlatformEntry {
 
 interface BotPlatformRegistryProps {
   projects: readonly Project[];
+  agents: readonly AgentConfig[];
   defaultWorkspacePath?: string;
   onAddToWorkspace: (platform: ChannelType, project: Project) => void;
 }
@@ -60,6 +61,7 @@ function staticPlatforms(t: TFunction<'settings'>): PlatformEntry[] {
 
 export default function BotPlatformRegistry({
   projects,
+  agents,
   defaultWorkspacePath,
   onAddToWorkspace,
 }: BotPlatformRegistryProps) {
@@ -260,7 +262,7 @@ export default function BotPlatformRegistry({
         {t('agentSettings.botRegistry.description')}
       </p>
 
-      <div className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-3">
         {allPlatforms.map(platform => (
           <div
             key={platform.id}
@@ -393,6 +395,7 @@ export default function BotPlatformRegistry({
       {workspacePlatform && (
         <BotWorkspacePickerDialog
           projects={projects}
+          agents={agents}
           defaultWorkspacePath={defaultWorkspacePath}
           onClose={() => setWorkspacePlatform(null)}
           onSelect={project => {

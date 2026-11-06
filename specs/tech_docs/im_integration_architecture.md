@@ -46,6 +46,12 @@ GUI 只修复“多个其它方面有效的 Project 声明同一 Agent”这一�
 
 保留方的 Agent ID、配置和渠道不变；其余 Project 只撤销冲突声明，再走标准出生/协调路径（可复用独立 legacy Agent，不复制原渠道）。目录、Session 和隐藏/归档元数据不动；新配置遵循模板默认值，包括 Mino 主动能力，因此确认框提前说明。Project-first 写入中断沿标准协调恢复，不增加事务日志或恢复 flag；未完成不能报告成功。已有 Session 不热改身份，允许用户重启应用。重复 ID、重复路径等其它损坏只诊断，不做通用合并或重绑定。
 
+### 2.2 客户端 Bot 与多个 IM 身份的绑定入口
+
+Settings 的绑定总览只读投影既有 AgentConfig.channels 与 useAgentStatuses，每个 Bot 可连接多个独立 Channel。新增绑定选择已明确关联 Project 的稳定 Agent ID；先对全部 Project 做归属冲突检查，再筛选可见且未归档项。选择提交时重读持久身份，核对 Project ID、Agent ID 与 workspace path；过期选择拒绝，不自动绑定到同路径的替代 Bot。
+
+向导标明目标 Bot，新会话仍按原 Agent 模板出生，已有 Session 不更新快照。总览的用户/群数字仅表示本地已配对用户/已批准群记录，不代表插件侧所有授权策略；连接状态没有观测时显示未知，enabled 意图不替代在线证据。管理操作直接复用 AgentChannelsSection，不增加配置 writer、transport 或 Session owner。
+
 ## 3. Channel lifecycle
 
 用户启用/停用渠道走 `cmd_set_agent_channel_enabled`：在既有 Channel lifecycle lock 内，经配置锁更新磁盘最新 `enabled`，再执行对应连接启动/停止。配置意图已保存但连接处理失败时返回错误，UI 刷新配置并显示失败，不能静默声称停用完成。停止入口根据「已启用或仍在线/连接中」提供，不能因连接失败而让用户无法取消自动重连；连接状态单独展示，不替代 enabled 意图。内部临时重连与删除仍用 runtime lifecycle 入口，不改写用户的 enabled 意图。

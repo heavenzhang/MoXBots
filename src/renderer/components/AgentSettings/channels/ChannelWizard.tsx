@@ -190,7 +190,8 @@ export default function ChannelWizard({
     const toast = useToast();
     const toastRef = useRef(toast);
     toastRef.current = toast;
-    const { config, refreshConfig } = useConfig();
+    const { config, projects, refreshConfig } = useConfig();
+    const botName = projects?.find(project => project.agentId === agent.id)?.displayName || agent.name;
     const isMountedRef = useRef(true);
 
     const isFeishu = platform === 'feishu';
@@ -1017,6 +1018,12 @@ export default function ChannelWizard({
 
     return (
         <div className="space-y-6">
+            <div className="rounded-xl border border-[var(--line)] bg-[var(--paper-inset)] px-4 py-3">
+                <p className="break-words text-sm font-medium text-[var(--ink)]">
+                    {t('agentSettings.botRegistry.bindingTarget', { name: botName })}
+                </p>
+                <p className="mt-1 text-xs text-[var(--ink-muted)]">{t('agentSettings.botRegistry.bindingInheritance')}</p>
+            </div>
             {/* Header: platform badge + title + step indicator */}
             <div className="space-y-4">
                 <div className="flex items-center gap-3">

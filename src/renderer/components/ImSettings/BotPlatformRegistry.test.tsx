@@ -72,7 +72,7 @@ describe('BotPlatformRegistry', () => {
       return Promise.reject(new Error(`Unexpected invoke: ${command}`));
     });
 
-    render(<BotPlatformRegistry projects={[]} onAddToWorkspace={vi.fn()} />);
+    render(<BotPlatformRegistry projects={[]} agents={[]} onAddToWorkspace={vi.fn()} />);
 
     await waitFor(() => {
       expect(within(promotedCard('企业微信')).getByRole('button', { name: '安装' })).toBeEnabled();
@@ -96,7 +96,7 @@ describe('BotPlatformRegistry', () => {
     await waitFor(() => {
       expect(within(promotedCard('企业微信')).getByRole('button', { name: '安装中' })).toBeDisabled();
       expect(within(promotedCard('微信')).getByText('v1.0.0')).toBeInTheDocument();
-      expect(within(promotedCard('微信')).getByRole('button', { name: '添加到工作区' })).toBeEnabled();
+      expect(within(promotedCard('微信')).getByRole('button', { name: '绑定到 Bot' })).toBeEnabled();
       expect(screen.queryByRole('heading', { name: '选择工作区' })).not.toBeInTheDocument();
     });
 
@@ -116,6 +116,7 @@ describe('BotPlatformRegistry', () => {
     const project: Project = {
       id: 'mino',
       name: 'mino',
+      agentId: 'bot-mino',
       path: '/workspace/mino',
       providerId: null,
       permissionMode: null,
@@ -125,15 +126,38 @@ describe('BotPlatformRegistry', () => {
     render(
       <BotPlatformRegistry
         projects={[project]}
+        agents={[{ id: 'bot-mino', name: 'mino', enabled: false, permissionMode: 'auto', channels: [] }]}
         onAddToWorkspace={onAddToWorkspace}
       />,
     );
 
-    await waitFor(() => expect(within(promotedCard('Telegram')).getByRole('button', { name: '添加到工作区' })).toBeEnabled());
-    fireEvent.click(within(promotedCard('Telegram')).getByRole('button', { name: '添加到工作区' }));
-    expect(screen.getByRole('heading', { name: '选择 Agent 工作区' })).toBeInTheDocument();
+    await waitFor(() => expect(within(promotedCard('Telegram')).getByRole('button', { name: '绑定到 Bot' })).toBeEnabled());
+    fireEvent.click(within(promotedCard('Telegram')).getByRole('button', { name: '绑定到 Bot' }));
+    expect(screen.getByRole('heading', { name: '选择要绑定的 Bot' })).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /mino/u }));
 
     expect(onAddToWorkspace).toHaveBeenCalledWith('telegram', project);
   });
+  it.each([
+    ['飞书', 'openclaw-lark', '@larksuite/openclaw-lark'],
+    ['企业微信', 'wecom-openclaw-plugin', '@wecom/wecom-openclaw-plugin'],
+    ['微信', 'openclaw-weixin', '@tencent-weixin/openclaw-weixin'],
+  ])('binds an installed %s identity to the selected existing Bot', async (name, id, spec) => {
+    invokeMock.mockResolvedValue([plugin(id, spec)]);
+    const project: Project = { id: 'p', agentId: 'existing-bot', name: 'folder',
+      path: '/test/bot', providerId: null, permissionMode: null };
+    const onAddToWorkspace = vi.fn();
+    render(<BotPlatformRegistry projects={[project]} agents={[{
+      id: 'existing-bot', name: '已有销售 Bot', enabled: false, permissionMode: 'auto', channels: [],
+    }]} onAddToWorkspace={onAddToWorkspace} />);
+    await waitFor(() => expect(within(promotedCard(name)).getByRole('button', { name: '绑定到 Bot' })).toBeEnabled());
+    fireEvent.click(within(promotedCard(name)).getByRole('button', { name: '绑定到 Bot' }));
+    fireEvent.click(screen.getByRole('button', { name: '取消' }));
+    expect(onAddToWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(within(promotedCard(name)).getByRole('button', { name: '绑定到 Bot' }));
+    fireEvent.click(screen.getByRole('button', { name: /已有销售 Bot/ }));
+    expect(onAddToWorkspace).toHaveBeenCalledWith(`openclaw:${id}`, project);
+    expect(invokeMock.mock.calls.every(([command]) => command === 'cmd_list_openclaw_plugins')).toBe(true);
+  });
+
 });

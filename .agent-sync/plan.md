@@ -1350,3 +1350,14 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 prepares l
 ## MB-CHAT-REVIEW-CLEANUP-20261106 Root combined local5432
 
 Existing sole desktop/macOS/updater/sharedCI/main owner01a12bc2 integrates reviewed cleanup9164/9a606 and recovery93b on the immutable5431 source35c1 plus actual main05ea. Reserve0.5.43/build543.2 for a different artifact; frozen5431 and published5426 stay unchanged. Current-Mac development/checks can progress independently of hosted setup and a pending user maintenance-window answer. Remote main, new local artifact/install and actual awaiting_review Chat/no review-template controls/results-detail/input acceptance remain separate evidence. No automatic task acceptance, business resend/replay, unknown-ledger clearing, UI guard bypass or cloud/mobile/website deployment. CHAT08 real pending/unknown and reading-protection1921 are separate queued tasks, not part of this freeze. Task codex-chat-cleanup-recovery-integration-20261106-f1ade627; private evidence work/chat-review-cleanup-root-20261106/owner.
+
+
+## MB-IM-BINDING-20261107 — 一个 Bot 绑定多个 IM 身份
+
+用户明确选择先完善已有 Bot 对多个 IM 身份。沿原 AgentConfig.channels/Channel lifecycle/Plugin Bridge/配对与群权限，Settings 增加按 Bot 的绑定总览、选择已有 Bot、向导目标身份提示与过期选择拒绝；未知状态不显示为已停止。无共享网关、按用户跨 Bot 路由、新权限、数据迁移或其他部署单元。
+
+- [x] 本地实现与 51 项功能/身份/向导、29 项原配置/插件/回复回归，类型/lint，真实组件 IAB 浅色/深色/390 窄屏检查。
+- [ ] 原 owner 独立审阅/共享 CI/远端 main 包含成果。
+- [ ] 下一未冻结桌面发行/原生与真实 IM 测试聊天验收。
+
+任务 `.agent-sync/tasks/codex-im-bot-binding-20261107-2d611c75.md`，证据 `dev-docs/im-bot-binding-20261107/acceptance.md`。desktop/macOS-arm64/updater/sharedCI/main 唯一 owner 仍 `01a12bc2-907a-7702-b6dd-788225c5dfe4`；开发只本地检查、分支保存与精确源码交接，不分配版本或触发共享 CI。真实测试聊天及测试消息授权待用户指定，模拟检查不替代真实联调。

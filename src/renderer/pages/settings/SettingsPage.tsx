@@ -157,7 +157,8 @@ import { formatSubscriptionVerifyError } from '../../../shared/subscription';
 import type { UiLanguage } from '../../../shared/i18n';
 import type { ChannelType } from '../../../shared/types/agent';
 import { reconcilePersistedAgentWorkspaceIdentities } from '@/config/services/agentConfigService';
-import { getBotWorkspaceCandidates } from '@/components/ImSettings/botWorkspaceSelection';
+import { getBotBindingCandidates, resolveCurrentBotBindingTarget } from '@/components/ImSettings/botWorkspaceSelection';
+import BotImBindings from '@/components/ImSettings/BotImBindings';
 import ProviderEnableOrderDialog from '@/components/ProviderEnableOrderDialog';
 import FloatingBallPetSettings from '@/components/FloatingBallPetSettings';
 import {
@@ -616,10 +617,12 @@ export default function Settings({
     ) => {
       try {
         const identity = await reconcilePersistedAgentWorkspaceIdentities();
-        const project = getBotWorkspaceCandidates(
+        const target = resolveCurrentBotBindingTarget(getBotBindingCandidates(
           identity.projects,
+          identity.config.agents ?? [],
           config.defaultWorkspacePath,
-        ).find((candidate) => candidate.id === selectedProject.id);
+        ), selectedProject);
+        const project = target?.project;
         if (!project)
           throw new Error(
             `Project '${selectedProject.id}' is no longer available.`,
@@ -5012,8 +5015,10 @@ export default function Settings({
         {activeSection === 'agent' && (
           <div className="mx-auto max-w-4xl px-8 py-8">
             <AgentIdentityConflicts />
+            <BotImBindings />
             <BotPlatformRegistry
               projects={projects}
+              agents={config.agents ?? []}
               defaultWorkspacePath={config.defaultWorkspacePath}
               onAddToWorkspace={handleAddBotToWorkspace}
             />

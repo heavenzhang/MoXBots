@@ -274,7 +274,8 @@ export default function AgentChannelsSection({
             const statusText = chStatus?.status === 'online' ? t('agentSettings.channelDetail.statusRunning')
               : chStatus?.status === 'connecting' ? t('agentSettings.channelDetail.statusConnecting')
               : chStatus?.status === 'error' ? t('agentSettings.channelDetail.statusError')
-              : t('agentSettings.channelDetail.statusStopped');
+              : chStatus?.status === 'stopped' ? t('agentSettings.channelDetail.statusStopped')
+              : t('agentSettings.botRegistry.connection.unknown');
             const isLoading = loading === channel.id;
 
             const displayName = resolveChannelDisplayName(

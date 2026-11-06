@@ -85,6 +85,15 @@ function ParentOverlayHarness({ initialAddPlatform }: { initialAddPlatform?: Cha
 }
 
 describe('AgentChannelsSection direct entry', () => {
+  it('does not present an unobserved connection as stopped', () => {
+    render(<AgentChannelsSection agent={{ ...agent, channels: [
+      { id: 'channel-unknown', type: 'telegram', enabled: true },
+    ] }} onAgentChanged={vi.fn()} />);
+    expect(screen.getByText('状态待确认')).toBeInTheDocument();
+    expect(screen.queryByText('已停止')).not.toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '停止' })).toBeEnabled();
+  });
+
   it('returns a registry deep link to Channels but keeps normal Add navigation intact', () => {
     const onConsumed = vi.fn();
     render(

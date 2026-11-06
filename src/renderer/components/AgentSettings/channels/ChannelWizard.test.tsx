@@ -46,6 +46,7 @@ describe('ChannelWizard Feishu credential provisioning', () => {
       />,
     );
 
+    expect(screen.getByText('绑定到 Bot：Agent')).toBeInTheDocument();
     expect(screen.getByRole('tab', { name: '扫码添加' })).toHaveAttribute('aria-selected', 'true');
     expect(screen.getByRole('tab', { name: '手动配置' })).toHaveAttribute('aria-selected', 'false');
     expect(screen.getByText('扫码创建机器人')).toBeInTheDocument();
