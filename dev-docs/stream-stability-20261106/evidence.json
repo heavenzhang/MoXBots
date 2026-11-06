@@ -1,0 +1,229 @@
+{
+  "oldWebKit": {
+    "engine": "webkit",
+    "baseline": true,
+    "cases": [
+      {
+        "cycle": 0,
+        "before": {
+          "top": 9693,
+          "height": 10343,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1569.40625,
+          "visibleRows": 25,
+          "follow": true
+        },
+        "gap": {
+          "top": 7126,
+          "height": 7776,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 113.390625,
+          "visibleRows": 0,
+          "follow": true
+        }
+      }
+    ],
+    "status": "FAIL",
+    "error": "AssertionError [ERR_ASSERTION]: An inter-block gap hid committed process rows"
+  },
+  "fixedWebKit": {
+    "engine": "webkit",
+    "baseline": false,
+    "cases": [
+      {
+        "cycle": 0,
+        "before": {
+          "top": 9693,
+          "height": 10343,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1569.40625,
+          "visibleRows": 25,
+          "follow": true
+        },
+        "gap": {
+          "top": 9693,
+          "height": 10343,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1569.40625,
+          "visibleRows": 25,
+          "follow": true
+        }
+      },
+      {
+        "cycle": 1,
+        "before": {
+          "top": 9750,
+          "height": 10400,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1627.046875,
+          "visibleRows": 26,
+          "follow": true
+        },
+        "gap": {
+          "top": 9750,
+          "height": 10400,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1627.046875,
+          "visibleRows": 26,
+          "follow": true
+        }
+      },
+      {
+        "cycle": 2,
+        "before": {
+          "top": 9812,
+          "height": 10462,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1688.6875,
+          "visibleRows": 27,
+          "follow": true
+        },
+        "gap": {
+          "top": 9812,
+          "height": 10462,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1688.6875,
+          "visibleRows": 27,
+          "follow": true
+        }
+      }
+    ],
+    "reader": {
+      "reader": {
+        "top": 9620,
+        "height": 10520,
+        "view": 650,
+        "gap": 250,
+        "rowHeight": 1746.328125,
+        "visibleRows": 28,
+        "follow": false
+      },
+      "afterGap": {
+        "top": 9620,
+        "height": 10520,
+        "view": 650,
+        "gap": 250,
+        "rowHeight": 1746.328125,
+        "visibleRows": 28,
+        "follow": false
+      }
+    },
+    "terminal": {
+      "top": 7132,
+      "height": 7782,
+      "view": 650,
+      "gap": 0,
+      "rowHeight": 149.390625,
+      "visibleRows": 0,
+      "follow": true
+    },
+    "status": "PASS"
+  },
+  "fixedChromium": {
+    "engine": "chromium",
+    "baseline": false,
+    "cases": [
+      {
+        "cycle": 0,
+        "before": {
+          "top": 9693,
+          "height": 10343,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1569.40625,
+          "visibleRows": 25,
+          "follow": true
+        },
+        "gap": {
+          "top": 9693,
+          "height": 10343,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1569.40625,
+          "visibleRows": 25,
+          "follow": true
+        }
+      },
+      {
+        "cycle": 1,
+        "before": {
+          "top": 9750,
+          "height": 10400,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1627.046875,
+          "visibleRows": 26,
+          "follow": true
+        },
+        "gap": {
+          "top": 9750,
+          "height": 10400,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1627.046875,
+          "visibleRows": 26,
+          "follow": true
+        }
+      },
+      {
+        "cycle": 2,
+        "before": {
+          "top": 9812,
+          "height": 10462,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1688.6875,
+          "visibleRows": 27,
+          "follow": true
+        },
+        "gap": {
+          "top": 9812,
+          "height": 10462,
+          "view": 650,
+          "gap": 0,
+          "rowHeight": 1688.6875,
+          "visibleRows": 27,
+          "follow": true
+        }
+      }
+    ],
+    "reader": {
+      "reader": {
+        "top": 9620,
+        "height": 10520,
+        "view": 650,
+        "gap": 250,
+        "rowHeight": 1746.328125,
+        "visibleRows": 28,
+        "follow": false
+      },
+      "afterGap": {
+        "top": 9620,
+        "height": 10520,
+        "view": 650,
+        "gap": 250,
+        "rowHeight": 1746.328125,
+        "visibleRows": 28,
+        "follow": false
+      }
+    },
+    "terminal": {
+      "top": 7132,
+      "height": 7782,
+      "view": 650,
+      "gap": 0,
+      "rowHeight": 149.390625,
+      "visibleRows": 0,
+      "follow": true
+    },
+    "status": "PASS"
+  }
+}

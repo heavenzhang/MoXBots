@@ -569,27 +569,6 @@ const Message = memo(function Message({ message, revealTurnProcess = false, cita
   // Find the last BlockGroup index
   const lastBlockGroupIndex = groupedBlocks.findLastIndex((item) => Array.isArray(item));
 
-  // Check if there are any incomplete blocks (still streaming)
-  const hasIncompleteBlocks = message.content.some((block) => {
-    if (block.type === 'thinking') {
-      return !block.isComplete;
-    }
-    if (block.type === 'server_tool_use') {
-      // Provider tools own their own completion bit. An empty Provider result is
-      // still a valid terminal result and must not keep the message streaming.
-      return Boolean(block.tool?.isLoading);
-    }
-    if (block.type === 'tool_use') {
-      // Local tools can predate the explicit loading bit, so retain the legacy
-      // result fallback for history compatibility.
-      const subagentRunning = block.tool?.subagentCalls?.some((call) => call.isLoading);
-      return Boolean(block.tool?.isLoading) || Boolean(subagentRunning) || block.tool?.result === undefined;
-    }
-    return false;
-  });
-
-  const isAssistantStreaming = isLoading && hasIncompleteBlocks;
-
   // Find the LAST BlockGroup containing ExitPlanMode for slot placement.
   // Only the last one gets the slot — avoids duplicates when reject → re-plan
   // produces multiple ExitPlanMode tool calls in the same message.
@@ -696,7 +675,10 @@ const Message = memo(function Message({ message, revealTurnProcess = false, cita
                       revealProcess={revealTurnProcess || (hasTurnProcess && processExpanded)}
                       compactHistory={!hasTurnProcess && !remoteContent && index !== exitPlanModeGroupIndex}
                       isLatestActiveSection={isLatestActiveSection}
-                      isStreaming={isAssistantStreaming}
+                      // The message owner ends the live process, not an empty
+                      // interval between native blocks. Completed rows still
+                      // derive their own outcomes inside BlockGroup.
+                      isStreaming={isLoading}
                     />
                   </div>
                   {!remoteContent && groupAttachments.length > 0 && (
