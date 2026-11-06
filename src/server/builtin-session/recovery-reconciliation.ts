@@ -7,6 +7,7 @@ import { inspectNativeCompletions } from './native-completion-review';
 import { inspectNativePreToolDenials } from './native-denial-review';
 import type { SessionTaskLedger } from '../../shared/sessionTaskOrchestration';
 import type { ReviewedToolError } from './recovery-tool-errors';
+import type { TranscriptProjection } from '../../shared/sessionTranscript';
 
 const object = (value: unknown): value is Record<string, unknown> => !!value && typeof value === 'object' && !Array.isArray(value);
 export const recoveryLedgerDigest = (ledger: unknown) => createHash('sha256').update(JSON.stringify(ledger)).digest('hex');
@@ -17,6 +18,7 @@ export interface RecoveryReviewDependencies {
   startInvestigation?: () => Promise<void>;
   checkFile?: (name: string, input: Record<string, unknown>) => Promise<RecoveryResultCheck>;
   taskLedger?: () => SessionTaskLedger | undefined;
+  transcript?: () => TranscriptProjection | undefined;
   mutateTaskLedger?: (mutation: (prior: SessionTaskLedger) => SessionTaskLedger, current: () => boolean) => Promise<void>;
   isCurrent: () => boolean;
   load: () => unknown;
@@ -26,6 +28,28 @@ export interface RecoveryReviewDependencies {
   adopt: (receipt: RecoveryActionResolution) => void;
   reconcileNativeFailures?: (records: readonly unknown[], selected: readonly unknown[], current: () => boolean) => Promise<void>;
   repairToolErrors?: (evidence: readonly ReviewedToolError[]) => Promise<void>;
+}
+
+/** Join validated native attempts to the original product turn, never by time,
+ * command text, a model claim or an anonymous historical uncertainty count. */
+function unresolvedTurn(snapshot: RecoveryActionSnapshot,
+  attempts: ReturnType<ContextRecoveryController['inspectActionLedger']>['operationAttempts'],
+  transcript?: TranscriptProjection): RecoveryActionSnapshot['unresolvedTurn'] {
+  const turn = transcript && [...transcript.turns.values()].at(-1);
+  if (!turn || !turn.rootUserMessageId || turn.status === 'running') return undefined;
+  const toolIds = new Set<string>();
+  for (const message of transcript!.messages.values()) {
+    if (message.turnId !== turn.id || message.role !== 'assistant' || !Array.isArray(message.content)) continue;
+    for (const block of message.content) {
+      if ((block.type === 'tool_use' || block.type === 'server_tool_use')
+        && object(block.tool) && typeof block.tool.id === 'string') toolIds.add(block.tool.id);
+    }
+  }
+  const actionHashes = snapshot.actions.filter(action => !action.eligible && attempts.some(attempt =>
+    attempt.actionId === action.actionHash && attempt.status !== 'returned'
+    && toolIds.has(attempt.toolUseId) && action.toolUseIds?.includes(attempt.toolUseId)))
+    .map(action => action.actionHash);
+  return actionHashes.length ? { turnId: turn.id, actionHashes } : undefined;
 }
 
 /** Conservative description from the selected native chain, independent of eligibility. */
@@ -152,6 +176,7 @@ async function inspect(deps: RecoveryReviewDependencies) {
       reason: 'native_success', check: {kind: 'native_success'}, presentation: describeAction(receipt.toolName, receipt.input),
     })) : [];
   snapshot.attention = recoveryAttention(snapshot, taskLedger);
+  snapshot.unresolvedTurn = unresolvedTurn(snapshot, state.operationAttempts, deps.transcript?.());
   return { snapshot, ledger, candidates, verifiedDeniedTools };
 }
 
@@ -201,7 +226,7 @@ export async function reconcileRecoveryAction(request: RecoveryMutationRequest, 
     await deps.startInvestigation();
     // The original execution owner is now running the investigation. Do not
     // present a stale user decision while its next turn is being scheduled.
-    return { ...snapshot, investigationAvailable: false, attention: undefined };
+    return { ...snapshot, investigationAvailable: false, attention: undefined, unresolvedTurn: undefined };
   }
   if (followup && 'text' in request) {
     if (!['note', 'defer'].includes(request.kind) || typeof request.text !== 'string' || request.text.length > 4000
@@ -254,5 +279,9 @@ export async function reconcileRecoveryAction(request: RecoveryMutationRequest, 
     ...(receipt.kind === 'native-completion-reviewed' ? { completed: [...(snapshot.completed ?? []), { ...snapshot.actions.find(action => action.actionHash === receipt.actionHash)!, eligible: false }] } : {}),
     actions: snapshot.actions.filter(action => action.actionHash !== receipt.actionHash) };
   result.attention = recoveryAttention(result, deps.taskLedger?.());
+  if (result.unresolvedTurn) {
+    const actionHashes = result.unresolvedTurn.actionHashes.filter(hash => result.actions.some(action => action.actionHash === hash));
+    result.unresolvedTurn = actionHashes.length ? { ...result.unresolvedTurn, actionHashes } : undefined;
+  }
   return result;
 }

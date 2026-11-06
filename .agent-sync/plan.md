@@ -1350,3 +1350,8 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 prepares l
 ## MB-CHAT-REVIEW-CLEANUP-20261106 Root combined local5432
 
 Existing sole desktop/macOS/updater/sharedCI/main owner01a12bc2 integrates reviewed cleanup9164/9a606 and recovery93b on the immutable5431 source35c1 plus actual main05ea. Reserve0.5.43/build543.2 for a different artifact; frozen5431 and published5426 stay unchanged. Current-Mac development/checks can progress independently of hosted setup and a pending user maintenance-window answer. Remote main, new local artifact/install and actual awaiting_review Chat/no review-template controls/results-detail/input acceptance remain separate evidence. No automatic task acceptance, business resend/replay, unknown-ledger clearing, UI guard bypass or cloud/mobile/website deployment. CHAT08 real pending/unknown and reading-protection1921 are separate queued tasks, not part of this freeze. Task codex-chat-cleanup-recovery-integration-20261106-f1ade627; private evidence work/chat-review-cleanup-root-20261106/owner.
+
+
+## MB-CHAT-STYLE-20261104 · CHAT08 unknown visibility — 2026-11-07
+
+真实隔离Bash操作启动后普通Stop，journal仍reserved且无原生错误证明；当前UI仅失败，无unknown提示。codex/chat-unknown-visibility-20261107从mainbfbc92f补最近终态轮的精确未决调用只读提示，保留Stop和全部执行门禁；不把历史/匿名/在途调用投成用户待办。先补此真实验收，随后阅读保护1921独立交付。唯一桌面/sharedCI/main owner01a12bc2不变，543.3冻结批保留，新源下一未冻结批。详见当前任务记录。

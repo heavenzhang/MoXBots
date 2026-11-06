@@ -255,3 +255,24 @@ it('keeps the same read-only details and unsent note through a busy transition',
   expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
   expect(p.reconcile).not.toHaveBeenCalled();
 });
+
+it('keeps stopped-turn uncertainty outside collapsed process without implying a paused task or continuing it', async () => {
+  const p = props();
+  p.inspect.mockResolvedValue({ ...snapshot, attention: undefined,
+    unresolvedTurn: { turnId: 'stopped-turn', actionHashes: ['mutating'] }, actions: snapshot.actions.slice(1) });
+  const onViewOperation = vi.fn();
+  const view = render(<><div hidden>collapsed process</div><p>Final result and artifact</p>
+    <RecoveryActionReview {...p} onViewOperation={onViewOperation} /></>);
+  expect(await screen.findByText('recoveryReview.unresolved.title')).toBeVisible();
+  expect(screen.getByText('Final result and artifact')).toBeVisible();
+  expect(screen.queryByText('recoveryReview.decision.currentTask')).not.toBeInTheDocument();
+  expect(screen.queryByText('recoveryReview.decision.explanation')).not.toBeInTheDocument();
+  fireEvent.click(screen.getByText('recoveryReview.unresolved.details'));
+  expect(await screen.findByRole('dialog')).toBeVisible();
+  expect(screen.queryByText('recoveryReview.addNote')).not.toBeInTheDocument();
+  expect(p.reconcile).not.toHaveBeenCalled();
+  view.unmount();
+  render(<RecoveryActionReview {...p} />);
+  expect(await screen.findByText('recoveryReview.unresolved.title')).toBeVisible();
+  expect(p.reconcile).not.toHaveBeenCalled();
+});

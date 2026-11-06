@@ -47,6 +47,9 @@ export interface RecoveryActionSnapshot {
   /** Display only: the settled current task is blocked on these exact calls.
    * Absence means historical uncertainty is handled silently. Never admission. */
   attention?: { executionId: string; actionHashes: string[] };
+  /** Display only: exact unresolved calls in the latest settled product turn.
+   * A user Stop is retained; this notice never grants continuation or replay. */
+  unresolvedTurn?: { turnId: string; actionHashes: string[] };
 }
 
 export function recoveryAttention(snapshot: RecoveryActionSnapshot, ledger?: import('./sessionTaskOrchestration').SessionTaskLedger): RecoveryActionSnapshot['attention'] {

@@ -134,7 +134,11 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
     finally { if (epoch === generation.current.epoch) { pending.current = false; setBusy(false); } }
   }, [snapshot]);
 
-  const attentionActions = snapshot?.actions.filter(action => snapshot.attention?.actionHashes.includes(action.actionHash)) ?? [];
+  const decisionHashes = snapshot?.attention?.actionHashes ?? [];
+  const attentionActions = snapshot?.actions.filter(action => decisionHashes.includes(action.actionHash)
+    || snapshot.unresolvedTurn?.actionHashes.includes(action.actionHash)) ?? [];
+  const hasDecision = attentionActions.some(action => decisionHashes.includes(action.actionHash));
+  const titleKey = hasDecision ? 'recoveryReview.decision.title' : 'recoveryReview.unresolved.title';
   const attentionCount = attentionActions.length;
   const showCard = !disabled && !busy && !error && attentionCount > 0;
   useEffect(() => {
@@ -143,23 +147,23 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
   }, [publishRecovery, sessionId, attentionCount, showCard, openDetails]);
   const buttonClass = 'rounded-md px-2 py-1 text-sm font-medium text-[var(--accent)] hover:bg-[var(--paper-hover)] focus-visible:outline-2 focus-visible:outline-[var(--focus-border)] disabled:opacity-50';
   return <>
-    {showCard && <section aria-label={t('recoveryReview.decision.title')} className="shrink-0 px-4 py-2 text-sm text-[var(--ink-secondary)]">
+    {showCard && <section aria-label={t(titleKey)} className="shrink-0 px-4 py-2 text-sm text-[var(--ink-secondary)]">
       <div className="mx-auto max-w-3xl rounded-lg border border-[var(--line)] bg-[var(--paper-inset)] px-3 py-2.5">
-        <p role="status" className="font-medium text-[var(--ink)]">{t('recoveryReview.decision.title')}</p>
-        <p className="mt-1">{t('recoveryReview.decision.explanation')}</p>
+        <p role="status" className="font-medium text-[var(--ink)]">{t(titleKey)}</p>
+        <p className="mt-1">{t(hasDecision ? 'recoveryReview.decision.explanation' : 'recoveryReview.unresolved.explanation')}</p>
         <ul className="mt-2 space-y-2">
           {attentionActions.slice(0, 3).map(action => <li key={action.actionHash}>
             <p className="break-words font-medium text-[var(--ink)]">{t(`recoveryReview.kinds.${action.presentation?.kind ?? 'unknown'}`)} · {action.presentation?.target ?? t('recoveryReview.decision.targetMissing')}</p>
-            <p>{action.association ? t('recoveryReview.decision.impact', { task: action.association.title, count: action.association.blockedTaskIds.length }) : t('recoveryReview.decision.currentTask')}</p>
+            {decisionHashes.includes(action.actionHash) && <p>{action.association ? t('recoveryReview.decision.impact', { task: action.association.title, count: action.association.blockedTaskIds.length }) : t('recoveryReview.decision.currentTask')}</p>}
             {action.check && <p>{t(`recoveryReview.checks.${action.check.kind}`)}</p>}
             <p>{t(`recoveryReview.decision.next.${action.presentation?.kind ?? 'unknown'}`)}</p>
             {onViewOperation && action.toolUseIds?.[0] && <button type="button" className={buttonClass}
               onClick={() => onViewOperation(action.toolUseIds![0])}>{t('recoveryReview.decision.viewOperation')}</button>}
           </li>)}
         </ul>
-        {attentionCount > 3 && <p className="mt-2">{t('recoveryReview.decision.more', { count: attentionCount - 3 })}</p>}
+        {attentionCount > 3 && <p className="mt-2">{t(hasDecision ? 'recoveryReview.decision.more' : 'recoveryReview.unresolved.more', { count: attentionCount - 3 })}</p>}
         <div className="mt-2 flex flex-wrap gap-2">
-          <button type="button" className={buttonClass} aria-haspopup="dialog" onClick={openDetails}>{t('recoveryReview.decision.resolve')}</button>
+          <button type="button" className={buttonClass} aria-haspopup="dialog" onClick={openDetails}>{t(hasDecision ? 'recoveryReview.decision.resolve' : 'recoveryReview.unresolved.details')}</button>
         </div>
       </div>
     </section>}
@@ -167,6 +171,6 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
     {continuation}
     {details && <RecoveryActionDetails actions={attentionActions} completed={snapshot?.completed ?? []} reviewed={snapshot?.reviewed ?? []}
       independentTasks={snapshot?.independentTasks ?? []} busy={busy} readOnly={disabled} error={error}
-      onClose={() => setDetails(false)} onPrepareCheck={disabled ? undefined : onPrepareCheck} onSave={disabled ? undefined : saveFollowup} />}
+      onClose={() => setDetails(false)} onPrepareCheck={disabled || !hasDecision ? undefined : onPrepareCheck} onSave={disabled || !hasDecision ? undefined : saveFollowup} />}
   </>;
 }

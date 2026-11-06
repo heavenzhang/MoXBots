@@ -1612,6 +1612,12 @@
       "external_check_required": "Check the original business system or execution service. Add context or ask the Bot to use an authorized query tool."
     },
     "reviewedCount": "View reviewed records ({{count}})",
+    "unresolved": {
+      "title": "Some outcomes from this turn are unconfirmed",
+      "explanation": "Stopping or receiving a tool error does not prove that an operation had no effect. The original records are retained. Check the outcome before repeating it.",
+      "details": "View unconfirmed outcomes",
+      "more": "{{count}} more unconfirmed outcomes are available in details."
+    },
     "decision": {
       "title": "This step needs information from you",
       "explanation": "Automatic checks could not confirm the operations below, so the current task is paused. Provide a result or a way to look it up so Bot can verify and continue.",
