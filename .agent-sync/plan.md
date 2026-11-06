@@ -1,3 +1,7 @@
+## MB-FORM-SCROLLBARS-20261106 — 输入框与项目表单滚动
+
+任务 `.agent-sync/tasks/codex-form-scrollbars-20261106-c4291ee9.md`，验收 `dev-docs/form-scrollbars-20261106/acceptance.md`。审计 40 个产品文件的 53 处 textarea，通过共享 base 样式统一软换行和仅纵向自动滚动，保留 wrap=off/编辑器内部例外；ProjectSpaceEditor 标题/footer 不压缩，由独立 div 负责表单滚动。真实组件双引擎 192 组、聊天缩放 120 组、59 个不同 DOM 用例、类型/lint/MoXBots Web 构建和主题检查通过。主 Agent 自验，未宣称独立审阅或原生安装验收。desktop/macOS-arm64/updater/sharedCI/main 沿用唯一负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，开发分支交接后由其统一 CI/main/版本/下一未冻结候选与安装版复验，不涉及其他部署单元。
+
 ## MB-SIDEBAR-GRIP-20261031 — 去除拖动提示图标
 
 任务记录 `.agent-sync/tasks/codex-sidebar-grip-20261031-168e5a2c.md`。仅删除侧边栏 GripIcon，保留原拖动/键盘入口；83 项 DOM 回归及定向 lint 通过。desktop builtin client 的 CI/main/版本/构建/发布仍由 `01a12bc2-907a-7702-b6dd-788225c5dfe4` 统一负责；开发分支保存后待其纳入下一未冻结批，真实安装版验收未完成，不改变现有发布归属。
