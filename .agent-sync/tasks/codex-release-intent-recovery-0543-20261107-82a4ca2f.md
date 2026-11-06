@@ -12,7 +12,7 @@
 
 ## Acceptance criteria
 
-- [ ] 四个精确作者源已审阅且combined相称测试通过，未知/权限/Stop/原账本围栏不弱化。
+- [x] 四个精确作者源及9f818331终态原因补修已审阅，combined相称测试通过，未知/权限/Stop/原账本围栏不弱化。
 - [ ] 精确source CI/currentMac ARM、主干远端整树核对完成。
 - [ ] 新543.4签名公证同份制品安全安装，旧备份/回滚/草稿/历史保留。
 - [ ] 只回复1+1正常终态不循环验收；原样本unknown与审批、阅读路径实际验证。
@@ -36,4 +36,12 @@
 
 ## Next step
 
-等待原整改作者基于真实502补充窄范围只读原因展示的精确SHA，审阅后复核受影响测试再冻结；新543.4安装必须等待原业务终态与窗口交还。
+固定本分支精确source并一次push/handoff/PR；按当前Mac合同独立推进本地不可变543.4，CI/main/原生/正式发布另门。原业务已5/5完成并交回窗口，但安装仍须fresh全owner/草稿/一致备份。
+
+
+## Root final combined verification and original native result
+
+- 已追加review/merge9f818331原生终态只读错误类别与有界HTTP状态，不改调度/推理重试/权限/未知保护，不保存响应正文；33个TS/TSX lint及双语7类诊断键通过。
+- 追加后的5文件458相关unit/DOM/integration全部PASS，完整typecheck通过。Root lint首命令误把无ESLint配置的localeJSON作为TS输入，max-warnings0按预期拒绝；更正为33支持的TS/TSX且独立解析双语合同后通过，原命令错误保留，不改规则。
+- 原543.3报告同execution7c78完成5/5accept；Root只读核对持久账本，原负责人独立读取图文产物并观察UI。期间一个本地连接断开映射502已如实记录；不据此宣称供应商故障根除。
+- 当前543.4新原生1+1正常终态、unknown/真实Codex审批/阅读、原因说明与正式通道尚未通过；未来桥接precontent推理恢复单独queue，不混本次工具外意图重试。原12legacy unknown不清除。
