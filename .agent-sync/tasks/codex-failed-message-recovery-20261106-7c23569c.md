@@ -16,7 +16,8 @@
 - [x] 失败记录有可访问的逐条操作，已确认未接纳可重发/移除；未知结果只检查。
 - [x] 同文多记录按消息身份处理，正式历史及草稿不变；过期操作不重发。
 - [x] 定向单元/DOM/类型/lint 与实际渲染检查通过。
-- [ ] 提交推送精确 SHA，原 owner 统一 CI/main/新包；远端 main 与已安装验收分别核实。
+- [x] 源码提交推送与project-sync远端校验通过；精确HEAD由本记录metadata及外部release-queue请求核实。
+- [ ] 原owner统一CI/main/新包，远端main与已安装验收分别核实。
 
 ## Completed
 
@@ -24,6 +25,8 @@
 - [x] 本机日志核实两次 503/model_not_found，任务识别失败于接纳前；不重放或删改用户记录。
 
 ## Verification
+
+- Source digest: `ecfa406dbbfd87d736a38b33cc6d92e3fa4aa68d72709d6334cde16fb6e9ee2e`; Documentation status only; production source unchanged from f3de6d6f44c047776fc82af9e050f63ed3ae35fd. Prior 192 tests/type/lint/build/IAB checks apply; main/native release remains with original owner.
 
 - Source digest: `ecfa406dbbfd87d736a38b33cc6d92e3fa4aa68d72709d6334cde16fb6e9ee2e`; 192 targeted DOM/unit tests PASS; stale retry effect repair 3 PASS; tsc --noEmit PASS; targeted ESLint PASS; test classification PASS; renderer build with 8 theme tests PASS; IAB actual Message synthetic mouse/keyboard/draft/1280 and 800 viewport checks PASS. Native installed acceptance and main delivery pending original desktop owner.
 
@@ -38,9 +41,9 @@
 - Required: desktop/macOS-arm64 新包，目标既有日常 Mac；无云/Host/手机/网站改动。
 - Handoff: this remote branch and task record; report the resulting head SHA outside this file.
 - Evidence: 相邻回归测试与 dev-docs/failed-message-recovery-20261106/acceptance.md；无迁移/配置/跨单元依赖。
-- Status: 源码/模拟/合成真实渲染已通过；待提交推送和原owner下一批main/CI/新包/真实验收。
+- Status: 源码/模拟/合成真实渲染/提交推送已通过；待原owner下一批main/CI/新包/真实验收。
 - Owners: desktop/sharedCI/main 唯一会话01a12bc2-907a-7702-b6dd-788225c5dfe4；本会话01a1b0a3-5c66-7da0-9aa8-515caa1c99d0仅开发交接，不分配版本/触发CI/构建/安装。
 
 ## Next step
 
-- 保存精确源码交原owner下一未冻结批；其正常CI/main/构建/安装后，本任务核远端main包含与原生逐条操作。
+- 原owner按release-queue中最终HEAD受理下一未冻结批；其正常CI/main/构建/安装后，本任务核远端main包含与原生逐条操作。
