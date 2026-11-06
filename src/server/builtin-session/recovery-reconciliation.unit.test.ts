@@ -1,4 +1,6 @@
 import { createSessionExecution } from '../../shared/sessionExecution';
+import { createTranscriptProjection } from '../../shared/sessionTranscript';
+import { NativeOperationJournal } from '../openai-bridge/native-operation-journal';
 import { emptyTaskLedger } from '../../shared/sessionTaskOrchestration';
 import { describe, expect, it, vi } from 'vitest';
 import { ContextRecoveryController, recoveryActionHash } from '../openai-bridge/context-recovery';
@@ -24,6 +26,49 @@ function fixture(name = 'TaskGet', input: Record<string, unknown> = { taskId: '1
   return { deps, hash, rows, adopt, setCurrent: (v: boolean) => { current = v; }, setLedger: (v: unknown) => { ledger = v; },
     request: async () => { const snapshot = await inspectRecoveryActions(deps); return { sessionId:snapshot.sessionId, sdkSessionId:snapshot.sdkSessionId, epoch:snapshot.epoch, reviewAuthority:snapshot.reviewAuthority, ledgerDigest:snapshot.ledgerDigest, actionHash:hash }; } };
 }
+
+describe('settled turn uncertainty without a task plan', () => {
+  function stoppedFixture() {
+    const f = fixture('Bash', { command: 'synthetic local operation' });
+    const journal = new NativeOperationJournal();
+    const attempt = journal.reserve({ sessionId: 'product', sdkSessionId: 'native', queryEpoch: '00000000-0000-4000-8000-000000000001',
+      queryGeneration: 1, scope: 'queue-id', toolUseId: 'call-1', toolName: 'Bash', actionHash: f.hash });
+    f.setLedger({ version: 1, completed: [], uncertain: [f.hash], denied: [], blocked: false,
+      projectionActive: false, streamArmedOnly: false, operationAttempts: journal.serialize() });
+    const transcript = createTranscriptProjection();
+    transcript.turns.set('turn', { id: 'turn', rootUserMessageId: 'u', startedAt: '2026-01-01T00:00:00Z', status: 'stopped' });
+    transcript.messages.set('u', { id: 'u', role: 'user', turnId: 'turn', timestamp: '2026-01-01T00:00:00Z', content: 'synthetic test' });
+    transcript.messages.set('a', { id: 'a', role: 'assistant', turnId: 'turn', timestamp: '2026-01-01T00:00:01Z', content: [
+      { id: 'b', type: 'tool_use', tool: { id: 'call-1', name: 'Bash', isError: true, result: 'generic cancellation' } },
+    ] });
+    f.deps.transcript = () => transcript;
+    return { ...f, transcript, journal, attempt };
+  }
+  it.each(['stopped', 'error', 'complete', 'interrupted'] as const)('shows a real reserved call in a %s turn without inventing an execution or clearing its ledger', async status => {
+    const f = stoppedFixture(); f.transcript.turns.get('turn')!.status = status; const before = recoveryLedgerDigest(f.deps.load());
+    const result = await inspectRecoveryActions(f.deps);
+    expect(result.unresolvedTurn).toEqual({ turnId: 'turn', actionHashes: [f.hash] });
+    expect(result.attention).toBeUndefined(); expect(result.investigationAvailable).toBe(false);
+    expect(recoveryLedgerDigest(f.deps.load())).toBe(before);
+    expect(f.deps.save).not.toHaveBeenCalled(); expect(f.adopt).not.toHaveBeenCalled();
+  });
+  it.each(['running', 'other-turn', 'missing-tool', 'legacy', 'changed-native-input', 'wrong-native-id', 'known-failure', 'known-success'])('does not promote %s into a current unresolved notice', async mode => {
+    const f = stoppedFixture();
+    if (mode === 'running') f.transcript.turns.get('turn')!.status = 'running';
+    if (mode === 'other-turn') f.transcript.turns.set('new', { id: 'new', rootUserMessageId: 'new-u', startedAt: '2026-01-01T00:01:00Z', status: 'complete' });
+    if (mode === 'missing-tool') f.transcript.messages.get('a')!.content = 'final result';
+    if (mode === 'legacy') f.setLedger({ version: 1, completed: [], uncertain: [f.hash], denied: [], blocked: false });
+    if (mode === 'changed-native-input') {
+      f.rows[0].message.content[0].name = 'TaskGet'; f.rows[0].message.content[0].input = { taskId: '1' };
+    }
+    if (mode === 'wrong-native-id') f.rows[0].message.content[0].id = 'foreign-call';
+    if (mode === 'known-failure' || mode === 'known-success') {
+      f.journal.complete(f.attempt, mode === 'known-failure' ? 'bash-exit' : 'success', 'a'.repeat(64));
+      f.setLedger({ version: 1, completed: [], uncertain: [], denied: [], blocked: false, operationAttempts: f.journal.serialize() });
+    }
+    expect((await inspectRecoveryActions(f.deps)).unresolvedTurn).toBeUndefined();
+  });
+});
 
 describe('native query outcome review', () => {
   it.each([['TaskGet', { taskId: '1' }], ['TaskGet', {}], ['TaskList', {}]] as const)('records %s without claiming success or replaying', async (name, input) => {

@@ -1366,3 +1366,8 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 ## MB-INTENT-TRANSPORT-20261107
 
 修复发送前工具外分类的暂态失败无同模型重试，以及纯文字答复误分执行导致工具验收循环。任务 `.agent-sync/tasks/codex-intent-transport-20261107-26e0bfab.md`；范围仅 desktop builtin classifier/transport，沿用同一60秒/两次上限、候选池与Stop保护。desktop/macOS/sharedCI/main/updater唯一负责人仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发CI、不分配版本或自行安装；精确提交与真实分类证据交下一未冻结批。原543.2真实1+1测试暴露误分类，不作为修复后验收；原用户任务不重发、不改账本。
+
+
+## MB-CHAT-STYLE-20261104 · CHAT08 unknown visibility — 2026-11-07
+
+真实隔离Bash操作启动后普通Stop，journal仍reserved且无原生错误证明；当前UI仅失败，无unknown提示。codex/chat-unknown-visibility-20261107从mainbfbc92f补最近终态轮的精确未决调用只读提示，保留Stop和全部执行门禁；不把历史/匿名/在途调用投成用户待办。先补此真实验收，随后阅读保护1921独立交付。唯一桌面/sharedCI/main owner01a12bc2不变，543.3冻结批保留，新源下一未冻结批。详见当前任务记录。
