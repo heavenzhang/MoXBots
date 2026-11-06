@@ -392,7 +392,11 @@ const VirtuosoFooter = memo(function VirtuosoFooter({
 }: FooterProps) {
   const spacerHeight = composerPlacement === 'flow' ? 16 : resolveChatBottomSpacerPx(bottomSpacerPx);
   return (
-    <div className="mx-auto max-w-[824px] px-4">
+    // Footer content can start with a margin (the completed task summary does).
+    // Keep it inside the measured box, just as message rows do. Otherwise the
+    // native overflow and Virtuoso's bottom differ, so index navigation and
+    // measured following correct toward different positions.
+    <div className="mx-auto max-w-[824px] px-4 flow-root">
       {pendingPermission && onPermissionDecision && (
         <div className="py-2">
           <PermissionPrompt

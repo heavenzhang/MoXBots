@@ -110,6 +110,46 @@ describe('chat follow motion', () => {
     expect(frames.size).toBe(0);
   });
 
+  it('keeps an unmeasured tall row in range until the virtualizer commits its extent', () => {
+    const f = fixture();
+    f.unmount();
+    const viewport = document.createElement('div');
+    viewport.dataset.viewportType = 'element';
+    const extent = document.createElement('div');
+    extent.dataset.virtuosoScrollExtent = '';
+    let measuredHeight = 1000;
+    Object.defineProperty(extent, 'offsetHeight', { get: () => measuredHeight });
+    viewport.append(extent);
+    // An embedded virtual list must not become this scroller's size authority.
+    const nested = document.createElement('div');
+    const nestedExtent = extent.cloneNode() as HTMLElement;
+    Object.defineProperty(nestedExtent, 'offsetHeight', { value: 100 });
+    nested.append(nestedExtent);
+    f.scroller.append(nested, viewport);
+    const hook = renderHook(useChatFollowMotion, { initialProps: f.props, wrapper: StrictMode });
+    advance();
+    f.scrollTo.mockClear();
+    // React's taller DOM is visible before the row's ResizeObserver delivery.
+    f.geometry.height += 200;
+    act(() => hook.result.current());
+    for (let i = 0; i < 8; i++) advance();
+    expect(f.scroller.scrollTop).toBe(500);
+    expect(f.scrollTo).toHaveBeenCalledExactlyOnceWith({ top: 500, behavior: 'auto' });
+    expect(frames.size).toBe(0);
+    // The one measurement owner catches up; the existing motion then follows.
+    measuredHeight = 1200;
+    act(() => hook.result.current());
+    for (let i = 0; i < 20; i++) advance();
+    expect(f.scroller.scrollTop).toBe(700);
+    expect(frames.size).toBe(0);
+    // A naturally shorter DOM still clamps safely while shrink is measured.
+    f.geometry.height -= 100;
+    act(() => hook.result.current());
+    expect(f.scroller.scrollTop).toBe(600);
+    advance();
+    expect(frames.size).toBe(0);
+  });
+
   it('settles a late virtualizer clamp without leaving a permanent motion loop', () => {
     const f = fixture();
     advance();

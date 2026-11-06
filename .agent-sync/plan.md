@@ -1313,3 +1313,14 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 MB-FORM-SCROLLBARS-20261106 Root intake: producerbacd source/UI evidence independently reviewed; PR253 firstCI exposed existing NewAgentPanel pre-settlement staleDOM assertion. Controlleddeferred RED proves editedtextarea query before save is detached on correct detailreturn. Root changes only test settlement, 26DOM/type/lint PASS; exactnewheadCI/main and nextunfrozen native stillpending. Sole desktop/sharedCI/main owner01a12bc2; current5424 immutable. Rootbranch codex/form-scrollbars-integration-20261106, PR253 sameSHA FF headalias after originalalljobs terminal; no cancellation/rerun or competingpublisher.
 
 MB-FORM-SCROLLBARS-20261106 continuinguserdelivery: soleRootowner reserves0.5.42/build542.5 nextunfrozen desktopcandidate to include reviewed scrollbarfix and Rootdeterministic template-save testsettlement plus already-main metadata/MCP fixes. 542.4 originalarchive/stage remains immutable/uninstalled; combine necessarychanges into one safe maintenance window after5425admission. ExactsourceCI/main/nativeproject-settings-chat longtext/sameartifact101 remain pending. No SimpleUX/jitterunavailablecode/cloud/mobile expansion.
+
+
+## MB-CHAT-JITTER-20261106 — source repair ready for desktop intake
+
+- 2026-11-06：codex/chat-jitter-20261106，源码修复062c2f6fe4091309e6b5ce126b65fc894f05c270；已同步main66f76d734并核实远端工作分支。grow/clamp/unmount循环已在WebKit及Mac WKWebView110%旧码反事实复现，修复通过；完成Footer漏算16px修正。
+- 新增双引擎真实组件回归与完整滚动基线、68项DOM、原生隔离对照及类型/lint通过；证据dev-docs/chat-jitter-20261106/acceptance.md和evidence.json。
+- desktop/macOS-arm64/updater/sharedCI/main仍由01a12bc2-907a-7702-b6dd-788225c5dfe4统一接收、评审、下一未冻结批和原会话安装验收。本开发会话不触发共享CI、正式构建/安装或版本分配；不能把542.5或暂时停稳视为包含/验收此修复。
+
+MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with main66f includes scrollbarproducerbacd/source0d plus existingPlaywright+Codexmetadata fixes. RootindependentactualWebKit samefixtureoldmotionFAIL/currentPASS and combined94DOM/type/lint PASS. Freeze thisnecessaryfix scope; laterindependentfeatures nextbatch. ExactnewheadCI/main/formal/safeinstall/actualoriginalKevin110percentcoldJSONandtaskfooter>=30s/read-bottom-expand-switch plus project/settings/chat andPlaywright/Codex/sameartifact101 stillrequired. 542.5 firstpipeline completedonce throughApple, no rebuild/resubmit; preserveunpromoted and combine one safe maintenance installation usinglatestacceptedcandidate. SoleRoot01a12bc2 desktop/sharedCI/main; authorworkspaces and otherunits unchanged.
+
+- 542.6 sourceR2：原R1精确CI DOM一个旧被动effect结清断言失败，Root仅修RecoveryActionReview测试等待，全部生产字节不变；同PR254待原全部job终态后唯一FFpush，再按新exacthead检查。最终范围仍滚动条+jitter+Playwright+Codexmetadata，不扩功能或重复正式构建。
