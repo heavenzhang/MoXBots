@@ -211,7 +211,8 @@ export default function SkillsCommandsList({
                     }>('/api/skill/upload', {
                         filename: file.name,
                         content: base64Content,
-                        scope
+                        scope,
+                        ...(scope === 'project' && agentDir ? { agentDir } : {}),
                     });
 
                     if (response.success) {
@@ -239,10 +240,9 @@ export default function SkillsCommandsList({
         } catch (err) {
             toastRef.current.error(err instanceof Error ? err.message : tRef.current('agentSettings.common.uploadFailed'));
         }
-    }, [scope, loadData, onSelectSkill, api]);
+    }, [scope, agentDir, loadData, onSelectSkill, api]);
 
-    // 从 URL 安装 skill — 走 Tab-scoped API，scope 来自 props，
-    // 所以工作区入口会装到 <workspace>/.claude/skills/ 而不是全局 ~/.myagents/skills/
+    // Global My Bots must carry the selected workspace; Session APIs verify ownership.
     const handleInstallFromUrl = useCallback(
         async (
             url: string,
@@ -252,9 +252,10 @@ export default function SkillsCommandsList({
                 url,
                 scope,
                 confirmedSelection,
+                ...(scope === 'project' && agentDir ? { agentDir } : {}),
             });
         },
-        [api, scope],
+        [api, scope, agentDir],
     );
 
     // 导入文件夹
@@ -267,7 +268,8 @@ export default function SkillsCommandsList({
                 error?: string;
             }>('/api/skill/import-folder', {
                 folderPath,
-                scope
+                scope,
+                ...(scope === 'project' && agentDir ? { agentDir } : {}),
             });
 
             if (response.success) {
@@ -287,7 +289,7 @@ export default function SkillsCommandsList({
         } catch (err) {
             toastRef.current.error(err instanceof Error ? err.message : tRef.current('agentSettings.common.importFailed'));
         }
-    }, [scope, loadData, onSelectSkill, api]);
+    }, [scope, agentDir, loadData, onSelectSkill, api]);
 
     const handleCreateCommand = useCallback(async () => {
         if (!newItemName.trim()) return;

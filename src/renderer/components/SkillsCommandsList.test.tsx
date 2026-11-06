@@ -24,6 +24,23 @@ vi.mock('@/components/Toast', () => ({
   }),
 }));
 
+vi.mock('./SkillDialogs', () => ({
+  CreateDialog: () => null,
+  NewSkillChooser: (props: {
+    onUploadSkill: (file: File) => void;
+    onImportFolder: (path: string) => void;
+    onInstallFromUrl: () => void;
+  }) => <>
+    <button onClick={() => props.onUploadSkill(new File(['---\nname: uploaded\n---\nRun'], 'uploaded.md'))}>Upload test Skill</button>
+    <button onClick={() => props.onImportFolder('/source/skill')}>Import test folder</button>
+    <button onClick={props.onInstallFromUrl}>Open URL installer</button>
+  </>,
+  InstallFromUrlDialog: (props: { onInstall: (url: string, selection?: { folderNames: string[] }) => void }) => <>
+    <button onClick={() => props.onInstall('https://example.com/skill.zip')}>Preview test URL</button>
+    <button onClick={() => props.onInstall('https://example.com/skill.zip', { folderNames: ['review'] })}>Confirm test URL</button>
+  </>,
+}));
+
 const requiredSkill: SkillItem = {
   name: 'myagents-cli',
   description: 'Required operations',
@@ -149,5 +166,35 @@ describe('SkillsCommandsList project capability controls', () => {
 
     await waitFor(() => expect(apiMocks.post).toHaveBeenCalledTimes(1));
     await waitFor(() => expect(toggle).toHaveAttribute('aria-checked', 'true'));
+  });
+});
+
+describe('SkillsCommandsList install destinations', () => {
+  beforeEach(() => {
+    apiMocks.get.mockReset().mockResolvedValue({ success: true, skills: [], commands: [] });
+    apiMocks.post.mockReset().mockResolvedValue({ success: false, error: 'test response' });
+  });
+
+  it.each(['/bot-a', '/bot-b'])('keeps upload, folder import and URL preview/confirmation on %s', async agentDir => {
+    render(<SkillsCommandsList scope="project" agentDir={agentDir} onSelectSkill={vi.fn()} onSelectCommand={vi.fn()} />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: '新建' })).toHaveLength(2));
+    fireEvent.click(screen.getAllByRole('button', { name: '新建' })[0]);
+    fireEvent.click(screen.getByText('Upload test Skill'));
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledWith('/api/skill/upload', expect.objectContaining({ scope: 'project', agentDir })));
+    fireEvent.click(screen.getByText('Import test folder'));
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledWith('/api/skill/import-folder', { folderPath: '/source/skill', scope: 'project', agentDir }));
+    fireEvent.click(screen.getByText('Open URL installer'));
+    fireEvent.click(screen.getByText('Preview test URL'));
+    fireEvent.click(screen.getByText('Confirm test URL'));
+    expect(apiMocks.post).toHaveBeenCalledWith('/api/skill/install-from-url', { url: 'https://example.com/skill.zip', scope: 'project', agentDir, confirmedSelection: undefined });
+    expect(apiMocks.post).toHaveBeenCalledWith('/api/skill/install-from-url', { url: 'https://example.com/skill.zip', scope: 'project', agentDir, confirmedSelection: { folderNames: ['review'] } });
+  });
+
+  it('keeps user scope independent of the selected Bot', async () => {
+    render(<SkillsCommandsList scope="user" agentDir="/bot-a" onSelectSkill={vi.fn()} onSelectCommand={vi.fn()} />);
+    await waitFor(() => expect(screen.getAllByRole('button', { name: '新建' })).toHaveLength(2));
+    fireEvent.click(screen.getAllByRole('button', { name: '新建' })[0]);
+    fireEvent.click(screen.getByText('Import test folder'));
+    await waitFor(() => expect(apiMocks.post).toHaveBeenCalledWith('/api/skill/import-folder', { folderPath: '/source/skill', scope: 'user' }));
   });
 });

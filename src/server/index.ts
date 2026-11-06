@@ -152,6 +152,7 @@ import {
 } from './skills/url-resolver';
 import { fetchSkillZip, TarballFetchError } from './skills/tarball-fetcher';
 import { loadSkillTree, SkillSourceLoadError } from './skills/source-loader';
+import { resolveSkillInstallTarget } from './skills/install-target';
 import {
   analyseTree,
   buildInstallPayload,
@@ -6862,6 +6863,18 @@ async function main() {
         };
       };
 
+      const getSkillInstallTarget = (payload: { scope: unknown; agentDir?: unknown }) =>
+        resolveSkillInstallTarget({
+          ...payload,
+          sidecarRole,
+          currentAgentDir: sidecarRole === 'session'
+            ? getSessionEngine().getCurrentSessionContext().workspacePath ?? currentAgentDir
+            : currentAgentDir,
+          userSkillsDir: userSkillsBaseDir,
+          validateWorkspace: isValidAgentDir,
+          isRegisteredWorkspace: (path) => !!findProjectAgentByWorkspacePath(path),
+        });
+
       // Default project paths (using currentAgentDir)
       const hasValidAgentDir = currentAgentDir && existsSync(currentAgentDir);
       const projectSkillsBaseDir = hasValidAgentDir
@@ -7807,6 +7820,7 @@ async function main() {
             filename: string;
             content: string; // Base64 encoded file content
             scope: 'user' | 'project';
+            agentDir?: unknown;
             /**
              * Optional explicit folder name. Bypasses heuristic derivation from
              * filename / frontmatter. Required when uploading a bare `SKILL.md`
@@ -7823,8 +7837,7 @@ async function main() {
           }
 
           const ext = extname(payload.filename).toLowerCase();
-          const baseDir =
-            payload.scope === 'user' ? userSkillsBaseDir : projectSkillsBaseDir;
+          const baseDir = getSkillInstallTarget(payload);
 
           // Validate target directory is available
           if (!baseDir) {
@@ -8061,7 +8074,7 @@ async function main() {
                   ? error.message
                   : 'Failed to upload skill',
             },
-            500,
+            error instanceof SkillInstallError ? error.statusCode : 500,
           );
         }
       }
@@ -8075,6 +8088,7 @@ async function main() {
           const payload = (await request.json()) as {
             folderPath: string;
             scope: 'user' | 'project';
+            agentDir?: unknown;
           };
 
           if (!payload.folderPath) {
@@ -8085,8 +8099,7 @@ async function main() {
           }
 
           const sourcePath = payload.folderPath;
-          const baseDir =
-            payload.scope === 'user' ? userSkillsBaseDir : projectSkillsBaseDir;
+          const baseDir = getSkillInstallTarget(payload);
 
           // Validate target directory is available
           if (!baseDir) {
@@ -8208,7 +8221,7 @@ async function main() {
                   ? error.message
                   : 'Failed to import skill folder',
             },
-            500,
+            error instanceof SkillInstallError ? error.statusCode : 500,
           );
         }
       }
@@ -8431,6 +8444,7 @@ async function main() {
           const payload = (await request.json()) as {
             url: string;
             scope: 'user' | 'project';
+            agentDir?: unknown;
             /** Analyse only. Never publish even for an unambiguous single Skill. */
             previewOnly?: boolean;
             confirmedSelection?: {
@@ -8444,9 +8458,8 @@ async function main() {
           if (!payload.url || typeof payload.url !== 'string') {
             return jsonResponse({ success: false, error: 'url 参数必填' }, 400);
           }
-          const scope = payload.scope === 'project' ? 'project' : 'user';
-          const baseDir =
-            scope === 'user' ? userSkillsBaseDir : projectSkillsBaseDir;
+          const baseDir = getSkillInstallTarget(payload);
+          const scope = payload.scope;
           if (!baseDir) {
             return jsonResponse(
               { success: false, error: '请先设置工作目录' },
