@@ -1350,3 +1350,10 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 prepares l
 ## MB-CHAT-REVIEW-CLEANUP-20261106 Root combined local5432
 
 Existing sole desktop/macOS/updater/sharedCI/main owner01a12bc2 integrates reviewed cleanup9164/9a606 and recovery93b on the immutable5431 source35c1 plus actual main05ea. Reserve0.5.43/build543.2 for a different artifact; frozen5431 and published5426 stay unchanged. Current-Mac development/checks can progress independently of hosted setup and a pending user maintenance-window answer. Remote main, new local artifact/install and actual awaiting_review Chat/no review-template controls/results-detail/input acceptance remain separate evidence. No automatic task acceptance, business resend/replay, unknown-ledger clearing, UI guard bypass or cloud/mobile/website deployment. CHAT08 real pending/unknown and reading-protection1921 are separate queued tasks, not part of this freeze. Task codex-chat-cleanup-recovery-integration-20261106-f1ade627; private evidence work/chat-review-cleanup-root-20261106/owner.
+
+
+## MB-BOT-NAV-20261102 · 下一轮 2026-11-07
+
+基于最新 main bfbc92f3，codex/bot-navigation-next-20261107 收尾 Bot 筛选与读取终态。仅可见会话身份、同名归属、冻结历史/原 Session 打开；工作区终态优先及 full-read 失败/迟到结果保护。定向回归、类型/lint、实际合成 WebKit 深浅/390px/筛选/失败恢复通过，原生/main/正式发行另验。任务 .agent-sync/tasks/codex-bot-navigation-next-20261107-23b74541.md；完整后续范围 dev-docs/bot-navigation-next-20261107/PLAN.md，PROJECT/GROUP/HANDOFF 未完成。
+
+唯一 desktop/macOS/updater/sharedCI/main/版本/安装/回滚 owner 仍 01a12bc2-907a-7702-b6dd-788225c5dfe4；已告知只进入下一未冻结批，不影响当前 543.3，不触发第二共享 CI/正式构建。保留主干近期会话菜单和聊天评审控件删除要求。旧 538.1 历史进展不当作当前运行状态。

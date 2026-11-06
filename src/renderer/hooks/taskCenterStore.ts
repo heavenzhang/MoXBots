@@ -530,6 +530,15 @@ function adoptFullSessionIndexForDemand(): void {
     setState({ workspaceSessionStates: next });
 }
 
+function failFullSessionIndexForDemand(): void {
+    if (demandedWorkspaceDirs.size === 0) return;
+    const next = new Map(state.workspaceSessionStates);
+    for (const key of demandedWorkspaceDirs.keys()) {
+        next.set(key, { isLoading: false, error: taskText('tasks.loadFailedRetry') });
+    }
+    setState({ workspaceSessionStates: next });
+}
+
 function resumeDemandedWorkspaceSessions(force = true): void {
     if (started || fullSessionAuthoritySeq !== null || demandedWorkspaceDirs.size === 0) return;
     ensureWorkspaceSessions([...demandedWorkspaceDirs.values()], force);
@@ -652,6 +661,13 @@ async function fetchData(retryCount = 0, silent = false): Promise<void> {
         perfMark(RENDERER_PERF_PHASE.tabDataReady, { surface: 'taskcenter' });
     } catch (err) {
         if (gen !== lifecycleGen) return; // stopped mid-fetch → don't retry with zero subscribers
+        if (!isLatest('all', requestSeq)) return;
+        if (!isLatest('sessions', requestSeq)) {
+            // A newer Session reader owns its error/data, while this request
+            // still owns completion of the older aggregate loading chrome.
+            setState({ isLoading: false });
+            return;
+        }
         console.error('[taskCenterStore] Failed to load data:', err);
         if (!silent && retryCount < MAX_AUTO_RETRIES) {
             retryScheduled = true;
@@ -673,7 +689,10 @@ async function fetchData(retryCount = 0, silent = false): Promise<void> {
     } finally {
         if (fullSessionAuthoritySeq === requestSeq && !retryScheduled) {
             fullSessionAuthoritySeq = null;
-            if (!fullSucceeded) resumeDemandedWorkspaceSessions(true);
+            if (!fullSucceeded) {
+                failFullSessionIndexForDemand();
+                resumeDemandedWorkspaceSessions(true);
+            }
         }
     }
 }
@@ -688,6 +707,7 @@ function refreshSessionsNow(): void {
         if (!isLatest('sessions', s)) return;
         setState({
             sessions: sortSessionsByLastActive(filterTombstoned(data, deletedSessionIds)),
+            isSessionsLoading: false,
             sessionsError: null,
         });
         adoptFullSessionIndexForDemand();
@@ -695,7 +715,8 @@ function refreshSessionsNow(): void {
     }).catch((err) => {
         console.warn('[taskCenterStore] refresh sessions failed:', err);
         if (gen === lifecycleGen && fullSessionAuthoritySeq === s && isLatest('sessions', s)) {
-            setState({ sessionsError: taskText('tasks.loadFailedRetry') });
+            setState({ isSessionsLoading: false, sessionsError: taskText('tasks.loadFailedRetry') });
+            failFullSessionIndexForDemand();
         }
     })
         .finally(() => {

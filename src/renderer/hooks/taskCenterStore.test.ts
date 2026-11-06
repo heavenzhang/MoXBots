@@ -535,6 +535,55 @@ describe('store snapshot', () => {
         }
     });
 
+    it('settles demanded workspace failure when a full subscriber prevents passive fallback', async () => {
+        const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+        const unsubscribe = subscribe(() => undefined);
+        try {
+            await vi.waitFor(() => expect(getSnapshot().isLoading).toBe(false));
+            setSidebarWorkspaceSessionDemand(['/work/a']);
+            sessionClientMocks.getSessions.mockRejectedValue(new Error('full read unavailable'));
+            getSnapshot().refresh('all', { force: true, silent: true });
+            await vi.waitFor(() => {
+                expect(getSnapshot().workspaceSessionStates.get('/work/a')?.error).toBeTruthy();
+                expect(getSnapshot().workspaceSessionStates.get('/work/a')?.isLoading).toBe(false);
+            });
+            sessionClientMocks.getSessions.mockResolvedValue([]);
+            getSnapshot().refresh('sessions', { force: true });
+            await vi.waitFor(() => expect(getSnapshot().workspaceSessionStates.get('/work/a')).toEqual({ isLoading: false, error: null }));
+        } finally {
+            unsubscribe();
+            errorSpy.mockRestore();
+            warnSpy.mockRestore();
+        }
+    });
+
+    it('finishes the initial global loading state after a sessions-only refresh', async () => {
+        expect(getSnapshot().isSessionsLoading).toBe(true);
+        getSnapshot().refresh('sessions', { force: true });
+        await vi.waitFor(() => expect(getSnapshot().isSessionsLoading).toBe(false));
+        expect(getSnapshot().sessionsError).toBeNull();
+    });
+
+    it('does not publish an older full-read failure over a newer successful sessions refresh', async () => {
+        const stale = deferred<SessionMetadata[]>();
+        sessionClientMocks.getSessions.mockReturnValueOnce(stale.promise);
+        const unsubscribe = subscribe(() => undefined);
+        try {
+            setSidebarWorkspaceSessionDemand(['/work/a']);
+            sessionClientMocks.getSessions.mockResolvedValue([{ ...favoriteSession(), agentDir: '/work/a' }]);
+            getSnapshot().refresh('sessions', { force: true });
+            await vi.waitFor(() => expect(getSnapshot().sessions).toHaveLength(1));
+            stale.reject(new Error('stale full read failed'));
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(getSnapshot().sessionsError).toBeNull();
+            expect(getSnapshot().workspaceSessionStates.get('/work/a')).toEqual({ isLoading: false, error: null });
+        } finally {
+            unsubscribe();
+        }
+    });
+
     it('prevents an older passive workspace response from overwriting a full fetch', async () => {
         const staleWorkspaceFetch = deferred<SessionMetadata[]>();
         sessionClientMocks.getSessions.mockImplementation((agentDir?: string) => {

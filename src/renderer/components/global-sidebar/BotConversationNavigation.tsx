@@ -1,5 +1,5 @@
 import type { ProjectSpace } from "../../../shared/projectSpaces";
-import { normalizeWorkspacePathIdentity } from "../../../shared/workspacePath";
+import { workspacePathsEqual } from "../../../shared/workspacePath";
 import { isImeComposingEvent } from "@/utils/imeKeyboard";
 import CustomSelect from "@/components/CustomSelect";
 import {
@@ -30,6 +30,7 @@ import {
   groupBotConversations,
   projectBotConversations,
 } from "./botConversationProjection";
+import { projectConversationBotFilters, projectNavigationReadState } from "./botNavigationState";
 type RenderSessionMenu = (props: {
   session: SessionMetadata;
   open: boolean;
@@ -204,16 +205,22 @@ export default function BotConversationNavigation({
       }),
     [projects, agents, data.sessions, tabs, badges],
   );
-  const bots = useMemo(() => {
-    const catalog = new Map(
-      agents.map((bot) => [bot.id, { id: bot.id, name: bot.name }]),
-    );
-    for (const item of allConversations)
-      if (!catalog.has(item.bot.id)) catalog.set(item.bot.id, item.bot);
-    return [...catalog.values()];
-  }, [agents, allConversations]);
+  const bots = useMemo(
+    () => projectConversationBotFilters(allConversations, agents),
+    [agents, allConversations],
+  );
+  // Keep an explicit filter when its final row is archived/removed. The empty
+  // filtered view must not silently expand to everybody's conversations.
+  const selectedIdentity = filter.startsWith("bot/") ? filter.slice(4) : "";
+  const selectedBot = agents.find(bot => bot.id === selectedIdentity);
+  const selectedHistory = data.sessions.find(session => session.projectSpace?.botId === selectedIdentity)?.projectSpace;
+  const selectedName = selectedBot?.name ?? selectedHistory?.botName;
+  const botOptions = bots.map(bot => ({ value: `bot/${bot.id}`, label: t("botExperience.botFilterOption", { name: bot.name }) }));
+  if (selectedName && !bots.some(bot => bot.id === selectedIdentity)) {
+    botOptions.push({ value: filter, label: t("botExperience.botFilterOption", { name: selectedName }) });
+  }
   const activeFilter =
-    bots.some((bot) => `bot/${bot.id}` === filter) ||
+    botOptions.some((bot) => bot.value === filter) ||
     spaces.some((space) => `project/${space.id}` === filter)
       ? filter
       : "";
@@ -230,27 +237,15 @@ export default function BotConversationNavigation({
   );
   const groups = groupBotConversations(conversations);
   const currentId = activeTab?.view === "chat" ? activeTab.sessionId : null;
-  const states = projects
-    .filter(
-      (project) =>
-        (!selectedBotId || project.agentId === selectedBotId) &&
-        (!selectedSpaceId ||
-          spaces
-            .find((space) => space.id === selectedSpaceId)
-            ?.memberBotIds.includes(project.agentId ?? "")),
-    )
-    .flatMap((project) => {
-      const value = data.workspaceSessionStates.get(
-        normalizeWorkspacePathIdentity(project.path),
-      );
-      return value ? [value] : [];
-    });
-  const loading =
-    view === "conversations" &&
-    projects.length > 0 &&
-    (states.some((value) => value.isLoading) || data.isSessionsLoading);
-  const error =
-    states.find((value) => value.error)?.error || data.sessionsError;
+  const scopedProjects = projects.filter(project =>
+    (!selectedBotId && !selectedSpaceId) ||
+    (selectedBotId && project.agentId === selectedBotId) ||
+    (selectedSpaceId && spaces.find(space => space.id === selectedSpaceId)?.memberBotIds.includes(project.agentId ?? "")) ||
+    conversations.some(item => workspacePathsEqual(item.project.path, project.path)),
+  );
+  const readState = projectNavigationReadState(scopedProjects, data);
+  const loading = view === "conversations" && readState.loading;
+  const error = readState.failed.length > 0 || Boolean(readState.globalError);
   const list = (items: typeof conversations) =>
     items.map((item) => (
       <ConversationMenuRow
@@ -338,15 +333,12 @@ export default function BotConversationNavigation({
             className="min-w-0 flex-1"
             options={[
               { value: "", label: t("botExperience.allConversations") },
-              {
+              ...(botOptions.length ? [{
                 value: "bots-heading",
                 label: t("botExperience.myBots"),
                 isSeparator: true,
-              },
-              ...bots.map((bot) => ({
-                value: `bot/${bot.id}`,
-                label: t("botExperience.botFilterOption", { name: bot.name }),
-              })),
+              }] : []),
+              ...botOptions,
               ...(spaces.length
                 ? [
                     {
@@ -468,7 +460,7 @@ export default function BotConversationNavigation({
             role="status"
             className="px-3 py-3 text-xs text-[var(--ink-muted)]"
           >
-            {t("botExperience.loading")}
+            {t(conversations.length ? "botExperience.refreshing" : "botExperience.loading")}
           </p>
         )}
         {!loading &&
@@ -489,7 +481,10 @@ export default function BotConversationNavigation({
           )}
         {view === "conversations" && projects.length > 0 && error && (
           <div role="alert" className="px-3 py-2 text-xs text-[var(--warning)]">
-            <p>{t("botExperience.loadFailed")}</p>
+            <p>{t(conversations.length ? "botExperience.partialLoadFailed" : "botExperience.loadFailed")}</p>
+            {readState.failed.length > 0 && <ul className="mt-1 space-y-1">
+              {readState.failed.map(project => <li key={project.id} className="truncate" title={project.path}>{project.displayName || project.name}</li>)}
+            </ul>}
             <button
               type="button"
               onClick={() => data.refresh("sessions", { force: true })}

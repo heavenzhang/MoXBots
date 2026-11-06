@@ -112,6 +112,101 @@ function setup(
 }
 
 describe("Bot conversation sidebar usability", () => {
+  const openFilter = () => fireEvent.click(screen.getByRole('button', { name: i18n.t('app:botExperience.filterConversations') }));
+
+  it('offers only Bots with visible conversations, preserving their configured identities', () => {
+    setup([session('real'), session('archived', { agentDir: otherWorkspace.path, archived: true })]);
+    openFilter();
+    expect(screen.getByRole('button', { name: 'Bot · Mino' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Bot · Reader' })).toBeNull();
+    expect(screen.getByRole('button', { name: i18n.t('app:botExperience.newBot') })).toBeTruthy();
+  });
+
+  it('disambiguates same-name Bots and opens the original Session and workspace', () => {
+    const other = session('reader', { agentDir: otherWorkspace.path });
+    const { onOpenSession } = setup([session('mino'), other], {
+      agents: [bot, { ...secondBot, name: bot.name }],
+      projects: [workspace, { ...otherWorkspace, name: 'Research' }],
+    });
+    openFilter();
+    fireEvent.click(screen.getByRole('button', { name: 'Bot · Mino · Research' }));
+    expect(screen.queryByText('Subject mino')).toBeNull();
+    fireEvent.click(screen.getByText('Subject reader'));
+    expect(onOpenSession).toHaveBeenCalledWith(other, expect.objectContaining({ id: otherWorkspace.id }));
+  });
+
+  it('keeps two same-name frozen identities in the same workspace distinct', () => {
+    const old = session('old', { projectSpace: { ...fixed('A'), botId: 'former-bot' } });
+    const current = session('current', { projectSpace: fixed('B') });
+    const { onOpenSession } = setup([old, current]);
+    openFilter();
+    fireEvent.click(screen.getByRole('button', { name: 'Bot · Mino · /demo/product · former-bot' }));
+    expect(screen.queryByText('Subject current')).toBeNull();
+    fireEvent.click(screen.getByText('Subject old'));
+    expect(onOpenSession).toHaveBeenCalledWith(old, workspace);
+  });
+
+  it('does not expand a selected Bot to all conversations after its final row is archived', () => {
+    const current = session('last');
+    const other = session('other', { agentDir: otherWorkspace.path });
+    const { props, rerender } = setup([current, other]);
+    openFilter();
+    fireEvent.click(screen.getByRole('button', { name: 'Bot · Mino' }));
+    rerender(<BotConversationNavigation {...props} data={{ ...props.data, sessions: [{ ...current, archived: true }, other] }} />);
+    expect(screen.queryByText('Subject other')).toBeNull();
+    expect(screen.getByText(i18n.t('app:botExperience.noConversations'))).toBeTruthy();
+  });
+
+  it('settles passive workspace reads even when the unused full-index flag is still initially loading', () => {
+    setup([session('loaded')], { data: {
+      sessions: [session('loaded')], isSessionsLoading: true, sessionsError: null, refresh: vi.fn(),
+      workspaceSessionStates: new Map([workspace, otherWorkspace].map(project => [project.path, { isLoading: false, error: null }])),
+    } });
+    expect(screen.queryByText(i18n.t('app:botExperience.loading'))).toBeNull();
+    expect(screen.queryByText(i18n.t('app:botExperience.refreshing'))).toBeNull();
+    expect(screen.getByText('Subject loaded')).toBeTruthy();
+  });
+
+  it('keeps unrelated workspace failures and loading out of the selected Bot view', () => {
+    setup([session('loaded')], { data: {
+      sessions: [session('loaded')], isSessionsLoading: true, sessionsError: 'older global failure', refresh: vi.fn(),
+      workspaceSessionStates: new Map([
+        [workspace.path, { isLoading: false, error: null }],
+        [otherWorkspace.path, { isLoading: true, error: 'other workspace failure' }],
+      ]),
+    } });
+    openFilter();
+    fireEvent.click(screen.getByRole('button', { name: 'Bot · Mino' }));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.queryByRole('status')).toBeNull();
+  });
+
+  it('uses the frozen Bot workspace for loading even after its configured identity changes', () => {
+    setup([session('frozen', { projectSpace: fixed('A') })], {
+      agents: [secondBot], projects: [{ ...workspace, agentId: secondBot.id }],
+      data: {
+        sessions: [session('frozen', { projectSpace: fixed('A') })], isSessionsLoading: false, sessionsError: null, refresh: vi.fn(),
+        workspaceSessionStates: new Map([[workspace.path, { isLoading: true, error: null }]]),
+      },
+    });
+    openFilter();
+    fireEvent.click(screen.getByRole('button', { name: 'Bot · Mino' }));
+    expect(screen.getByText(i18n.t('app:botExperience.refreshing'))).toBeTruthy();
+    expect(screen.getByText('Subject frozen')).toBeTruthy();
+  });
+
+  it('distinguishes background updates from the first read without blocking cached rows', () => {
+    const { props, rerender } = setup([], { data: {
+      sessions: [], isSessionsLoading: true, sessionsError: null, refresh: vi.fn(),
+      workspaceSessionStates: new Map([[workspace.path, { isLoading: true, error: null }]]),
+    } });
+    expect(screen.getByText(i18n.t('app:botExperience.loading'))).toBeTruthy();
+    rerender(<BotConversationNavigation {...props} data={{ ...props.data, sessions: [session('cached')] }} />);
+    expect(screen.getByText(i18n.t('app:botExperience.refreshing'))).toBeTruthy();
+    expect(screen.queryByText(i18n.t('app:botExperience.loading'))).toBeNull();
+    expect(screen.getByText('Subject cached')).toBeTruthy();
+  });
+
   it("uses distinct conversation subjects as primary labels despite identical Bots and continuation messages", () => {
     const sessions = [session("release"), session("research")];
     const before = structuredClone(sessions);

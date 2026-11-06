@@ -2307,6 +2307,8 @@
     "startUncertain": "启动状态尚不能确认。请先核对会话和已有结果，再在原会话继续；不会自动重播。"
   },
   "botExperience": {
+    "refreshing": "正在更新会话…",
+    "partialLoadFailed": "部分会话未能更新，已加载的会话仍可使用。",
     "botFilterOption": "Bot · {{name}}",
     "projectFilterOption": "项目 · {{name}}",
     "filterConversations": "按 Bot 或项目筛选对话",

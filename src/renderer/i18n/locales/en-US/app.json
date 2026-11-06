@@ -2309,6 +2309,8 @@
     "startUncertain": "The start status is uncertain. Check this chat and existing results before continuing here. The request will not be replayed automatically."
   },
   "botExperience": {
+    "refreshing": "Updating conversations…",
+    "partialLoadFailed": "Some conversations could not be updated. Loaded conversations are still available.",
     "botFilterOption": "Bot · {{name}}",
     "projectFilterOption": "Project · {{name}}",
     "filterConversations": "Filter conversations by Bot or project",

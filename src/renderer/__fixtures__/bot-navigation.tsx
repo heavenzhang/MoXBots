@@ -22,17 +22,24 @@ const bots: AgentConfig[] = [
   },
   {
     id: "reader",
-    name: "资料助手",
+    name: "Mino",
     icon: "bot:moss",
     enabled: true,
     channels: [],
     permissionMode: "plan",
   },
+  {
+    id: "unused",
+    name: "尚无会话的 Bot",
+    enabled: true,
+    channels: [],
+    permissionMode: "plan",
+  },
 ];
-const workspaces: Project[] = bots.map((bot) => ({
+const workspaces: Project[] = bots.slice(0, 2).map((bot) => ({
   id: `workspace-${bot.id}`,
   agentId: bot.id,
-  name: bot.name,
+  name: bot.id === "mino" ? "产品工作区" : "研究工作区",
   path: `/demo/${bot.id}`,
   providerId: null,
   permissionMode: null,
@@ -98,6 +105,7 @@ function Fixture() {
     [error, setError] = useState(false),
     [loading, setLoading] = useState(false),
     [working, setWorking] = useState(false);
+  const [globalInitial, setGlobalInitial] = useState(true);
   const [selectedId, setSelectedId] = useState(""),
     [result, setResult] = useState("请选择一段会话");
   return (
@@ -109,6 +117,10 @@ function Fixture() {
         <header className="flex shrink-0 flex-wrap items-center gap-3 border-b border-[var(--line-subtle)] p-3 text-xs">
           <strong>会话导航 · 产品组件 / 合成数据</strong>
           <button onClick={() => setLight((v) => !v)}>切换主题</button>
+          <label>
+            <input type="checkbox" checked={globalInitial} onChange={e => setGlobalInitial(e.target.checked)} />
+            全局尚未读取
+          </label>
           <label>
             <input
               type="checkbox"
@@ -172,9 +184,12 @@ function Fixture() {
                 spaces={empty ? [] : spaces}
                 data={{
                   sessions: empty ? [] : sessions,
-                  isSessionsLoading: loading,
-                  sessionsError: error ? "fixture only" : null,
-                  workspaceSessionStates: new Map(),
+                  isSessionsLoading: globalInitial,
+                  sessionsError: null,
+                  workspaceSessionStates: new Map(workspaces.map(project => [project.path, {
+                    isLoading: loading,
+                    error: error && project.agentId === "reader" ? "fixture only" : null,
+                  }])),
                   refresh: () => setError(false),
                 }}
                 tabs={
