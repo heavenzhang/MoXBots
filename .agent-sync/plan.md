@@ -1387,3 +1387,15 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exact intent dd972c3, unknown23d98cdd, reading1921e850 and remediation9f818331 (including e2e025c) atop remote main4ceeb2d21, preserving PR257 cleanup and PR258 revision/human-response fixes. Reserve0.5.43/build543.4 for a new immutable artifact; frozen543.3 and published542.6 remain unchanged. Combined checks, exactCI/currentMac ARM, remote main, signed artifact, safe maintenance install and each actual native acceptance remain separate. Original report owner alone currently runs authorized business; no Root UI/restart while active. No unknown replay/ledger edits/permission expansion/cloud/mobile/website deployment or unrelated Bot feature batching. Root record codex-release-intent-recovery-0543-20261107-82a4ca2f; private controls work/intent-recovery-integration-20261107/owner.
 
 R2真实验收补充：543.3原群报告已在同execution完成5项验收；真实502暴露turn_error提示笼统。本分支经原native terminal传递有界HTTP状态，原execution持久保存闭集只读failure说明，UI显示原因/下一步，保持原code/status及未知保护不变。10文件403回归和实际组件通过，下一批由同一桌面owner集成安装；不将543.3原报告成功视为追加改动已安装。
+## MB-BOT-NAV-20261102 GROUP-01 · 稳定 Bot 群组基础合同
+
+codex/bot-groups-20261107 基于main4ceeb2d21；实现G01-A/B：成员引用已有Bot稳定ID并由项目/工作区权威名册解析，显式groupId+botId+revision，原Session task ledger CAS和原Tab/Rust签名配置POST；同名/停用/冲突/未知结果/旧私聊边界保留。110项回归、真实临时SessionStore/路由、实际Rust签名模块8项及Rust→Node验签通过，类型/lint/分类/依赖边界通过。记录dev-docs/bot-groups-20261107/PLAN.md、acceptance.md。
+
+G02/G03/HANDOFF实际成员UI、独立Bot真实收发与交接尚未完成；不将配置API或测试夹具作为群功能交付。旧group-phase1未提交树保持原样。唯一desktop/macOS-arm64/updater/sharedCI/main owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，阶段源交其审阅与统一集成；开发未开PR、触发共享CI、正式构建/安装或改动冻结修复批。
+
+
+## MB-BOT-NAV-20261102 GROUP-01 · G02 成员界面与原观察者
+
+codex/bot-group-ui-20261107沿已交接G01 producer86d89e69继续：实际成员编辑、显式单一接收者、原Tab签名配置客户端和SessionBotGroupEditor，原Chat task observer共享群投影，无第二轮询。冲突保留草稿、未知先核对、同命令显式重试、原Session/runtime/epoch隔离已实现，48项及WebKit/类型/lint/renderer build本地验证。详见dev-docs/bot-group-ui-20261107/PLAN.md与acceptance.md。
+
+G02实际Chat入口依赖G03真实独立Bot收发，尚未开放；G03/G04交接/真实业务/主干和发行仍未完成。阶段源交原desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4审阅和统一交付，不改冻结修复包或各端版本，不触发共享CI。

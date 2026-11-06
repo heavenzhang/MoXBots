@@ -2,6 +2,8 @@ import { z } from 'zod';
 import { getSessionEngine } from '../session-engine';
 import { actOnSessionPlan, readSessionPlanSupport, mutateSessionPlan, mutateSessionTasks, readSessionTasks } from '../session-engine/task-orchestration';
 import { verifySessionUserAction } from '../session-engine/user-action-proof';
+import { botGroupConfigurationSchema } from '../../shared/botGroup';
+import { configureSessionBotGroup } from '../session-engine/bot-group';
 import { executionAssessmentSchema } from "../../shared/sessionExecution";
 import {
   requestSessionExecutionReview,
@@ -107,6 +109,17 @@ export async function handleSessionTaskCommand(payload: unknown,
 }
 
 export async function handleSessionTaskRoute(pathname: string, request: Request): Promise<Response | null> {
+  if (pathname === '/api/session/task-orchestration/bot-group' && request.method === 'POST') {
+    try {
+      const body = await request.text();
+      const parsed = botGroupConfigurationSchema.safeParse(JSON.parse(body));
+      if (!parsed.success) throw new Error('BOT_GROUP_INVALID_CONFIGURATION');
+      if (!verifySessionUserAction(request, parsed.data.sessionId, body)) throw new Error('BOT_GROUP_NATIVE_USER_ACTION_REQUIRED');
+      return Response.json({ success: true, ...await configureSessionBotGroup(getSessionEngine(), parsed.data) });
+    } catch (error) {
+      return Response.json({ success: false, error: error instanceof Error ? error.message : 'BOT_GROUP_UNAVAILABLE' }, { status: 409 });
+    }
+  }
   if (pathname === '/api/session/task-orchestration/plan' && request.method === 'POST') {
     try {
       const body = await request.text();

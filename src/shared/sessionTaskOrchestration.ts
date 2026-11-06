@@ -25,6 +25,8 @@ export interface SessionTaskRecord { id: string; title: string; blockedBy: strin
 export interface SessionTaskReview { taskId: string; attemptId: string; decision: 'accept' | 'reject'; evidence: string; rootToolUseId?: string }
 export interface SessionTaskLedger {
   revision: number;
+  /** Stable Bot membership; persisted by this Session's existing metadata CAS. */
+  botGroup?: import('./botGroup').BotGroup;
   recoveryFollowups?: import('./recoveryReconciliation').RecoveryFollowup[];
   /** Original human ingress and bounded ordinary execution, owned by this ledger. */
   executionInputs?: {

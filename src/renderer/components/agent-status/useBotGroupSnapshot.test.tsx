@@ -1,0 +1,61 @@
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { emptyTaskLedger } from '../../../shared/sessionTaskOrchestration';
+import { groupCommand, groupFixture } from '../../../test/fixtures/botGroup';
+import { SessionTaskOrchestrationProvider, useSessionTaskOrchestration, useSessionTaskOrchestrationContext } from './useSessionTaskOrchestration';
+const tab = vi.hoisted(() => ({ sessionId: 's1', isSessionLoading: false, sessionRuntime: 'builtin', sessionRuntimeSessionId: 's1', sessionRuntimeSource: null, apiGet: vi.fn(), apiPost: vi.fn() }));
+vi.mock('@/context/TabContext', () => ({ useTabStateOptional: () => tab }));
+const plan: [] = [];
+const snapshot = () => ({ success: true, sessionId: 's1', ledger: { ...emptyTaskLedger(), revision: 3, botGroup: groupFixture() } });
+beforeEach(() => { vi.clearAllMocks(); tab.sessionId = 's1'; tab.sessionRuntime = 'builtin'; tab.isSessionLoading = false; tab.apiGet.mockResolvedValue(snapshot()); });
+describe('group controls share the original Chat observer', () => {
+  it('shares a single observer, preserves other ledger fields and reads group changes from original SSE', async () => {
+    const { result } = renderHook(() => ({ shared: useSessionTaskOrchestrationContext(), first: useSessionTaskOrchestration(plan), second: useSessionTaskOrchestration(plan) }), { wrapper: SessionTaskOrchestrationProvider });
+    await waitFor(() => expect(result.current.shared?.botGroup?.title).toBe('产品协作'));
+    expect(tab.apiGet).toHaveBeenCalledOnce();
+    expect(result.current.first).toBe(result.current.second);
+    act(() => window.dispatchEvent(new CustomEvent('session-task-orchestration', { detail: { sessionId: 's1', ledger: { ...emptyTaskLedger(), revision: 4, botGroup: groupFixture({ revision: 2, title: '最新群组' }) } } })));
+    expect(result.current.first.botGroup?.title).toBe('最新群组');
+    expect(tab.apiPost).not.toHaveBeenCalled();
+  });
+  it('rejects both a late save and the original callback after A/B/A without silently rebinding', async () => {
+    let resolve!: (value: unknown) => void;
+    tab.apiPost.mockImplementation(() => new Promise(done => { resolve = done; }));
+    const { result, rerender } = renderHook(() => useSessionTaskOrchestration(plan));
+    await waitFor(() => expect(result.current.botGroupUnknown).toBe(false));
+    const oldSave = result.current.saveBotGroup;
+    const pending = oldSave(groupCommand).catch(error => error);
+    tab.sessionId = 's2'; rerender();
+    tab.apiGet.mockImplementation(() => new Promise(() => {}));
+    tab.sessionId = 's1'; rerender();
+    expect(result.current.botGroup).toBeUndefined(); expect(result.current.botGroupUnknown).toBe(true);
+    await act(async () => resolve({ success: true, sessionId: 's1', group: groupFixture() }));
+    expect(await pending).toMatchObject({ disposition: 'scope-changed' });
+    await expect(oldSave(groupCommand)).rejects.toMatchObject({ disposition: 'scope-changed' });
+    expect(tab.apiPost).toHaveBeenCalledOnce();
+  });
+  it('rejects a retained callback after runtime changes or unmount and sends through the exact current Tab', async () => {
+    tab.apiPost.mockResolvedValue({ success: true, sessionId: 's1', group: groupFixture() });
+    const { result, rerender, unmount } = renderHook(() => useSessionTaskOrchestration(plan));
+    await waitFor(() => expect(result.current.botGroupUnknown).toBe(false));
+    await act(async () => { await result.current.saveBotGroup(groupCommand); });
+    expect(tab.apiPost).toHaveBeenCalledExactlyOnceWith('/api/session/task-orchestration/bot-group', groupCommand);
+    const old = result.current.saveBotGroup;
+    tab.sessionRuntime = 'codex'; rerender();
+    await expect(old(groupCommand)).rejects.toMatchObject({ disposition: 'scope-changed' });
+    const last = result.current.saveBotGroup; unmount();
+    await expect(last(groupCommand)).rejects.toMatchObject({ disposition: 'scope-changed' });
+    expect(tab.apiPost).toHaveBeenCalledOnce();
+  });
+  it('marks invalid or disconnected group observations unknown instead of inventing an empty group', async () => {
+    tab.apiGet.mockResolvedValue({ ...snapshot(), ledger: { ...emptyTaskLedger(), revision: 1, botGroup: { title: 'malformed' } } });
+    const { result } = renderHook(() => useSessionTaskOrchestration(plan));
+    await act(async () => {});
+    expect(result.current.botGroup).toBeUndefined(); expect(result.current.botGroupUnknown).toBe(true);
+    tab.apiGet.mockResolvedValue(snapshot()); act(() => result.current.retry());
+    await waitFor(() => expect(result.current.botGroupUnknown).toBe(false));
+    tab.apiGet.mockRejectedValue(new Error('offline')); act(() => result.current.retry());
+    await waitFor(() => expect(result.current.botGroupUnknown).toBe(true));
+    expect(result.current.botGroup?.title).toBe('产品协作');
+  });
+});
