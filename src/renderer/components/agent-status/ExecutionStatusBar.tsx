@@ -270,7 +270,7 @@ export default memo(function ExecutionStatusBar({
               trigger?.focus();
             }
           }}
-          className="mb-2 min-w-0 rounded-lg border border-[var(--line-subtle)] bg-[var(--paper-elevated)] text-[var(--ink)]"
+          className="mb-2 min-w-0 rounded-lg bg-[var(--paper-elevated)] text-[var(--ink)]"
         >
           <div data-execution-summary className="flex min-h-8 min-w-0 items-center gap-1 px-1">
             <div

@@ -1332,3 +1332,11 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 - 旧Message DOM2/2 RED；修复71DOM、type/lint/分类、独立源码审查通过。真实MessageList/Virtuoso WebKit旧码1569→113px反事实；WebKit/Chromium修复3次间隙高度/滚动变化0px、手动阅读及真实终态展开通过。见dev-docs/stream-stability-20261106/acceptance.md。
 - desktop/macOS-arm64/updater/sharedCI/main唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发共享CI或正式构建。冻结542.6不修改，原owner接收精确SHA并在下一未冻结批集成、发布和原会话复验；源码/离线与main/正式/真实验收分别记录。
 - 原会话执行失败另有模型命令schema漏参/任务版本冲突与native证据epoch检查；不通过UI折叠隐藏，不放宽门禁或重放原unknown操作。私有诊断只留本地工作区。
+
+
+
+## MB-SIMPLE-UX-20261105 — 简洁界面首批（2026-11-06）
+
+用户确认四场景示意并要求逐步实现。独立codex/simple-ux-20261105基于main39b344765：UX-01工作区默认收起并按workspace保存主动显隐；窄窗启动不恢复overlay；临时文件定位沿原disclosure不改默认。UX-02去摘要外围框，UX-05工具图标/自动模型紧凑且完整名称可键盘查看，权限常显。UX-03/04/06复用已有恢复卡/安全核对/草稿/滚动/IME/排队，228本地回归、8主题、类型/定向lint/分类和moxbot renderer构建通过。真实页面被Work浏览器设置禁用，原生/main/CI/正式发行未冒称通过。稳定清单与验收dev-docs/simple-ux-20261105/{PLAN,acceptance}.md，任务.agent-sync/tasks/codex-simple-ux-20261105-19cd5d6a.md。
+
+部署单元desktop/macOS-arm64/updater/sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；开发只保存精确源码与证据后提交下一未冻结批请求，不另触发PR/共享CI、不分配版本、不覆盖542.1、不重启日常客户端。无其他单元或迁移依赖；UI与源审门禁另列，G-02继续待owner统一处理。

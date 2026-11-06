@@ -66,10 +66,23 @@ beforeEach(async () => {
 });
 
 describe('SimpleChatInput 「自动」 model row', () => {
-  it('auto Sessions show 「自动 · 模型」 and the auto row as the selection', () => {
+  it('keeps the compact tools entry named and opens its original controls', () => {
+    renderInput();
+    const tools = screen.getByRole('button', { name: '工具' });
+    expect(tools).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.click(tools);
+    expect(tools).toHaveAttribute('aria-expanded', 'true');
+    expect(screen.getByText('工具 (在此对话中启用)')).toBeVisible();
+  });
+  it('keeps auto compact while exposing the effective model to keyboard and assistive users', () => {
     renderInput({ modelMode: 'auto', onAutoModelSelect: vi.fn(), onBuiltinModelSelect: vi.fn() });
-    expect(screen.getByTitle('切换模型')).toHaveTextContent('自动 · Sonnet 5.5');
+    expect(screen.getByTitle('切换模型')).toHaveTextContent(/^自动$/);
+    expect(screen.getByTitle('切换模型')).toHaveAccessibleName('切换模型 · 自动 · Sonnet 5.5');
+    expect(screen.getByTitle('切换模型')).toHaveAttribute('aria-expanded', 'false');
+    fireEvent.focus(screen.getByTitle('切换模型'));
+    expect(screen.getByText('自动 · Sonnet 5.5')).toBeVisible();
     fireEvent.click(screen.getByTitle('切换模型'));
+    expect(screen.getByTitle('切换模型')).toHaveAttribute('aria-expanded', 'true');
     const auto = document.querySelector('[data-auto-model-row]')!;
     expect(auto).toHaveAttribute('aria-pressed', 'true');
     expect(auto).toHaveAttribute('data-selected-model-row', '');

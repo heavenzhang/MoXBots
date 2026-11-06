@@ -1,5 +1,26 @@
 export type WorkspacePanelMode = 'inline' | 'overlay';
 
+const WORKSPACE_PANEL_PREFERENCE_PREFIX = 'moxbots:workspace-panel:';
+
+/** Window-local presentation only; never changes Bot/workspace configuration. */
+export function readWorkspacePanelPreference(workspacePath: string, mode: WorkspacePanelMode): boolean {
+  if (mode === 'overlay') return false;
+  try {
+    const scoped = localStorage.getItem(WORKSPACE_PANEL_PREFERENCE_PREFIX + workspacePath);
+    // Current main already saved a window-level choice. Honor it until this
+    // workspace has its own explicit choice; do not reset a user's preference.
+    return (scoped ?? localStorage.getItem('moxbots.chat.workspace-panel')) === 'open';
+  } catch {
+    return false;
+  }
+}
+
+export function rememberWorkspacePanelPreference(workspacePath: string, visible: boolean): void {
+  try {
+    localStorage.setItem(WORKSPACE_PANEL_PREFERENCE_PREFIX + workspacePath, visible ? 'open' : 'closed');
+  } catch { /* A denied UI preference must never prevent opening or closing files. */ }
+}
+
 export type WorkspacePanelMotion = 'expand' | 'collapse' | null;
 
 export interface WorkspacePanelDisclosureState {
