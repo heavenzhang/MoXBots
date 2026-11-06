@@ -30,3 +30,11 @@ Native local test inputs: the signed pinned CLIProxy input was prepared through 
 2. Existing desktop/sharedCI/main owner 01a12bc2-907a-7702-b6dd-788225c5dfe4 reviews, coordinates CI/main and assigns the next unfrozen desktop package. No competing build/release or version allocation by the producer.
 3. On that exact native candidate: open management, select two registered controlled Bots, edit/reopen definitions and memory, toggle/install a local test skill only into the selected Bot, confirm shared scope, preserve unsaved drafts, run read-only checks, and open formal work without auto-sending.
 4. Verify native runtime/version/commit correspondence and collect real application screenshots. Production and real task execution acceptance remain separate.
+
+## Real Sidecar A/B integration supplement
+
+A real Global Sidecar was started in a temporary HOME, with process workspace A and explicitly selected registered Bot B. The child blocked all non-loopback transport before startup and did not initialize a model agent. Upload, folder import, skill creation, command creation and persisted capability overrides now stay in B; missing and unregistered destinations are rejected without writing A. The new seven-test HTTP suite and the existing required/shared-skill HTTP contract pass (8 integration tests total), plus the target policy's 11 tests.
+
+This test first exposed 3 failing command-create cases in the earlier candidate: the handler ignored the supplied workspace. That candidate was explicitly withdrawn from owner freeze. The fix applies the same registered workspace policy to skill/command creation, and command file creation is exclusive. The final candidate supersedes that earlier source and must be used for CI/native packaging.
+
+These are real process/file/HTTP integration results in isolated data, not native UI or production acceptance.

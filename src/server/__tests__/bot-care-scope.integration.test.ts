@@ -150,6 +150,14 @@ describe('Bot care HTTP workspace scope (real Global Sidecar, isolated files)', 
     expect(existsSync(join(home, '.myagents/skills/scope-import'))).toBe(false);
   });
 
+  it('creates a new skill only in explicit Bot B', async () => {
+    const response = await post('/api/skill/create', { name: 'scope-created', scope: 'project', agentDir: b });
+    expect(response.status, await response.text()).toBe(200);
+    expect(existsSync(join(b, '.claude/skills/scope-created/SKILL.md'))).toBe(true);
+    expect(existsSync(join(a, '.claude/skills/scope-created'))).toBe(false);
+    expect(existsSync(join(home, '.myagents/skills/scope-created'))).toBe(false);
+  });
+
   it('creates a project command only in explicit Bot B', async () => {
     const response = await post('/api/command-item/create', { name: 'scope-command', scope: 'project', agentDir: b });
     expect.soft(response.status, await response.text()).toBe(200);
@@ -165,10 +173,12 @@ describe('Bot care HTTP workspace scope (real Global Sidecar, isolated files)', 
       await post('/api/skill/upload', { filename: `${upload}.md`, content: Buffer.from(skill(upload)).toString('base64'), scope: 'project', ...destination }),
       await post('/api/skill/import-folder', { folderPath: source, scope: 'project', ...destination }),
       await post('/api/command-item/create', { name: `invalid-command-${target}`, scope: 'project', ...destination }),
+      await post('/api/skill/create', { name: `invalid-created-${target}`, scope: 'project', ...destination }),
     ];
     for (const response of responses) expect.soft([400, 409], await response.text()).toContain(response.status);
     for (const workspace of [a, b, unknown]) {
       expect.soft(existsSync(join(workspace, '.claude/skills', upload))).toBe(false);
+      expect.soft(existsSync(join(workspace, '.claude/skills', `invalid-created-${target}`))).toBe(false);
       expect.soft(existsSync(join(workspace, '.claude/commands', `invalid-command-${target}.md`))).toBe(false);
     }
     for (const workspace of [a, unknown]) expect.soft(existsSync(join(workspace, '.claude/skills/scope-import'))).toBe(false);

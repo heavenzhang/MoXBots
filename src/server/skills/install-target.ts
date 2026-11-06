@@ -10,6 +10,7 @@ export function resolveSkillInstallTarget(options: {
   sidecarRole: string;
   currentAgentDir: string;
   userSkillsDir: string;
+  projectDirectory?: 'skills' | 'commands';
   validateWorkspace: (path: string) => { valid: boolean };
   isRegisteredWorkspace: (path: string) => boolean;
 }): string {
@@ -46,5 +47,5 @@ export function resolveSkillInstallTarget(options: {
   if (explicit && !options.isRegisteredWorkspace(resolve(workspace))) {
     throw new SkillInstallError('Workspace is not registered', 409);
   }
-  return join(workspace, '.claude', 'skills');
+  return join(workspace, '.claude', options.projectDirectory ?? 'skills');
 }

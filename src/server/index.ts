@@ -6864,14 +6864,15 @@ async function main() {
         };
       };
 
-      const getSkillInstallTarget = (payload: { scope: unknown; agentDir?: unknown }) =>
+      const getSkillInstallTarget = (payload: { scope: unknown; agentDir?: unknown }, projectDirectory: 'skills' | 'commands' = 'skills') =>
         resolveSkillInstallTarget({
           ...payload,
           sidecarRole,
           currentAgentDir: sidecarRole === 'session'
             ? getSessionEngine().getCurrentSessionContext().workspacePath ?? currentAgentDir
             : currentAgentDir,
-          userSkillsDir: userSkillsBaseDir,
+          userSkillsDir: projectDirectory === 'commands' ? userCommandsBaseDir : userSkillsBaseDir,
+          projectDirectory,
           validateWorkspace: isValidAgentDir,
           isRegisteredWorkspace: (path) => !!findProjectAgentByWorkspacePath(path),
         });
@@ -7760,13 +7761,7 @@ async function main() {
 
           // Sanitize name for folder (supports Unicode)
           const folderName = sanitizeFolderName(payload.name);
-          // Use explicit agentDir if provided for project scope
-          const { skillsDir } = getProjectBaseDirs(payload.agentDir || null);
-          if (payload.scope === 'project' && !skillsDir) {
-            return jsonResponse({ success: false, error: 'Workspace is unavailable' }, 409);
-          }
-          const baseDir =
-            payload.scope === 'user' ? userSkillsBaseDir : skillsDir;
+          const baseDir = getSkillInstallTarget(payload);
           const skillDir = join(baseDir, folderName);
 
           if (existsSync(skillDir)) {
@@ -7809,7 +7804,7 @@ async function main() {
                   ? error.message
                   : 'Failed to create skill',
             },
-            500,
+            error instanceof SkillInstallError ? error.statusCode : 500,
           );
         }
       }
@@ -9401,6 +9396,7 @@ async function main() {
             name: string;
             scope: 'user' | 'project';
             description?: string;
+            agentDir?: unknown;
           };
 
           if (!payload.name) {
@@ -9412,10 +9408,7 @@ async function main() {
 
           // Sanitize name for filename (supports Unicode characters like Chinese)
           const fileName = sanitizeFolderName(payload.name);
-          const baseDir =
-            payload.scope === 'user'
-              ? userCommandsBaseDir
-              : projectCommandsBaseDir;
+          const baseDir = getSkillInstallTarget(payload, 'commands');
 
           // Ensure directory exists
           if (!existsSync(baseDir)) {
@@ -9439,7 +9432,7 @@ async function main() {
           const body = `在这里编写指令的详细内容...`;
           const content = serializeCommandContent(frontmatter, body);
 
-          writeFileSync(cmdPath, content, 'utf-8');
+          writeFileSync(cmdPath, content, { encoding: 'utf-8', flag: 'wx' });
 
           // New user command — sync symlink into project so SDK can discover it
           if (payload.scope === 'user' && agentDir)
@@ -9455,7 +9448,7 @@ async function main() {
                   ? error.message
                   : 'Failed to create command',
             },
-            500,
+            error instanceof SkillInstallError ? error.statusCode : 500,
           );
         }
       }
