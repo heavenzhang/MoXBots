@@ -117,6 +117,8 @@ export interface TabState {
     sessionMeta: SessionMetadata | null;
 
     // Agent info
+    /** Opaque current backend owner revision; refresh hint, never execution authority. */
+    recoveryReviewRevision?: string;
     systemInitInfo: SystemInitInfo | null;
     mcpEffectiveSnapshot: McpEffectiveSnapshot | null;
     /**

@@ -7230,12 +7230,23 @@ function parseSystemStatus(message: unknown): {
   };
 }
 
+/** Read refresh identity only; every inspect/write retains the existing owner checks. */
+export function getBuiltinRecoveryReviewRevision(): string | undefined {
+  try {
+    const owner = recoveryReviewOwner();
+    return `${owner.reviewAuthority}:${owner.epoch}:${owner.queryGeneration}`;
+  } catch {
+    return undefined;
+  }
+}
+
 function broadcastSessionActivity(): void {
   broadcast('chat:status', {
     sessionId,
     sessionState,
     hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(),
     hasNativeWork: hasQueryNativeWork(),
+    recoveryReviewRevision: getBuiltinRecoveryReviewRevision(),
   });
 }
 
@@ -13353,6 +13364,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           return;
         }
         setSdkControlReady(true);
+        // A restored idle pre-warm emits no system-init or state transition.
+        // Notify the existing Tab status stream so a premature read can refresh.
+        broadcastSessionActivity();
         const normalizedSlashCommands = normalizeSdkSlashCommands(initResult?.commands);
         const slashCommands = normalizedSlashCommands
           ? filterSlashCommandsForCapabilities(normalizedSlashCommands, launchCapabilitySnapshot)
@@ -15442,7 +15456,11 @@ async function* messageGenerator(
       }
       traceBuiltinInputProgress('terminal-ready', inputTrace);
       // 等待队列中的消息（事件驱动，无轮询）
-      item = await waitForMessage();
+      const waitingForMessage = waitForMessage();
+      // The waiter can be installed after the control plane becomes ready.
+      // Reading readiness never wakes this waiter or admits a user operation.
+      if (hasCurrentQueryMessageResolver() && lifecycleState.sdkControlReady) broadcastSessionActivity();
+      item = await waitingForMessage;
     }
     if (!item) {
       console.log('[messageGenerator] Received null — exiting (abort or session end)');

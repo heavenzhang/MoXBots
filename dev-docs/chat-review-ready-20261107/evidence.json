@@ -1,0 +1,20 @@
+{
+  "task": "CHAT08-COLD",
+  "base": "a650939d2c38b8dc04750e282b159ddaac8ea346",
+  "red": "current Session readiness event leaves inspect at1 instead of2",
+  "domTests": 168,
+  "integrationTests": 20,
+  "typecheck": "PASS",
+  "lint": "PASS",
+  "classification": "PASS",
+  "nativeAccepted": false,
+  "logsSHA256": {
+    "red": "d4027c25987e586fb5b12b2acccb33b3cf6643a5eb2f0877237f8014d2abc319",
+    "green": "aa9648017dfe123521bfef3367bfce36cdf03c7c903e01b93d79bf3ceb995230",
+    "dom": "b2ebb428dd218e062b4ebb795f23d6bd16ccdb53e5be7481b218601c0084f68e",
+    "integration": "800942dd364d399f86d76a01d9b6653f4a365f785769d175cf80a16fa450cc39",
+    "types": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "lint": "4b26e86573abb5abbed064058ad9ba1b377a4eadbd38d84469a6bcecf2160deb",
+    "classification": "bd606a2aa47962bf582d7eb81a87a0f7f8c16b11ea2f5162d055c78fcc7573dc"
+  }
+}
