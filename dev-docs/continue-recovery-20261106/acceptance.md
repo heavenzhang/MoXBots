@@ -11,7 +11,7 @@
 
 ## Verification
 
-7 个目标测试文件 224 项通过，包括真实生产 admission / queue generator 的合成 SDK 联调、DOM 折叠显示、压缩祖先与 off-chain/foreign/duplicate/超时反例。补充 legacy 保留、容量检查及真实 Store 冷重载回归 3 文件 66 项通过（部分重叠）；合计 8 个不同文件 238 项通过。类型、改动 lint、测试分类通过；依赖检查 0 error、20 项基线 orphan warning。
+7 个目标测试文件 224 项通过，包括真实生产 admission / queue generator 的合成 SDK 联调、DOM 折叠显示、压缩祖先与 off-chain/foreign/duplicate/超时反例。补充 legacy 保留、容量检查及真实 Store 冷重载回归 3 文件 66 项通过（部分重叠）；合计 8 个不同文件 241 项通过。类型、改动 lint、测试分类通过；依赖检查 0 error、20 项基线 orphan warning。
 
 真实会话历史仅在内存中复核：选定历史已压缩，沿原生 logical parent 找到原错误回执，精确匹配 exit 128；不写生产文件、不产生工具调用。原会话名称、路径、工具参数、原始日志和回执留在本机私有证据，不上传 Git。
 
@@ -30,3 +30,5 @@
 - 补充通过真实 production recovery owner + SessionStore 隔离联调：冷启动同一 provider、压缩历史失败128核对、持久执行事实修复；保留 legacy unknown，无模型输入或上游请求。完整 stream-continuation 文件17项通过，类型与lint通过。
 
 - 最终审查保留主动取消语义：dispatch_canceled 仍发送 queue:cancelled，不新增 chat:agent-error；真实系统拦截继续显示原因。17项生产队列联调与类型/lint复核通过。
+
+- 安装前补审发现并修复描述型暂停原因回归：blocked/needs_user 把自然语言 summary 直接存作 reason，不能用未知枚举兜底遮盖。2个反例先在旧显示代码失败；修正后两文件DOM通过，并新增不使用旧accept摘要的反例。已知reason code保持最高优先级；仅reason与当前summary完全一致时展示该说明。后端与原生恢复逻辑没有变化。

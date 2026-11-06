@@ -96,15 +96,20 @@ export function useSessionExecutionPresentation({
         ).size
       : 0;
   const summary = currentExecution?.intent.objective ?? t(`${root}.request`);
+  const reason = currentExecution?.reason;
+  const reasonKey = reason ? reasonKeys[reason] : undefined;
+  const assessmentSummary = currentExecution?.assessment?.summary;
   const reasonText =
     currentExecution?.phase === 'incomplete' && currentExecution.reason === 'turn_error'
       && (currentExecution.reviewReceiptFailures ?? 0) >= EXECUTION_LIMITS.maxReviewReceiptFailures
       ? t(`${root}.reasons.reviewReceiptUnconfirmed`)
-      : currentExecution?.reason
-      ? t(
-          `${root}.reasons.${reasonKeys[currentExecution.reason] ?? "unconfirmed"}`,
-        )
-      : currentExecution?.assessment?.summary;
+      : reasonKey
+        ? t(`${root}.reasons.${reasonKey}`)
+        : reason
+          // The execution owner stores a blocked/needs_user explanation as its
+          // reason. Preserve that exact explanation, never a stale accept text.
+          ? reason === assessmentSummary ? assessmentSummary : t(`${root}.reasons.unconfirmed`)
+          : assessmentSummary;
 
   return {
     currentExecution,
