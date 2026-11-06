@@ -8,6 +8,7 @@ import {
 } from '../utils/agent-workspace-identity';
 import { getSessionMetadata } from '../SessionStore';
 import { deriveCallerInboxLabel } from './admin-handler';
+import { compileProjectSpaceHandoffSnapshot } from '../../shared/projectSpaces';
 
 export interface AdminSessionStartRequest extends Record<string, unknown> {
   agentId?: unknown;
@@ -58,6 +59,9 @@ const FORBIDDEN_OVERRIDE_FIELDS = [
   'mcpEnabledServers',
   'enabledPluginIds',
   'enabledOfficialToolIds',
+  'inheritProject',
+  'projectSpace',
+  'projectSpaceSelection',
 ] as const;
 
 export async function handleAdminSessionStart(
@@ -148,6 +152,19 @@ export async function handleAdminSessionStart(
     };
   }
 
+  const source = sourceKind === 'internal-session' ? getSessionMetadata(callerSessionId) : undefined;
+  const inheritProject = source?.projectSpace !== undefined;
+  if (inheritProject) {
+    try {
+      if (source.archived || source.materializationState === 'prepared') throw new Error('Source project conversation is unavailable');
+      compileProjectSpaceHandoffSnapshot({ source: source.projectSpace, sourceWorkspacePath: source.agentDir,
+        targetBotId: agentId, workspacePath: identity.workspacePath, projectSpaces: registry.config.projectSpaces,
+        bots: registry.config.agents ?? [], workspaces: registry.projects, capturedAt: new Date().toISOString() });
+    } catch (error) {
+      return { status: 409, response: { accepted: false, agentId,
+        error: { code: 'project_handoff_rejected', message: error instanceof Error ? error.message : String(error) } } };
+    }
+  }
   const managementPort = process.env.MYAGENTS_MANAGEMENT_PORT;
   if (!managementPort) {
     return {
@@ -184,6 +201,7 @@ export async function handleAdminSessionStart(
             : { fromLabel: 'External CLI' }),
           prompt,
           replyBack,
+          inheritProject,
         }),
       },
       // Rust owns Sidecar startup plus target dispatch acknowledgement. Keep

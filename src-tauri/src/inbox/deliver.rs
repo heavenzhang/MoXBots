@@ -80,6 +80,10 @@ pub struct FreshSessionStartRequest {
     pub from_label: String,
     pub prompt: String,
     pub reply_back: bool,
+    /// Local Admin derives this from the caller's persisted project scope.
+    /// Network and external CLI callers never inherit a local source project.
+    #[serde(default)]
+    pub inherit_project: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -210,6 +214,7 @@ async fn http_post_fresh_start(
     port: u16,
     agent_id: &str,
     message: &PendingInboxMessage,
+    inherit_project: bool,
 ) -> Result<FreshStartTargetResponse, String> {
     let url = format!("http://127.0.0.1:{}/api/inbox/start", port);
     let client = crate::local_http::json_client(Duration::from_secs(30));
@@ -221,7 +226,8 @@ async fn http_post_fresh_start(
         )
         .json(&serde_json::json!({
             "agentId": agent_id,
-            "message": message
+            "message": message,
+            "inheritProject": inherit_project
         }))
         .send()
         .await
@@ -330,7 +336,13 @@ impl PreparedFreshSession {
     }
     async fn complete_admission(mut self, app_handle: &AppHandle) -> FreshSessionStartOutcome {
         let outcome = |status: &str, reason: Option<String>| self.outcome(status, reason);
-        let target = http_post_fresh_start(self.port, &self.request.agent_id, &self.message).await;
+        let target = http_post_fresh_start(
+            self.port,
+            &self.request.agent_id,
+            &self.message,
+            self.request.inherit_project,
+        )
+        .await;
         let result = match target {
             Ok(response) if response.accepted == Some(true) => {
                 if start_headless_completion(app_handle, &self.manager, &self.session_id) {
@@ -713,6 +725,7 @@ mod tests {
             from_label: "Source Agent".to_string(),
             prompt: "Review this".to_string(),
             reply_back: true,
+            inherit_project: true,
         };
 
         assert_eq!(
@@ -725,8 +738,19 @@ mod tests {
                 "fromLabel": "Source Agent",
                 "prompt": "Review this",
                 "replyBack": true,
+                "inheritProject": true,
             })
         );
+    }
+
+    #[test]
+    fn fresh_legacy_start_defaults_to_no_project_inheritance() {
+        let request: FreshSessionStartRequest = serde_json::from_value(serde_json::json!({
+            "agentId": "agent-1", "workspacePath": "/workspace",
+            "fromSessionId": "source-session", "fromLabel": "Source",
+            "prompt": "Work", "replyBack": true
+        })).unwrap();
+        assert!(!request.inherit_project);
     }
 
     #[test]
@@ -739,6 +763,7 @@ mod tests {
             from_label: "External CLI".to_string(),
             prompt: "Review this".to_string(),
             reply_back: false,
+            inherit_project: false,
         };
 
         assert_eq!(
@@ -750,6 +775,7 @@ mod tests {
                 "fromLabel": "External CLI",
                 "prompt": "Review this",
                 "replyBack": false,
+                "inheritProject": false,
             })
         );
     }

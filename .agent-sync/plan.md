@@ -1350,3 +1350,10 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 prepares l
 ## MB-CHAT-REVIEW-CLEANUP-20261106 Root combined local5432
 
 Existing sole desktop/macOS/updater/sharedCI/main owner01a12bc2 integrates reviewed cleanup9164/9a606 and recovery93b on the immutable5431 source35c1 plus actual main05ea. Reserve0.5.43/build543.2 for a different artifact; frozen5431 and published5426 stay unchanged. Current-Mac development/checks can progress independently of hosted setup and a pending user maintenance-window answer. Remote main, new local artifact/install and actual awaiting_review Chat/no review-template controls/results-detail/input acceptance remain separate evidence. No automatic task acceptance, business resend/replay, unknown-ledger clearing, UI guard bypass or cloud/mobile/website deployment. CHAT08 real pending/unknown and reading-protection1921 are separate queued tasks, not part of this freeze. Task codex-chat-cleanup-recovery-integration-20261106-f1ade627; private evidence work/chat-review-cleanup-root-20261106/owner.
+
+
+## MB-BOT-COLLAB-20261107 · BC-02/03 local project handoff
+
+用户要求继续简洁Bot协作开发。codex/bot-collaboration-20261107基于mainbfbc92f：本地项目会话session start沿原Inbox保留来源固定projectSpace背景，按当前成员/工作区重新核对目标出生，模型/权限仍取接收Bot；单个隐藏send.request携带固定配置，外部/跨设备不继承，不放宽动态历史。无新Store/队列/持久群schema。稳定清单与验证见dev-docs/bot-collaboration-20261107/；群主题、成员入口与真实模型联调仍未完成。
+
+原desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4；本分支只本地检查/保存/交接，不触发共享CI/正式构建/安装或分配版本。无其他单元/迁移依赖。前两批SimpleUX组合8240ddbc仍是独立待收源，当前分支不把其main/发行门禁算作已完成。

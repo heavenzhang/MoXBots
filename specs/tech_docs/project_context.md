@@ -31,3 +31,7 @@
 实际文件持久化测试覆盖 V1/V2、单轮决定、prepared target、发送前更新、后续去重、并发读取、重启恢复、项目/归档/群聊/委派隔离、关闭/身份歧义和损坏来源。实际 adapter mock边界测试覆盖4 Runtime首发与重试；不代替真实 Provider/native acceptance。设置页真实组件有DOM与隔离浏览器交互检查。
 
 发布只由统一发布会话 01a12bc2-907a-7702-b6dd-788225c5dfe4 进行；接续记录和待验收事项在任务记录。不能将源码合入称为已安装或已生产验收。
+
+## 本地 Bot 交接的固定背景
+
+本地项目会话的fresh Inbox允许由原出生owner编译并持久化固定projectSpace，在首个send.request提醒中加入有界renderProjectContext；仅包括来源固定项目说明与资料，不读其他会话摘录。它不经过prepareDesktopQuery，且不放宽本文dynamic source/target对session-inbox、远程委派等的隔离。目标Bot模型/权限和工作区保持自己的配置，当前成员/归档由两端准入核验。实现及持久化/模型入口验证见 `src/server/inbox/project-handoff.ts` 和 `project-handoff.integration.test.ts`；这是同项目交接前置能力，不代表持久群组、真实模型协作或原生验收完成。
