@@ -1,5 +1,5 @@
 <!-- git-project-sync-task:source-digest=22ffbff9a469104cdceea18ffa912a10d9befcdb4ae2339cc8a901b57746a5b2 -->
-<!-- git-project-sync-task:version=2 -->
+<!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:id=9eb9955e-d7c9-41a6-b8a7-c4fb46300f41 -->
 <!-- git-project-sync-task:branch=codex/website-0542-download-20261106 -->
 <!-- git-project-sync-task:base=045b30eef4caf827249934539b6d0197674266b4 -->
