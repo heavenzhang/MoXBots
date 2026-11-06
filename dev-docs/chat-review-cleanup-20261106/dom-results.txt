@@ -1,0 +1,22 @@
+
+ RUN  v3.2.4 /Users/zhangshaohua/Documents/Codex/2026-11-06/moxbots-chat-review-cleanup
+
+stdout | src/renderer/components/agent-status/ExecutionStatusBar.test.tsx
+[isTauriEnvironment] Detection: {
+  hasTauriGlobal: false,
+  hasTauriInternals: false,
+  protocol: 'http:',
+  hostname: 'localhost',
+  isTauriProtocol: false,
+  result: false
+}
+[browserMock] 🌐 Running in browser development mode
+
+ ✓ |dom| src/renderer/components/agent-status/SessionTaskResults.test.tsx (10 tests) 175ms
+ ✓ |dom| src/renderer/components/agent-status/useSessionTaskOrchestration.test.tsx (17 tests) 973ms
+ ✓ |dom| src/renderer/components/agent-status/ExecutionStatusBar.test.tsx (21 tests) 425ms
+
+ Test Files  3 passed (3)
+      Tests  48 passed (48)
+   Start at  21:36:44
+   Duration  2.00s (transform 611ms, setup 540ms, collect 1.22s, tests 1.57s, environment 1.17s, prepare 187ms)
