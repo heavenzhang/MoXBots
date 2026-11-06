@@ -61,3 +61,11 @@ Node 使用现有 `/opt/homebrew/opt/node@24/bin/node`（24.21.0），依赖复�
 选择依据：统一 CSS 和一个弹窗的轻量修复由当前主 Agent 直接完成，零子 Agent；没有模型切换或升级。主 Agent 属 Codex，具体运行型号/推理档位与 token、费用未由工具确认。 不调用外部原因：明确采用 ai-yaoren-local 纯内置模式。
 
 集中修复避免了在 40 个文件重复加样式，双引擎验收发现并修正了 fieldset 的实际滚动差异。后续同类修复沿用通用策略和本脚本；保留原生已安装客户端的独立验收门槛。
+
+## Root integration follow-up (2026-11-06)
+
+既有desktop/sharedCI/main负责人独立审阅生产差异、实际组件脚本及WebKit桌面/窄窗截图后，原producer进入PR253自动Test42189796037。该轮666个unit文件通过；DOM331文件/3027用例通过，仅旧NewAgentPanel模板保存用例因拿到已移除节点而失败。NewAgentPanel组件与旧测试在producer与main字节完全相同，未将该失败归因于空间或Provider。
+
+Root使用受控未完成save Promise验证：旧findByText实际命中编辑textarea；save完成后编辑页被移除，旧节点的toBeInTheDocument断言稳定失败。原CI日志和定向RED已私密保留。修正仅为测试结清时序：保留trimmed更新参数和详情文本/Create断言，额外断言pending草稿、禁用输入和无Create；act完成save后在waitFor中重新查询返回详情页。无生产实现、timeout、skip或断言豁免改动。
+
+Root定向NewAgentPanel19 + 项目页2/交互5共26 DOM用例、完整TypeScript、scopedESLint及diff检查通过。浏览器布局生产文件与已审producer完全相同，不重复既有矩阵。新head仍需精确自动CI/main和后续安装版验收。原ARM运行不取消或重跑；全部原job终态后才正常FF更新同PR253。Root分支codex/form-scrollbars-integration-20261106为可接续源码记录，PR原head分支后续仅作为同SHA的FF引用；原作者物理工作区不改。冻结542.4不混入本次源码。

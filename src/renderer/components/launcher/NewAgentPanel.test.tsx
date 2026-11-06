@@ -343,6 +343,9 @@ describe('NewAgentPanel template editing page', () => {
   }
 
   it('opens as its own page from "add description" and saves back to the detail page', async () => {
+    let finishSave!: () => void;
+    const saveCompletion = new Promise<void>((resolve) => { finishSave = resolve; });
+    mocks.updateUserTemplate.mockReturnValueOnce(saveCompletion);
     await openTemplate();
     fireEvent.click(screen.getByRole('button', { name: tl('newAgentPanel.template.addDescription') }));
 
@@ -359,8 +362,18 @@ describe('NewAgentPanel template editing page', () => {
       description: 'TFTP 启动服务',
       icon: '',
     }));
-    expect(await screen.findByText('TFTP 启动服务')).toBeInTheDocument();
-    expect(createButton()).toBeInTheDocument();
+    // The editing textarea also matches the description text. Wait for the
+    // save owner to settle before querying the returned detail page, so a
+    // detached pre-transition node cannot satisfy the final-state assertion.
+    expect(description).toHaveValue('  TFTP 启动服务  ');
+    expect(description).toBeDisabled();
+    expect(screen.queryByRole('button', { name: tl('newAgentPanel.create') })).not.toBeInTheDocument();
+    await act(async () => { finishSave(); await saveCompletion; });
+    await waitFor(() => {
+      expect(screen.queryByPlaceholderText(tl('newAgentPanel.template.descriptionPlaceholder'))).not.toBeInTheDocument();
+      expect(screen.getByText('TFTP 启动服务')).toBeInTheDocument();
+      expect(createButton()).toBeInTheDocument();
+    });
   });
 
   it('opens from the more menu, blocks an empty name, and returns on Escape', async () => {
