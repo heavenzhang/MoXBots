@@ -21,6 +21,14 @@ CHAT08-UNKNOWN：真实受控停止后存在未决操作，但无任务计划时
 
 停止状态仍保留；当前轮未决操作在过程之外明确可见、可定位原调用，重开后仍在；已知失败不被伪造为unknown；已证明完成、历史匿名记录、其他轮与运行中调用不被误提示；无重放/清账/自动继续。代码、模拟、main、签名安装及真实验收分开。
 
+## Completed
+
+最近终态轮精确未决调用投影及只读提示已实现，原执行权和Stop不变；RED→GREEN、相关回归及WebKit真实组件页面通过。
+
+## Blockers and unknowns
+
+源码已推送；main、统一候选安装、原样本真实复验及正式发布尚未完成，不能以本地验证替代。Codex待审批正样本仍需原owner补验。
+
 ## Ownership and dependencies
 
 源码本会话直接负责；desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4。依赖原owner保护真实QA和统一候选，开发不运行共享CI/正式构建/安装。无网站/云/mobile变更。
