@@ -1324,3 +1324,11 @@ MB-FORM-SCROLLBARS-20261106 continuinguserdelivery: soleRootowner reserves0.5.42
 MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with main66f includes scrollbarproducerbacd/source0d plus existingPlaywright+Codexmetadata fixes. RootindependentactualWebKit samefixtureoldmotionFAIL/currentPASS and combined94DOM/type/lint PASS. Freeze thisnecessaryfix scope; laterindependentfeatures nextbatch. ExactnewheadCI/main/formal/safeinstall/actualoriginalKevin110percentcoldJSONandtaskfooter>=30s/read-bottom-expand-switch plus project/settings/chat andPlaywright/Codex/sameartifact101 stillrequired. 542.5 firstpipeline completedonce throughApple, no rebuild/resubmit; preserveunpromoted and combine one safe maintenance installation usinglatestacceptedcandidate. SoleRoot01a12bc2 desktop/sharedCI/main; authorworkspaces and otherunits unchanged.
 
 - 542.6 sourceR2：原R1精确CI DOM一个旧被动effect结清断言失败，Root仅修RecoveryActionReview测试等待，全部生产字节不变；同PR254待原全部job终态后唯一FFpush，再按新exacthead检查。最终范围仍滚动条+jitter+Playwright+Codexmetadata，不扩功能或重复正式构建。
+
+
+## MB-STREAM-STABILITY-20261106 — native block gap continuity
+
+- 基于main045b30eef，当前542.6已有virtual extent修复；新增独立问题：Message以未结束块推断live，工具间隙导致成功过程组反复历史折叠。现沿消息owner的isLoading维持live，行状态与真实终态不变。
+- 旧Message DOM2/2 RED；修复71DOM、type/lint/分类、独立源码审查通过。真实MessageList/Virtuoso WebKit旧码1569→113px反事实；WebKit/Chromium修复3次间隙高度/滚动变化0px、手动阅读及真实终态展开通过。见dev-docs/stream-stability-20261106/acceptance.md。
+- desktop/macOS-arm64/updater/sharedCI/main唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发共享CI或正式构建。冻结542.6不修改，原owner接收精确SHA并在下一未冻结批集成、发布和原会话复验；源码/离线与main/正式/真实验收分别记录。
+- 原会话执行失败另有模型命令schema漏参/任务版本冲突与native证据epoch检查；不通过UI折叠隐藏，不放宽门禁或重放原unknown操作。私有诊断只留本地工作区。
