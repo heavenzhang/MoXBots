@@ -2373,6 +2373,7 @@ function ChatContent({
         alreadyConsumed: initialMessageConsumedRef.current,
         hasSessionId: !!sessionId,
         isConnected,
+        isSessionLoading,
         isActive,
         runtimeReady: initialMessageRuntimeReady,
       })
@@ -2692,6 +2693,7 @@ function ChatContent({
     isActive,
     sessionId,
     isConnected,
+    isSessionLoading,
     initialMessageRuntimeReady,
     ensureChatOwner,
   ]);

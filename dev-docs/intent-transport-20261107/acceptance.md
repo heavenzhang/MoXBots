@@ -24,3 +24,34 @@
 桌面/sharedCI/main/updater负责人仍为01a12bc2-907a-7702-b6dd-788225c5dfe4。新包、主干、安装后真实发送→回复→正常终态仍需其统一交付并分别记录；当前冻结543.3未被改写。原业务请求没有重发，用户模型/候选池/任务账本没有手动修改。
 
 原始本机证据存交付工作区 work/MB-INTENT-TRANSPORT-20261107/：RED/GREEN日志、semantic-smoke.log及原生前置截图。真实配置、凭据、业务会话不入Git。
+
+
+## Native 543.4 follow-up and launcher admission correction
+
+The installed signed 543.4 candidate includes the intent fix. In two isolated
+native conversations, the reply-only request produced one answer and no execution
+ledger; the file task created the requested file, read it back and reached
+`completed` after correcting a read-only evidence reference. The exact file content
+matched. Private session receipts remain under `work/MB-INTENT-TRANSPORT-20261107/`.
+The original user business request and draft were not resent or edited.
+
+An additional failure was reproduced through New conversation → first message →
+Send and start. SSE connected while the newly persisted empty conversation was
+still restoring. Chat consumed its one-shot launch payload, then TabProvider
+correctly refused the send during restore. No `/chat/send` was submitted and the
+draft was restored. Sending from the ready composer worked.
+
+The follow-up waits for `isSessionLoading` to clear before consuming the launch
+payload and observes that transition in the launch effect. Restore failure and
+connection error retain the existing guards. This adds no request retry or replay;
+only the unconsumed first send can proceed once restoration succeeds. Pending
+session materialization and background-tab launch remain supported.
+
+- RED: the connected-but-restoring unit case and two actual TabProvider restore
+  timing cases failed with the old gate.
+- GREEN: 163 related unit/DOM checks pass, including deferred restore success
+  (one admission) and failure (zero admission), owner materialization and startup
+  overlay regressions. Type/lint final results are in the release handoff.
+- Required next: owner review, new immutable desktop candidate, installation and
+  native first-message-from-dialog verification. 543.4 is not accepted for this
+  entry point and must not be promoted on the two core-flow results alone.
