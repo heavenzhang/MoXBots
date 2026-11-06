@@ -30,8 +30,8 @@ const styles = StyleSheet.create({
   overlay: { flex: 1, justifyContent: 'flex-end', backgroundColor: '#00000044' },
   sheet: { width: '100%', maxWidth: 600, maxHeight: '85%', alignSelf: 'center', backgroundColor: color.white, borderTopLeftRadius: 24, borderTopRightRadius: 24 },
   handle: { width: 36, height: 4, borderRadius: 2, backgroundColor: '#D5D5D9', alignSelf: 'center', marginTop: 9 },
-  header: { minHeight: 56, paddingLeft: 20, paddingRight: 8, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  title: { flex: 1, fontSize: 18, fontWeight: '600', color: color.ink },
+  header: { minHeight:72,paddingLeft:24,paddingRight:12,flexDirection:'row',alignItems:'center',gap:12 },
+  title: { flex:1,fontSize:22,lineHeight:30,fontWeight:'600',color:color.ink },
   close: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  content: { paddingHorizontal: 20, paddingBottom: 24 },
+  content: { paddingHorizontal:24,paddingBottom:28 },
 });

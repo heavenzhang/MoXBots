@@ -100,11 +100,11 @@ export const MessageContent = memo(function MessageContent({ content }: { conten
 });
 
 const s = StyleSheet.create({
-  root: { width: '100%', minWidth: 0, gap: 8 }, text: { color: ink, fontSize: 16, lineHeight: 25, flexShrink: 1, ...(Platform.OS === 'web' ? { overflowWrap: 'anywhere' as const } : {}) },
+  root: { width: '100%', minWidth: 0, gap: 12 }, text: { color: ink, fontSize: 17, lineHeight: 28, flexShrink: 1, ...(Platform.OS === 'web' ? { overflowWrap: 'anywhere' as const } : {}) },
   paragraph: { gap: 8 }, heading: { color: ink, fontWeight: '700', marginTop: 8, marginBottom: 2 }, largeHeading: { fontSize: 21, lineHeight: 29 }, smallHeading: { fontSize: 18, lineHeight: 26 },
   bold: { fontWeight: '700' }, italic: { fontStyle: 'italic' }, deleted: { textDecorationLine: 'line-through' }, link: { color: mobileTheme.accent, textDecorationLine: 'underline' },
   inlineCode: { fontFamily: mono, backgroundColor: mobileTheme.wash, fontSize: 14 }, quote: { borderLeftWidth: 3, borderColor: '#C6C6CE', paddingLeft: 12, gap: 6 }, rule: { height: 1, backgroundColor: mobileTheme.line, marginVertical: 8 },
-  list: { gap: 6 }, listRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 }, bullet: { minWidth: 21, color: muted, fontSize: 16, lineHeight: 25 }, listBody: { flex: 1, minWidth: 0, gap: 6 },
+  list: { gap: 6 }, listRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 7 }, bullet: { minWidth: 21, color: muted, fontSize: 17, lineHeight: 28 }, listBody: { flex: 1, minWidth: 0, gap: 6 },
   horizontal: { width: '100%', flexGrow: 0 }, codeCard: { width: '100%', minWidth: 0, borderRadius: 10, backgroundColor: mobileTheme.canvas, overflow: 'hidden' },
   codeLabel: { color: muted, fontSize: 11, paddingHorizontal: 12, paddingTop: 9 }, codeContent: { padding: 12 }, code: { color: ink, fontSize: 13, lineHeight: 21, fontFamily: mono },
   tableCard: { width: '100%', minWidth: 0, borderWidth: 1, borderColor: mobileTheme.line, borderRadius: 8, overflow: 'hidden' }, tableHint: { color: muted, padding: 8, fontSize: 11 }, tableRow: { flexDirection: 'row' }, tableHead: { backgroundColor: mobileTheme.wash }, cell: { width: 160, padding: 10, borderTopWidth: 1, borderRightWidth: 1, borderColor: mobileTheme.line },

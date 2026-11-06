@@ -31,9 +31,9 @@ export function ConversationWorkPanel(p: Props) {
       {(progress.action === 'query' || progress.action === 'read') && <Pressable accessibilityRole="button" accessibilityLabel={progress.actionLabel} accessibilityState={{ disabled }} disabled={disabled} onPress={() => p.onAction(progress.action)} style={[s.recovery, disabled && s.disabled]}><Text style={s.resultsText}>{progress.actionLabel}</Text></Pressable>}
     </View>
     <View style={s.navigation}>
-      <Pressable accessibilityRole="tab" accessibilityLabel="对话" accessibilityState={{ selected: p.section === 'conversation' }} onPress={p.onConversation} style={[s.navItem, p.section === 'conversation' && s.navSelected]}><MessageCircle size={16} color={p.section === 'conversation' ? c.primary : c.muted}/><Text style={[s.navText, p.section === 'conversation' && s.navTextSelected]}>对话</Text></Pressable>
-      <Pressable accessibilityRole="tab" accessibilityLabel={`待处理${requests.length ? ` ${requests.length}` : ''}`} accessibilityState={{ selected: p.section === 'requests' }} onPress={p.onRequests} style={[s.navItem, p.section === 'requests' && s.navSelected]}><ListChecks size={16} color={p.section === 'requests' ? c.primary : c.muted}/><Text style={[s.navText, p.section === 'requests' && s.navTextSelected]}>待处理{requests.length ? ` ${requests.length}` : ''}</Text></Pressable>
-      <Pressable accessibilityRole="button" accessibilityLabel="打开本会话成果" accessibilityState={{ disabled: !canOpenArtifacts }} disabled={!canOpenArtifacts} onPress={p.onArtifacts} style={[s.navItem, !canOpenArtifacts && s.disabled]}><FileText size={16} color={c.muted}/><Text style={s.navText}>成果</Text></Pressable>
+      <Pressable accessibilityRole="tab" accessibilityLabel="对话" accessibilityState={{ selected: p.section === 'conversation' }} onPress={p.onConversation} style={[s.navItem, p.section === 'conversation' && s.navSelected]}><MessageCircle size={18} color={p.section === 'conversation' ? c.primary : c.muted}/><Text style={[s.navText, p.section === 'conversation' && s.navTextSelected]}>对话</Text></Pressable>
+      <Pressable accessibilityRole="tab" accessibilityLabel={`待处理${requests.length ? ` ${requests.length}` : ''}`} accessibilityState={{ selected: p.section === 'requests' }} onPress={p.onRequests} style={[s.navItem, p.section === 'requests' && s.navSelected]}><ListChecks size={18} color={p.section === 'requests' ? c.primary : c.muted}/><Text style={[s.navText, p.section === 'requests' && s.navTextSelected]}>待处理{requests.length ? ` ${requests.length}` : ''}</Text></Pressable>
+      <Pressable accessibilityRole="button" accessibilityLabel="打开本会话成果" accessibilityState={{ disabled: !canOpenArtifacts }} disabled={!canOpenArtifacts} onPress={p.onArtifacts} style={[s.navItem, !canOpenArtifacts && s.disabled]}><FileText size={18} color={c.muted}/><Text style={s.navText}>成果</Text></Pressable>
     </View>
     <MobileSheet title="工作进展与下一步" visible={open} onClose={() => setOpen(false)}>
       <Text style={s.workTitle}>{p.snapshot?.title || (p.awaiting ? '正在读取原会话' : '新工作')}</Text>
@@ -49,18 +49,18 @@ export function ConversationWorkPanel(p: Props) {
 }
 
 const s = StyleSheet.create({
-  navigation: { flexDirection: 'row', marginHorizontal: 16, marginBottom: 8, borderBottomWidth: 1, borderColor: c.line },
-  navItem: { flex: 1, minHeight: 44, flexDirection: 'row', gap: 6, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 2, borderColor: 'transparent' },
-  navSelected: { borderColor: c.primary }, navText: { fontSize: 13, lineHeight: 20, color: c.muted }, navTextSelected: { color: c.primary, fontWeight: '600' },
+  navigation: { flexDirection:'row',marginHorizontal:24,marginBottom:0,borderBottomWidth:1,borderColor:c.line },
+  navItem: { flex:1,minHeight:52,flexDirection:'row',gap:8,alignItems:'center',justifyContent:'center',borderBottomWidth:2,borderColor:'transparent' },
+  navSelected: { borderColor: c.primary }, navText: { fontSize:15,lineHeight:22,color:c.muted }, navTextSelected: { color: c.primary, fontWeight: '600' },
   recovery: { minHeight: 44, justifyContent: 'center', paddingHorizontal: 12, alignSelf: 'flex-start' },
-  panel: { marginHorizontal: 16, marginBottom: 8, borderRadius: 14, backgroundColor: c.wash, borderWidth: 1, borderColor: '#DDE6DA' },
-  summary: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 12, paddingTop: 10, paddingBottom: 10, minHeight: 58 },
+  panel: { marginHorizontal:24,marginBottom:4 },
+  summary: { flexDirection:'row',alignItems:'center',gap:12,paddingVertical:12,minHeight:68 },
   copy: { flex: 1, minWidth: 0 }, statusRow: { flexDirection: 'row', alignItems: 'center', gap: 7 },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: c.muted }, attentionDot: { backgroundColor: '#947124' }, errorDot: { backgroundColor: c.red }, activeDot: { backgroundColor: c.online },
-  status: { flexShrink: 1, color: c.ink, fontSize: 13, lineHeight: 19, fontWeight: '600' }, detail: { color: c.muted, fontSize: 11, lineHeight: 17, marginTop: 3 },
-  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingBottom: 5 }, primary: { minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 8, borderRadius: 9, backgroundColor: c.primary }, primaryText: { color: c.white, fontSize: 12, fontWeight: '600' },
-  results: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', minHeight: 44, paddingHorizontal: 10, gap: 6 }, resultsText: { color: c.primary, fontSize: 12, lineHeight: 19, fontWeight: '600' }, disabled: { opacity: 0.4 },
-  workTitle: { color: c.ink, fontSize: 20, lineHeight: 29, fontWeight: '600' }, source: { color: c.muted, fontSize: 12, lineHeight: 20, marginTop: 4 }, progressCard: { backgroundColor: c.wash, borderRadius: 12, padding: 13, marginTop: 18 },
-  section: { paddingVertical: 18, borderBottomWidth: 1, borderColor: c.line }, sectionTitle: { fontSize: 13, lineHeight: 20, fontWeight: '600', color: c.ink, marginBottom: 7 }, body: { color: c.ink, fontSize: 14, lineHeight: 22 }, hint: { color: c.muted, fontSize: 12, lineHeight: 19, marginTop: 10 }, request: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 10 },
-  returnButton: { minHeight: 44, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: c.canvas }, sheetActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
+  dot: { width:7,height:7,borderRadius:4,backgroundColor:c.muted }, attentionDot: { backgroundColor: '#947124' }, errorDot: { backgroundColor: c.red }, activeDot: { backgroundColor: c.online },
+  status: { flexShrink:1,color:c.ink,fontSize:15,lineHeight:22,fontWeight:'600' }, detail: { color:c.muted,fontSize:13,lineHeight:20,marginTop:5 },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 10, paddingBottom: 5 }, primary: { minHeight:52,justifyContent:'center',alignItems:'center',paddingHorizontal:16,borderRadius:14,backgroundColor:c.primary }, primaryText: { color:c.white,fontSize:16,lineHeight:24,fontWeight:'600' },
+  results: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', minHeight: 44, paddingHorizontal: 10, gap: 6 }, resultsText: { color:c.primary,fontSize:15,lineHeight:22,fontWeight:'600' }, disabled: { opacity: 0.4 },
+  workTitle: { color:c.ink,fontSize:24,lineHeight:32,fontWeight:'600' }, source: { color:c.muted,fontSize:13,lineHeight:21,marginTop:8 }, progressCard: { backgroundColor: c.wash, borderRadius: 12, padding: 13, marginTop: 18 },
+  section: { paddingVertical: 18, borderBottomWidth: 1, borderColor: c.line }, sectionTitle: { fontSize:17,lineHeight:26,fontWeight:'600',color:c.ink,marginBottom:8 }, body: { color:c.ink,fontSize:16,lineHeight:27 }, hint: { color:c.muted,fontSize:13,lineHeight:21,marginTop:12 }, request: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginTop: 10 },
+  returnButton: { minHeight:48,paddingHorizontal:16,alignItems:'center',justifyContent:'center',borderRadius:12,backgroundColor:c.canvas }, sheetActions: { flexDirection: 'row', gap: 10, marginTop: 18 },
 });

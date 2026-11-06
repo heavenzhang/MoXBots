@@ -1,0 +1,18 @@
+{
+  "sourceHashes": {
+    "mobile/app/src/SessionHomeScreen.tsx": "8d68131593c5bca6ddfb4dd0aa70309ec9a4300f90c20dcde26dda3427c9ba29",
+    "mobile/app/src/conversationStyles.ts": "12a98a7ed1ff0511461921380dba79cae8c60d9a042d2c6ca484c4aeaadc00b1",
+    "mobile/app/src/ConversationWorkPanel.tsx": "1bb5ce0db997b74610a05ce61241b38fb603c9fa64e034e5b591de06a8efee4d",
+    "mobile/app/src/MessageContent.tsx": "69e2f3f93b94bb9f67bc0ce2c7b9685a03f089898b6c0a51a106f7aec308d2c4",
+    "mobile/app/src/MobileSheet.tsx": "0d959fec805889147ff8c9ed95496a99fc7b11d8857c97608ae20237af5b1bb9",
+    "mobile/app/src/ArtifactScreen.tsx": "b13a885023bd8797452903505f74c040d1c090532892a288ef9fb76bef7706dc",
+    "mobile/app/src/app/index.tsx": "91759e09fac946c04beef80bccccf57ea82473b6a721e560113a6994d1537182"
+  },
+  "policyTests": "125/125",
+  "typecheck": "PASS",
+  "lint": "PASS",
+  "primarySyntheticInteractions": "PASS",
+  "independentSyntheticInteractions": "PASS; REVIEW.md",
+  "nativeAcceptance": "PENDING",
+  "productionWrites": 0
+}

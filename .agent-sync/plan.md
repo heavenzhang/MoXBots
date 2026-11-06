@@ -1339,3 +1339,7 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 基于main05ea1e2c的隔离codex/mobile-continue-03-20261106：V10本轮收敛原任务内导航，审批直接可达、当前代际过滤；保持原草稿/回答/长记录位置与成果引用回原会话。无协议/服务/原生变更。稳定C03-1～6和验收见dev-docs/mobile-continue-03/；125policy/type/lint、320/390主审实际组件合成走查通过。独立源码/截图复核与独立点击门禁分开，子任务IAB不可用不冒充操作通过。
 
 sharedCI/main仍唯一01a12bc2-907a-7702-b6dd-788225c5dfe4；mobile iOS/Android版本/构建/签名/安装仍唯一01a12b99-7b38-78b1-831f-9c60257d386a。交下一未冻结mobile批，build10与既有tag/IPA、build9回退保持；无需desktop/cloud/website部署或迁移。开发只提交精确SHA与本地证据，owner统一CI/main及新候选；真实账号/Host/原生键盘与物理设备另验。
+
+## MB-MOBILE-VISUAL-04（2026-11-06）
+
+用户要求改善手机界面视觉尺度。codex/mobile-visual-polish-20261106承接C03精确2d12f25b，调整首页/原对话/待处理/成果的字阶、留白、触控与内容层级，保留状态/审批/草稿/成果owner。任务V04-1～6及证据见dev-docs/mobile-visual-04/与分支任务记录。sharedCI/main与mobile部署归属不变；不分配新正式版本或替换冻结制品。
