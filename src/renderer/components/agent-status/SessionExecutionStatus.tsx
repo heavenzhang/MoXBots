@@ -99,8 +99,11 @@ export function useSessionExecutionPresentation({
   const reason = currentExecution?.reason;
   const reasonKey = reason ? reasonKeys[reason] : undefined;
   const assessmentSummary = currentExecution?.assessment?.summary;
-  const reasonText =
-    currentExecution?.phase === 'incomplete' && currentExecution.reason === 'turn_error'
+  const failure = isCurrent && currentExecution?.phase === 'incomplete' && reason === 'turn_error'
+    ? currentExecution.failure : undefined;
+  const reasonText = failure
+    ? t(`${root}.failures.${failure.kind}`) + (failure.httpStatus ? ` (HTTP ${failure.httpStatus})` : '')
+    : currentExecution?.phase === 'incomplete' && currentExecution.reason === 'turn_error'
       && (currentExecution.reviewReceiptFailures ?? 0) >= EXECUTION_LIMITS.maxReviewReceiptFailures
       ? t(`${root}.reasons.reviewReceiptUnconfirmed`)
       : reasonKey

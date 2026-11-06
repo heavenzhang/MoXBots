@@ -15,7 +15,8 @@
 - [x] 补齐9种已知取消/接续阻断提示，展示受影响后续任务名称。
 - [x] 重启、压缩、修订冲突、后台和取消回归；类型/DOM/源码审查。
 - [ ] 提交推送；由唯一桌面负责人审阅、集成main及下一未冻结批。
-- [ ] 543.3安装后原会话群报告实际完成；补充整改安装版核验。
+- [x] 543.3安装后原会话群报告5项实际完成。
+- [ ] 补充整改安装版核验。
 
 ## Completed
 
@@ -23,7 +24,7 @@
 
 ## Verification
 
-8文件329项、类型/受影响lint/分类/diff通过，实际组件IAB1280×720详情验证通过。证据见dev-docs/execution-remediation-20261107/acceptance.md，私有原生证据留在交付工作区work目录，不提交业务内容。
+R2共10文件403项、类型/受影响lint/分类/diff通过，实际组件IAB1280×720详情验证通过。证据见dev-docs/execution-remediation-20261107/acceptance.md，私有原生证据留在交付工作区work目录，不提交业务内容。
 
 ## Blockers and unknowns
 
@@ -31,4 +32,4 @@ desktop/macOS-arm64/updater/sharedCI/main唯一owner 01a12bc2-907a-7702-b6dd-788
 
 ## Next step
 
-完成相称验证和精确SHA交接；原负责人安装交还窗口后由当前会话单独恢复原报告，避免重复发送。
+提交R2精确SHA给原负责人统一下一批main/安装；原群报告已经完成，不再发送。

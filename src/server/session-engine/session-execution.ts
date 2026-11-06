@@ -4,6 +4,7 @@ import { APP_CLI_NAME } from "../../shared/appProfile";
 import { escapeSystemReminderText } from "../../shared/systemReminder";
 import {
   EXECUTION_LIMITS,
+  executionFailureDiagnostic,
   createSessionExecution,
   canContinueSessionExecution,
   executionIntentSchema,
@@ -1112,6 +1113,7 @@ export async function settleSessionExecutionTurn(
     const next = settleSessionExecution(execution, {
       queueId,
       status: outcome.status,
+      failure: outcome.status === "error" ? executionFailureDiagnostic(outcome.code, outcome.apiErrorStatus) : undefined,
       now: Date.now(),
       ...(assessment ? { assessment } : {}),
       ...executionVerificationEvidence(ledger, verificationEpoch),
