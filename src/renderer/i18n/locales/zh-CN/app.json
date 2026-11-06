@@ -2509,23 +2509,23 @@
     "noBots": "还没有 Bot，先创建一个。",
     "profile": "定义清晰，能力可维护，经验可沉淀。",
     "startWork": "开始工作",
-    "test": "能力测试",
+    "test": "能力检查",
     "sections": "Bot 档案栏目",
     "finishEditing": "请先保存或关闭当前编辑器，再切换页面。",
     "backToSkills": "返回技能列表",
     "sharedSkillWarning": "这是共享技能。修改内容会影响使用它的其他 Bots；启停设置仅作用于当前 Bot。",
     "skillsHint": "查看此 Bot 实际可用的技能。可单独启停，也可安装、编写和维护技能。",
-    "effectiveHint": "保存会更新真实文件或配置。新会话会使用最新内容；正在进行的工作保持原会话，不会因测试而重新执行。",
+    "effectiveHint": "保存后，新会话会使用最新定义、技能和记忆；已有工作会话保留原进度。",
     "homeEyebrow": "BOT 管理",
     "homeTitle": "把能力维护好，把工作做好。",
-    "homeDescription": "选择一个 Bot，明确它的职责和工作方式，维护技能与记忆。正式任务从「开始工作」进入，能力测试在独立栏目中进行。",
+    "homeDescription": "选择一个 Bot，明确它的职责和工作方式，维护技能与记忆。正式任务从「开始工作」进入，能力检查在独立栏目中进行。",
     "openProfile": "查看定义、技能与记忆 →",
     "unavailable": "此 Bot 的工作区关联已变化，请重新选择。",
     "tabs": {
       "definition": "定义",
       "skills": "技能",
       "memory": "知识与记忆",
-      "tests": "能力测试",
+      "tests": "能力检查",
       "settings": "设置"
     },
     "docs": {
@@ -2545,7 +2545,9 @@
       "createNote": "新建记忆笔记",
       "opening": "正在打开编辑器…",
       "definitionHint": "内置运行环境读取 CLAUDE.md 和规则文件；Codex 优先读取 AGENTS.md，再兼容 CLAUDE.md。创建 AGENTS.md 前请确认其中保留所需的工作要求。",
-      "memoryHint": "规则中的记忆会随指令加载，memory 目录中的笔记供 Bot 按需读取。将复盘结论写成明确、可复用的经验。"
+      "memoryHint": "规则中的记忆会随指令加载，memory 目录中的笔记供 Bot 按需读取。将复盘结论写成明确、可复用的经验。",
+      "definitionDetails": "定义如何生效",
+      "memoryDetails": "记忆如何使用"
     },
     "checks": {
       "readOnly": "独立检查 · 只读",

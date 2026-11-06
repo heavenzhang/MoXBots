@@ -36,7 +36,7 @@ describe('My Bots integration surface', () => {
   });
   it('never starts formal work from capability tests or memory navigation', () => {
     renderPanel(); select('Beta');
-    fireEvent.click(screen.getByRole('button', { name: '能力测试' }));
+    fireEvent.click(screen.getByRole('button', { name: '能力检查' }));
     expect(screen.getByTestId('checks')).toHaveTextContent('/bot-b');
     fireEvent.click(screen.getByRole('tab', { name: '知识与记忆' }));
     expect(screen.getByTestId('docs')).toHaveAttribute('data-workspace', '/bot-b');
@@ -66,6 +66,17 @@ describe('My Bots integration surface', () => {
     expect(editor).toHaveAttribute('data-workspace', '/bot-a');
     expect(screen.getByRole('button', { name: '开始工作' })).toBeDisabled();
     expect(screen.getByRole('alert')).toHaveTextContent('工作区关联已变化');
+  });
+  it('supports arrow-key tab navigation and respects open editor admission', () => {
+    renderPanel(); select('Alpha');
+    const definition = screen.getByRole('tab', { name: '定义' });
+    fireEvent.keyDown(definition, { key: 'ArrowRight' });
+    expect(screen.getByRole('tab', { name: '技能' })).toHaveAttribute('aria-selected', 'true');
+    fireEvent.click(screen.getByRole('tab', { name: '定义' }));
+    mocks.editing = true;
+    fireEvent.keyDown(definition, { key: 'ArrowRight' });
+    expect(definition).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByTestId('docs')).toBeInTheDocument();
   });
   it('filters the roster without discarding the selected Bot or its draft', () => {
     renderPanel(); select('Alpha'); mocks.editing = true;

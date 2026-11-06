@@ -83,9 +83,9 @@ export default function BotCarePanel({ onClose, onCreateBot, onStartWork, initia
   return <OverlayBackdrop portal className="z-[200] p-3 sm:p-6" onClose={close}>
     <div ref={panelRef} role="dialog" aria-modal="true" aria-labelledby="bot-care-title" className="flex h-full max-h-[960px] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--paper)] text-[var(--ink)] shadow-2xl">
       <header className="flex shrink-0 items-center justify-between gap-3 border-b border-[var(--line)] bg-[var(--paper-elevated)] px-5 py-4">
-        <div><h2 id="bot-care-title" className="text-xl font-semibold">{t('botCare.title')}</h2><p className="mt-1 text-sm text-[var(--ink-muted)]">{t('botCare.subtitle')}</p></div>
-        <div className="flex items-center gap-2">
-          <button type="button" onClick={() => { if (canLeave()) onCreateBot(); }} className="flex items-center gap-1.5 rounded-lg border border-[var(--line)] px-3 py-2 text-sm hover:bg-[var(--paper-inset)]"><PlusIcon className="h-4 w-4" />{t('botCare.create')}</button>
+        <div className="min-w-0 flex-1"><h2 id="bot-care-title" className="text-xl font-semibold">{t('botCare.title')}</h2><p className="mt-1 hidden text-sm text-[var(--ink-muted)] sm:block">{t('botCare.subtitle')}</p></div>
+        <div className="flex shrink-0 items-center gap-2">
+          <button type="button" onClick={() => { if (canLeave()) onCreateBot(); }} className="flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-[var(--line)] px-3 py-2 text-sm hover:bg-[var(--paper-inset)]"><PlusIcon className="h-4 w-4" />{t('botCare.create')}</button>
           <button ref={closeRef} type="button" aria-label={t('botCare.close')} onClick={close} className="rounded-lg p-2 hover:bg-[var(--paper-inset)]"><CloseIcon className="h-5 w-5" /></button>
         </div>
       </header>
@@ -113,8 +113,17 @@ export default function BotCarePanel({ onClose, onCreateBot, onStartWork, initia
             </div>
             {scopeChanged && <p role="alert" className="mx-6 mb-3 text-sm text-[var(--warning)]">{t('botCare.scopeChanged')}</p>}
             <div className="mx-6 mb-4 rounded-lg bg-[var(--paper-inset)] px-4 py-3 text-sm leading-relaxed text-[var(--ink-muted)]">{t('botCare.effectiveHint')}</div>
-            <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--line)] px-4" role="tablist" aria-label={t('botCare.sections')}>
-              {SECTIONS.map(item => <button key={item} type="button" role="tab" disabled={scopeChanged} aria-selected={section === item} aria-controls="bot-care-content" onClick={() => openSection(item)}
+            <div className="flex shrink-0 gap-1 overflow-x-auto border-b border-[var(--line)] px-4" role="tablist" aria-label={t('botCare.sections')} onKeyDown={event => {
+              if (isImeComposingEvent(event) || !['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+              event.preventDefault();
+              if (!canLeave() || scopeChanged) return;
+              const current = SECTIONS.indexOf(section);
+              const index = event.key === 'Home' ? 0 : event.key === 'End' ? SECTIONS.length - 1
+                : (current + (event.key === 'ArrowRight' ? 1 : -1) + SECTIONS.length) % SECTIONS.length;
+              setSection(SECTIONS[index]);
+              event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="tab"]')[index]?.focus();
+            }}>
+              {SECTIONS.map(item => <button key={item} type="button" role="tab" tabIndex={section === item ? 0 : -1} disabled={scopeChanged} aria-selected={section === item} aria-controls="bot-care-content" onClick={() => openSection(item)}
                 className={`shrink-0 border-b-2 px-4 py-3 text-sm font-medium ${section === item ? 'border-[var(--accent)] text-[var(--ink)]' : 'border-transparent text-[var(--ink-muted)] hover:text-[var(--ink)]'}`}>{t(`botCare.tabs.${item}`)}</button>)}
             </div>
             <div id="bot-care-content" role="tabpanel" className="min-h-0 flex-1 overflow-auto" key={`${selected.agentId}:${selected.workspacePath}`}>

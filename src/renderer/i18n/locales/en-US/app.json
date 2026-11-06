@@ -2511,13 +2511,13 @@
     "noBots": "Create your first Bot.",
     "profile": "Clear responsibilities, maintained skills, lasting knowledge.",
     "startWork": "Start work",
-    "test": "Capability tests",
+    "test": "Capability checks",
     "sections": "Bot profile sections",
     "finishEditing": "Save or close the current editor before switching.",
     "backToSkills": "Back to skills",
     "sharedSkillWarning": "This is a shared skill. Content changes affect other Bots that use it; enablement applies only to this Bot.",
     "skillsHint": "Manage the skills actually available to this Bot: enable, install, write, and maintain.",
-    "effectiveHint": "Saving updates real files or settings. New conversations use the latest content; ongoing work retains its session and is never replayed by a test.",
+    "effectiveHint": "New conversations use the latest definitions, skills and memory after saving. Existing work keeps its session progress.",
     "homeEyebrow": "BOT MANAGEMENT",
     "homeTitle": "Maintain capabilities. Deliver good work.",
     "homeDescription": "Select a Bot to define its responsibilities and maintain skills and memory. Start work opens a formal conversation; capability checks have a separate section.",
@@ -2527,7 +2527,7 @@
       "definition": "Definition",
       "skills": "Skills",
       "memory": "Knowledge & memory",
-      "tests": "Capability tests",
+      "tests": "Capability checks",
       "settings": "Settings"
     },
     "docs": {
@@ -2547,7 +2547,9 @@
       "createNote": "New memory note",
       "opening": "Opening editor…",
       "definitionHint": "The built-in runtime reads CLAUDE.md and rules. Codex prefers AGENTS.md, with CLAUDE.md as a fallback. Preserve the required working instructions when creating AGENTS.md.",
-      "memoryHint": "Memory in rules loads with instructions; notes in the memory directory are available for the Bot to read when needed. Record clear, reusable lessons from reviews."
+      "memoryHint": "Memory in rules loads with instructions; notes in the memory directory are available for the Bot to read when needed. Record clear, reusable lessons from reviews.",
+      "definitionDetails": "How definitions take effect",
+      "memoryDetails": "How memory is used"
     },
     "checks": {
       "readOnly": "Separate check · Read only",
