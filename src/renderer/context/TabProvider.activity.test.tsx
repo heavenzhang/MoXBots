@@ -169,6 +169,7 @@ function Probe() {
     stopResponse,
     retryCurrentSessionRestore,
     sendMessage,
+    dismissFailedSend,
     cancelQueuedMessage,
     forceExecuteQueuedMessage,
     pendingAskUserQuestion,
@@ -224,6 +225,10 @@ function Probe() {
       <button type="button" onClick={() => void sendMessage('hello', undefined, undefined, undefined, undefined, undefined, undefined, undefined, TASK_ALIGNMENT_SKILL_REQUIREMENT, undefined, undefined, { kind: 'task-discussion', input: { candidatesDir: '/data/discussion/candidates', workspaceId: 'ws', workspacePath: '/workspace', visibleUserMessage: 'hello' } }).then(setSendReceipt)}>send discussion</button>
       <output data-testid="send-receipt">{JSON.stringify(sendReceipt)}</output>
       <button type="button" onClick={() => void sendMessage('hello').then(setSendReceipt)}>send message</button>
+      <button type="button" onClick={() => {
+        const failed = historyMessages.find(message => message.deliveryStatus === 'failed');
+        if (failed) dismissFailedSend(failed.id);
+      }}>dismiss failed send</button>
       <button type="button" onClick={() => {
         const failed = historyMessages.find(message => message.deliveryStatus === 'failed');
         if (failed) void sendMessage('hello', undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, failed.id);
@@ -931,6 +936,39 @@ describe('TabProvider session activity ownership', () => {
     else expect(screen.getByTestId('agent-error').textContent).not.toBe(message);
   });
 
+  it('dismisses only the selected unadmitted failure without deleting canonical history or sending', async () => {
+    const sessionId = 'pending-dismiss-failure';
+    tauriHarness.proxyFetch.mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ success: false, error: 'rejected' }))));
+    render(<TabProvider tabId="dismiss-failure" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:message-replay', { replayKind: 'live-user-echo', sessionId, message: { id: 'canonical', role: 'user', content: 'hello', timestamp: new Date(0).toISOString() } });
+    fireEvent.click(screen.getByRole('button', { name: 'send message' }));
+    await waitFor(() => expect(screen.getByTestId('history-delivery')).toHaveTextContent('failed'));
+    fireEvent.click(screen.getByRole('button', { name: 'send message' }));
+    await waitFor(() => expect(JSON.parse(screen.getByTestId('history-delivery').textContent!)).toEqual([null, 'failed', 'failed']));
+    const identities = JSON.parse(screen.getByTestId('history-identities').textContent!);
+    const calls = tauriHarness.proxyFetch.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'dismiss failed send' }));
+    expect(JSON.parse(screen.getByTestId('history-identities').textContent!)).toEqual([identities[0], identities[2]]);
+    expect(tauriHarness.proxyFetch).toHaveBeenCalledTimes(calls);
+  });
+
+  it('rejects dismissal and explicit resend of an uncertain local send at the state owner', async () => {
+    tauriHarness.proxyFetch.mockRejectedValue(new Error('response lost'));
+    render(<TabProvider tabId="uncertain-send" agentDir="/tmp/workspace" sessionId="pending-uncertain-send" claimSessionOpeningTransition={allowSessionOpening}><Probe /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    fireEvent.click(screen.getByRole('button', { name: 'send message' }));
+    await waitFor(() => expect(screen.getByTestId('history-delivery')).toHaveTextContent('failed'));
+    const identities = screen.getByTestId('history-identities').textContent;
+    const calls = tauriHarness.proxyFetch.mock.calls.length;
+    fireEvent.click(screen.getByRole('button', { name: 'dismiss failed send' }));
+    fireEvent.click(screen.getByRole('button', { name: 'resend failed message' }));
+    await act(async () => {});
+    expect(screen.getByTestId('history-identities').textContent).toBe(identities);
+    expect(tauriHarness.proxyFetch).toHaveBeenCalledTimes(calls);
+    expect(JSON.parse(screen.getByTestId('history-unconfirmed').textContent!)).toEqual([true]);
+  });
+
   it('resends a local failure through ordinary send and replaces its failed bubble', async () => {
     const sessionId = 'pending-resend-failure';
     let respond!: (response: Response) => void;
@@ -959,6 +997,37 @@ describe('TabProvider session activity ownership', () => {
     emit('chat:status', { sessionState: 'idle' });
     expect(readActivity()).toMatchObject({ isLoading: false, historyCount: 1 });
     expect(JSON.parse(screen.getByTestId('history-delivery').textContent!)).toEqual([null]);
+  });
+
+  it.each(['dismissed', 'canonical-empty', 'retry-in-flight'] as const)('rejects an obsolete retry after %s without a second dispatch', async transition => {
+    let tab!: ReturnType<typeof useTabState>;
+    function Capture() {
+      const value = useTabState();
+      useEffect(() => { tab = value; }, [value]);
+      return <Probe />;
+    }
+    const sessionId = 'pending-stale-retry';
+    tauriHarness.proxyFetch.mockResolvedValueOnce(new Response(JSON.stringify({ success: false, error: 'rejected' })));
+    tauriHarness.proxyFetch.mockImplementation(() => new Promise<Response>(() => {}));
+    render(<TabProvider tabId="stale-retry" agentDir="/tmp/workspace" sessionId={sessionId} claimSessionOpeningTransition={allowSessionOpening}><Capture /></TabProvider>);
+    await waitFor(() => expect(sseHarness.state.eventHandler).not.toBeNull());
+    emit('chat:init', { sessionId, transcriptFormat: 2, sessionState: 'idle' });
+    fireEvent.click(screen.getByRole('button', { name: 'send message' }));
+    await waitFor(() => expect(screen.getByTestId('history-delivery')).toHaveTextContent('failed'));
+    const failed = tab.historyMessages[0];
+    const retry = () => tab.sendMessage('hello', undefined, undefined, undefined, undefined, undefined,
+      undefined, undefined, undefined, undefined, undefined, undefined, failed.id);
+    if (transition === 'dismissed') act(() => tab.dismissFailedSend(failed.id));
+    else if (transition === 'canonical-empty') emit('chat:transcript-operation', { sessionId, operation: { kind: 'message-create', message: { id: 'accepted', role: 'user', content: '', timestamp: new Date(0).toISOString(), metadata: { source: 'desktop', clientRequestId: failed.metadata?.clientRequestId } } } });
+    else {
+      act(() => { void retry(); });
+      await waitFor(() => expect(tauriHarness.proxyFetch).toHaveBeenCalledTimes(2));
+    }
+    const calls = tauriHarness.proxyFetch.mock.calls.length;
+    let admitted: boolean | undefined;
+    await act(async () => { admitted = await retry(); });
+    expect(admitted).toBe(false);
+    expect(tauriHarness.proxyFetch).toHaveBeenCalledTimes(calls);
   });
 
   it('continues an admitted provider failure from live canonical terminal events without replaying the original prompt', async () => {

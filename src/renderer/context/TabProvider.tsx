@@ -1061,6 +1061,11 @@ export default function TabProvider({
     pendingDesktopMessagesRef.current = next;
     rawSetPendingDesktopMessages(next);
   }, []);
+  const dismissFailedSend = useCallback((messageId: string) => {
+    setPendingDesktopMessages(rows => rows.filter(row =>
+      row.id !== messageId || row.deliveryStatus !== 'failed' || row.deliveryUnconfirmed,
+    ));
+  }, [setPendingDesktopMessages]);
   const [displayedHistorySessionId, setDisplayedHistorySessionId] = useState<string | null>(null);
   const [historyMessages, rawSetHistoryMessages] = useState<Message[]>([]);
   // Publish each event's projection before React batches its rendering. A
@@ -5953,6 +5958,17 @@ export default function TabProvider({
       if (!trimmed && (!images || images.length === 0)) return false;
       if (connectionErrorRef.current || isRestoreActionBlocked(persistedRestoreLifecycleRef.current.phase))
         return false;
+      // Recheck the local owner at dispatch: a delayed click must not replay a
+      // send that was reconciled, dismissed, is still sending, or is uncertain.
+      if (retryFailedMessageId) {
+        const failed = pendingDesktopMessagesRef.current.find(row => row.id === retryFailedMessageId);
+        if (!failed || failed.deliveryStatus !== 'failed' || failed.deliveryUnconfirmed) return false;
+        // A canonical create already proves admission even while its body is
+        // still loading and the local preview remains visible.
+        if (failed.metadata?.clientRequestId && historyMessagesRef.current.some(row =>
+          row.role === 'user' && row.metadata?.clientRequestId === failed.metadata?.clientRequestId,
+        )) return false;
+      }
       const visibleQueueText = queueDisplayText(trimmed);
 
       // Detect skill/slash command: /command at start of message (for analytics)
@@ -7407,6 +7423,7 @@ export default function TabProvider({
       setSystemNotice,
       setSessionMeta,
       sendMessage,
+      dismissFailedSend,
       stopResponse,
       retryCurrentSessionRestore,
       loadOlderMessages,
@@ -7466,6 +7483,7 @@ export default function TabProvider({
       setMessages,
       setAgentError,
       sendMessage,
+      dismissFailedSend,
       stopResponse,
       retryCurrentSessionRestore,
       loadOlderMessages,

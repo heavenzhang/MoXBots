@@ -137,6 +137,8 @@ interface MessageListProps {
   sessionState?: SessionState;
   onRewind?: (messageId: string) => void;
   onRetry?: (assistantMessageId: string) => void;
+  onRecoverFailedSend?: (messageId: string) => void;
+  onDismissFailedSend?: (messageId: string) => void;
   onFork?: (assistantMessageId: string) => void;
   conversationOperations?: 'builtin' | 'codex' | 'dsh';
   /** Stable projection of persisted native root-turn anchors for user-row eligibility. */
@@ -151,6 +153,8 @@ interface MessageActionContext {
   onRewind?: (messageId: string) => void;
   onFork?: (assistantMessageId: string) => void;
   hasRetry: boolean;
+  hasFailedSendRecovery: boolean;
+  hasFailedSendDismiss: boolean;
 }
 
 const noopRowLayoutChanged = (
@@ -505,6 +509,8 @@ const MessageList = memo(function MessageList({
   hasNativeWork = false,
   onRewind,
   onRetry,
+  onRecoverFailedSend,
+  onDismissFailedSend,
   onFork,
   conversationOperations = 'builtin',
   rewindableUserMessageIds,
@@ -669,6 +675,12 @@ const MessageList = memo(function MessageList({
   // Virtual history rows and Message are memoized. Pass a stable forwarding
   // callback so a later model/effort selection is read at click time.
   const handleRetry = useCallback((messageId: string) => onRetryRef.current?.(messageId), []);
+  const recoverFailedSendRef = useRef(onRecoverFailedSend);
+  const dismissFailedSendRef = useRef(onDismissFailedSend);
+  useLayoutEffect(() => { recoverFailedSendRef.current = onRecoverFailedSend; }, [onRecoverFailedSend]);
+  useLayoutEffect(() => { dismissFailedSendRef.current = onDismissFailedSend; }, [onDismissFailedSend]);
+  const handleRecoverFailedSend = useCallback((messageId: string) => recoverFailedSendRef.current?.(messageId), []);
+  const handleDismissFailedSend = useCallback((messageId: string) => dismissFailedSendRef.current?.(messageId), []);
   const onRowLayoutChangedRef = useRef(
     onRowLayoutChanged ?? noopRowLayoutChanged,
   );
@@ -775,8 +787,10 @@ const MessageList = memo(function MessageList({
       onRewind,
       onFork,
       hasRetry: Boolean(onRetry),
+      hasFailedSendRecovery: Boolean(onRecoverFailedSend),
+      hasFailedSendDismiss: Boolean(onDismissFailedSend),
     }),
-    [conversationOperations, onFork, onRewind, onRetry, rewindableUserMessageIds, citationSources],
+    [conversationOperations, onFork, onRewind, onRetry, onRecoverFailedSend, onDismissFailedSend, rewindableUserMessageIds, citationSources],
   );
 
   // ── Stable itemContent — volatile row actions arrive through Virtuoso context ──
@@ -821,6 +835,8 @@ const MessageList = memo(function MessageList({
                 isLoading={isStreamingMsg && actionContext.isLoading}
                 onRewind={canRewind ? actionContext.onRewind : undefined}
                 onRetry={actionContext.hasRetry ? handleRetry : undefined}
+                onRecoverFailedSend={actionContext.hasFailedSendRecovery ? handleRecoverFailedSend : undefined}
+                onDismissFailedSend={actionContext.hasFailedSendDismiss ? handleDismissFailedSend : undefined}
                 onFork={canFork ? actionContext.onFork : undefined}
                 exitPlanModeSlot={
                   message.id === actionContext.exitPlanModeAnchorId
@@ -837,7 +853,7 @@ const MessageList = memo(function MessageList({
           </div>
         );
       },
-    [handleRowLayoutChanged, handleRetry],
+    [handleRowLayoutChanged, handleRetry, handleRecoverFailedSend, handleDismissFailedSend],
   );
 
   // ── Stable computeItemKey ──

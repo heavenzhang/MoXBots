@@ -1324,3 +1324,7 @@ MB-FORM-SCROLLBARS-20261106 continuinguserdelivery: soleRootowner reserves0.5.42
 MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with main66f includes scrollbarproducerbacd/source0d plus existingPlaywright+Codexmetadata fixes. RootindependentactualWebKit samefixtureoldmotionFAIL/currentPASS and combined94DOM/type/lint PASS. Freeze thisnecessaryfix scope; laterindependentfeatures nextbatch. ExactnewheadCI/main/formal/safeinstall/actualoriginalKevin110percentcoldJSONandtaskfooter>=30s/read-bottom-expand-switch plus project/settings/chat andPlaywright/Codex/sameartifact101 stillrequired. 542.5 firstpipeline completedonce throughApple, no rebuild/resubmit; preserveunpromoted and combine one safe maintenance installation usinglatestacceptedcandidate. SoleRoot01a12bc2 desktop/sharedCI/main; authorworkspaces and otherunits unchanged.
 
 - 542.6 sourceR2：原R1精确CI DOM一个旧被动effect结清断言失败，Root仅修RecoveryActionReview测试等待，全部生产字节不变；同PR254待原全部job终态后唯一FFpush，再按新exacthead检查。最终范围仍滚动条+jitter+Playwright+Codexmetadata，不扩功能或重复正式构建。
+
+## MB-FAILED-MESSAGE-20261106
+
+失败用户消息逐条恢复与移除，未知投递只检查；按原TabProvider身份守卫，保留canonical历史与草稿。源于main045b30ee的codex/failed-message-recovery-20261106；任务`.agent-sync/tasks/codex-failed-message-recovery-20261106-7c23569c.md`，验证`dev-docs/failed-message-recovery-20261106/acceptance.md`。192定向测试/type/lint/分类/renderer build及IAB1280/800合成真实组件检查通过。desktop/sharedCI/main/版本/安装唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，本开发提交推送精确SHA交其下一未冻结批，不改已冻结542.6或日常542.2；无其他部署单元变更。主干、正式制品、真实账号原生验收分别待owner完成。

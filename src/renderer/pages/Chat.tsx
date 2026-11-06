@@ -780,6 +780,7 @@ function ChatContent({
     setLastTerminalReason,
     setSystemNotice,
     sendMessage,
+    dismissFailedSend,
     stopResponse,
     retryCurrentSessionRestore,
     resetSession,
@@ -6272,6 +6273,30 @@ function ChatContent({
   }, [continuationHistory, agentErrorUserMessageId, continuation, handleContinueUnfinished,
     handleContinuationUnavailable, retryCurrentSessionRestore, t]);
 
+  // Historical local failures keep their own recovery action after the global
+  // error banner has moved on. Re-resolve the row and preserve uncertain sends.
+  const handleRecoverFailedSend = useCallback(async (messageId: string) => {
+    if (conversationOperationPendingRef.current || isComposerUpdateCheckpointLocked()) return;
+    const message = messagesRef.current.find(row => row.id === messageId && row.deliveryStatus === 'failed');
+    if (!message) return;
+    conversationOperationPendingRef.current = true;
+    const recoverySessionId = sessionIdRef.current;
+    try {
+      if (message.deliveryUnconfirmed) {
+        const result = await retryCurrentSessionRestore();
+        if (sessionIdRef.current === recoverySessionId) {
+          toastRef.current.warning(t(result.restored ? 'shell.agentError.inspected' : 'shell.continuation.unavailable'));
+        }
+        return;
+      }
+      const resend = projectErrorMessageResend(message, messagesRef.current);
+      if (resend) await handleSendMessageRef.current(resend.text, resend.images, undefined,
+        resend.context, resend.asyncQuestionReply, resend.retryFailedMessageId);
+    } finally {
+      conversationOperationPendingRef.current = false;
+    }
+  }, [retryCurrentSessionRestore, t]);
+
   // Fork = create a new independent session branch at a specific assistant message
   const handleFork = useCallback((assistantMessageId: string) => {
     setForkTarget(assistantMessageId);
@@ -6938,6 +6963,8 @@ function ChatContent({
                       : handleRewind
                   }
                   onRetry={handleRetry}
+                  onRecoverFailedSend={handleRecoverFailedSend}
+                  onDismissFailedSend={dismissFailedSend}
                   onFork={
                     isExternalRuntime
                       ? runtimeConversationBranchSupported &&

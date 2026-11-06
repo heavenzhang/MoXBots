@@ -55,6 +55,8 @@ interface MessageProps {
   isLoading?: boolean;
   onRewind?: (messageId: string) => void;
   onRetry?: (assistantMessageId: string) => void;
+  onRecoverFailedSend?: (messageId: string) => void;
+  onDismissFailedSend?: (messageId: string) => void;
   onFork?: (assistantMessageId: string) => void;
   /** Slot rendered after the BlockGroup containing ExitPlanMode tool */
   exitPlanModeSlot?: ReactNode;
@@ -106,6 +108,8 @@ function areMessagesEqual(prev: MessageProps, next: MessageProps): boolean {
   if (Boolean(prev.onRewind) !== Boolean(next.onRewind)) return false;
   if (Boolean(prev.onFork) !== Boolean(next.onFork)) return false;
   if (Boolean(prev.onRetry) !== Boolean(next.onRetry)) return false;
+  if (Boolean(prev.onRecoverFailedSend) !== Boolean(next.onRecoverFailedSend)) return false;
+  if (Boolean(prev.onDismissFailedSend) !== Boolean(next.onDismissFailedSend)) return false;
 
   // Message updates are immutable. Comparing the complete row identity covers
   // attachments and other visible metadata while unchanged history stays cheap.
@@ -291,7 +295,7 @@ function renderWidgetSegments(text: string, isLoading: boolean, unclosedNotice: 
  * Message component with memo optimization.
  * History messages won't re-render when streaming message updates.
  */
-const Message = memo(function Message({ message, revealTurnProcess = false, citationSources, isLoading = false, onRewind, onRetry, onFork, exitPlanModeSlot, initialUserCollapsed = false }: MessageProps) {
+const Message = memo(function Message({ message, revealTurnProcess = false, citationSources, isLoading = false, onRewind, onRetry, onRecoverFailedSend, onDismissFailedSend, onFork, exitPlanModeSlot, initialUserCollapsed = false }: MessageProps) {
   const remoteContent = useRemoteConversationContent();
   const { t } = useTranslation('app');
   const { openPreview } = useImagePreview();
@@ -474,7 +478,23 @@ const Message = memo(function Message({ message, revealTurnProcess = false, cita
               )}
             </article>
             {message.deliveryStatus === 'failed' && (
-              <p className="mr-2 mt-1 text-xs text-[var(--error)]">{t('app:tabProvider.sendFailed')}</p>
+              <div className="mr-2 mt-1 flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-xs">
+                <span className={message.deliveryUnconfirmed ? 'text-[var(--ink-muted)]' : 'text-[var(--error)]'}>
+                  {t(message.deliveryUnconfirmed ? 'app:tabProvider.sendStatusUnknown' : 'app:tabProvider.sendFailed')}
+                </span>
+                {onRecoverFailedSend && (
+                  <button type="button" onClick={() => onRecoverFailedSend(message.id)}
+                    className="rounded text-[var(--ink-muted)] underline underline-offset-2 hover:text-[var(--ink)]">
+                    {t(message.deliveryUnconfirmed ? 'app:tabProvider.inspectSend' : 'app:tabProvider.resendMessage')}
+                  </button>
+                )}
+                {!message.deliveryUnconfirmed && onDismissFailedSend && (
+                  <button type="button" onClick={() => onDismissFailedSend(message.id)}
+                    className="rounded text-[var(--ink-muted)] underline underline-offset-2 hover:text-[var(--ink)]">
+                    {t('app:tabProvider.dismissFailedSend')}
+                  </button>
+                )}
+              </div>
             )}
             {/* Actions occupy the reserved left gutter, not a blank line below
                 every bubble. Keyboard focus and touch keep them reachable. */}

@@ -18,3 +18,21 @@ it('only renders retry when the caller supplies the capability and updates memoi
  fireEvent.click(screen.getByRole('button',{name:label}));expect(retry).toHaveBeenCalledWith('a');
  view.rerender(<MessageList {...props}/>);expect(screen.queryByRole('button',{name:label})).toBeNull();
 });
+
+it('updates failed-send capabilities and forwards current handlers through memoized history rows', () => {
+ const message = { id: 'failed', role: 'user' as const, content: 'same input', timestamp: new Date(), deliveryStatus: 'failed' as const };
+ const props = { messages: [message], streamingMessage: null, isLoading: false, virtuosoRef: createRef<import('react-virtuoso').VirtuosoHandle>(), followEnabledRef: { current: false }, scrollToBottom: vi.fn(), handleAtBottomChange: vi.fn(), composerPlacement: 'flow' as const };
+ const recover = vi.fn(), nextRecover = vi.fn(), dismiss = vi.fn();
+ const view = render(<MessageList {...props} />);
+ expect(screen.queryByRole('button', { name: '重新发送' })).toBeNull();
+ view.rerender(<MessageList {...props} onRecoverFailedSend={recover} onDismissFailedSend={dismiss} />);
+ fireEvent.click(screen.getByRole('button', { name: '重新发送' }));
+ expect(recover).toHaveBeenCalledExactlyOnceWith('failed');
+ view.rerender(<MessageList {...props} onRecoverFailedSend={nextRecover} onDismissFailedSend={dismiss} />);
+ fireEvent.click(screen.getByRole('button', { name: '重新发送' }));
+ expect(nextRecover).toHaveBeenCalledExactlyOnceWith('failed');
+ fireEvent.click(screen.getByRole('button', { name: '移除失败记录' }));
+ expect(dismiss).toHaveBeenCalledExactlyOnceWith('failed');
+ view.rerender(<MessageList {...props} />);
+ expect(screen.queryByRole('button', { name: '重新发送' })).toBeNull();
+});

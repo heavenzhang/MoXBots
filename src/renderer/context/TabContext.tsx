@@ -217,6 +217,8 @@ export interface TabContextValue extends TabState {
     isConnected: boolean;
 
     // Chat actions
+    /** Remove only a definitively unadmitted local send presentation. */
+    dismissFailedSend: (messageId: string) => void;
     sendMessage: (text: string, images?: ImageAttachment[], permissionMode?: PermissionMode, model?: string, providerEnv?: ChatProviderEnv, isCron?: boolean, reasoningEffort?: string, providerRoute?: ProviderRoute, requiredSystemSkill?: ProductSystemSkillRequirement, asyncQuestionReply?: AsyncQuestionReply, agentMentions?: import("../../shared/agentMentions").AgentMentionSnapshot[], primaryContext?: import("../../shared/agentMentions").DesktopPrimaryContext, retryFailedMessageId?: string, clientRequestId?: string, continueFromTurnId?: string) => Promise<boolean>;
     stopResponse: () => Promise<{ success: boolean; alreadyStopped: boolean }>;
     retryCurrentSessionRestore: (targetMessageId?: string) => Promise<CurrentSessionRestoreResult>;
@@ -305,6 +307,7 @@ const defaultContextValue: TabContextValue = {
     setLastTerminalReason: () => { },
     setSystemNotice: () => { },
     setSessionMeta: () => { },
+    dismissFailedSend: () => {},
     sendMessage: async () => false,
     stopResponse: async () => ({ success: false, alreadyStopped: true }),
     retryCurrentSessionRestore: async () => ({ restored: false, targetMessagePresent: null }),

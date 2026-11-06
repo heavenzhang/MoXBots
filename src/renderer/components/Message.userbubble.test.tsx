@@ -52,6 +52,32 @@ describe('Message — user bubble spacing', () => {
     if (status === 'failed') expect(screen.getByText('发送失败')).toBeInTheDocument();
   });
 
+  it('binds separate recovery and dismissal controls to identical failed inputs by identity', () => {
+    const recover = vi.fn(), dismiss = vi.fn();
+    render(<>
+      <Message message={userMsg('same input', { id: 'failed-1', deliveryStatus: 'failed' })} onRecoverFailedSend={recover} onDismissFailedSend={dismiss} />
+      <Message message={userMsg('same input', { id: 'failed-2', deliveryStatus: 'failed' })} onRecoverFailedSend={recover} onDismissFailedSend={dismiss} />
+    </>);
+    fireEvent.click(screen.getAllByRole('button', { name: '重新发送' })[1]);
+    expect(recover).toHaveBeenCalledExactlyOnceWith('failed-2');
+    fireEvent.click(screen.getAllByRole('button', { name: '移除失败记录' })[0]);
+    expect(dismiss).toHaveBeenCalledExactlyOnceWith('failed-1');
+  });
+
+  it('offers only inspection for uncertain delivery and removes controls after canonical reconciliation', () => {
+    const recover = vi.fn(), dismiss = vi.fn();
+    const view = render(<Message message={userMsg('input', { deliveryStatus: 'failed', deliveryUnconfirmed: true })} onRecoverFailedSend={recover} onDismissFailedSend={dismiss} />);
+    expect(screen.getByText('发送状态待确认')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '重新发送' })).toBeNull();
+    expect(screen.queryByRole('button', { name: '移除失败记录' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '检查发送状态' }));
+    expect(recover).toHaveBeenCalledExactlyOnceWith('u1');
+    expect(dismiss).not.toHaveBeenCalled();
+    view.rerender(<Message message={userMsg('input')} onRecoverFailedSend={recover} onDismissFailedSend={dismiss} />);
+    expect(screen.queryByText('发送状态待确认')).toBeNull();
+    expect(screen.queryByRole('button', { name: '检查发送状态' })).toBeNull();
+  });
+
   it('keeps background task notifications hidden from the chat flow', () => {
     const { container } = render(
       <Message
