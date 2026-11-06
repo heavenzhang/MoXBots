@@ -94,6 +94,46 @@ describe('Codex utility response admission', () => {
   });
 });
 
+describe('native supplemental response metadata', () => {
+  // Reconstructs the text-only event types observed by the real stage probe.
+  // Native Codex consumes this frame for transport and safety metadata.
+  const metadata = { type: 'response.metadata', response_id: 'response-fixture', sequence_number: 43,
+    metadata: { openai_chatgpt_moderation_metadata: { prompt: {} } } };
+  const event = (value: unknown) => `data: ${JSON.stringify(value)}
+
+`;
+  const textDelta = { type: 'response.output_text.delta', delta: '继续验证' };
+
+  it('passes a complete text stream with supplemental metadata through the one-use gateway unchanged', async () => {
+    const body = event(textDelta) + event(metadata) + stream();
+    expect(validateCodexUtilityResponse(body, true)).toBe(true);
+    upstream(body, '');
+    const gate = await createCodexUtilityGateway('https://original.example/v1/responses', 'session-model', new AbortController().signal);
+    try {
+      const response = await sendGateway(new URL(gate.baseUrl).pathname + '/responses', { model: 'session-model' });
+      expect(response.status).toBe(200);
+      expect(response.body).toBe(body);
+      expect(gate.failed).toBe(false);
+      expect(mocks.requests).toHaveLength(1);
+    } finally {
+      await gate.close();
+    }
+  });
+
+  it.each([
+    event(metadata),
+    event(metadata) + stream({ ...completed, status: 'incomplete' }),
+    event(metadata) + event({ type: 'response.failed', response: { ...completed, status: 'failed' } }),
+    event({ ...metadata, type: 'response.unknown_metadata' }) + stream(),
+    event({ ...metadata, item: { type: 'function_call', name: 'bash' } }) + stream(),
+    event({ ...metadata, part: { type: 'function_call' } }) + stream(),
+    event({ ...metadata, response: { ...completed, output: [{ type: 'function_call', name: 'bash' }] } }) + stream(),
+    stream() + event(metadata),
+  ])('rejects metadata without a complete safe text response (%#)', body => {
+    expect(validateCodexUtilityResponse(body, true)).toBe(false);
+  });
+});
+
 describe('native network metadata', () => {
   it('honors native config/provider URL priority and rejects ambiguous legacy environment URLs', () => {
     const account = { account: { type: 'apiKey' } };
