@@ -434,6 +434,47 @@ describe('first desktop execution intent utility', () => {
     },
   );
 
+  it.each(['auto-no-pool', 'manual', 'twice-failed', 'permanent', 'cancelled', 'selection-changed'] as const)(
+    'retries only transient tool-free intent on the same model (%s)', async mode => {
+      const workspace = join(state.home, 'intent-transient');
+      await mkdir(workspace);
+      const meta = await store.createSession(workspace, { runtime: 'builtin', modelMode: mode === 'manual' ? 'manual' : 'auto' });
+      await agent.initializeAgent(workspace, null, meta.id, { preWarmDisabled: true });
+      const config = await import('../builtin-session/config');
+      config.setModel('synthetic-current');
+      config.setProviderEnv({ providerId: 'synthetic-provider', baseUrl: 'https://provider.invalid', apiKey: 'synthetic-only' });
+      const router = await import('../auto-route/router');
+      const catalog = router.buildAutoRouteCatalog();
+      const classifier = { providerId: 'classifier', model: 'synthetic-classifier' };
+      vi.spyOn(router, 'buildAutoRouteCatalog').mockReturnValue({ ...catalog,
+        settings: { classifier, pool: { 'classifier/synthetic-classifier': { enabled: true } } }, entries: new Map() });
+      const { ClassifierTransportError } = await import('../auto-route/classifier');
+      const valid = JSON.stringify({ kind: 'answer', objective: 'Compute 1+1', scope: 'Answer only', acceptanceCriteria: ['2'], continuationOf: null });
+      const controller = new AbortController();
+      const transport = vi.fn(async () => {
+        if (transport.mock.calls.length === 1 || mode === 'twice-failed') {
+          if (mode === 'cancelled') controller.abort();
+          if (mode === 'selection-changed') config.setModel('changed');
+          throw new ClassifierTransportError('synthetic HTTP failure', undefined, { status: mode === 'permanent' ? 401 : 503, retryable: mode !== 'permanent' });
+        }
+        return valid;
+      });
+      vi.spyOn(router, 'getAutoRouteTransport').mockResolvedValue(transport);
+      const engine = (await import('../session-engine/builtin-adapter')).createBuiltinSessionEngine();
+      const failure = vi.fn();
+      const result = await engine.runTextUtility!({ prompt: 'Compute 1+1', systemPrompt: 'Return JSON',
+        signal: controller.signal, timeoutMs: 60_000, validateResult: text => text === valid ? undefined : 'invalid_json', onFailure: failure });
+      const successful = mode === 'auto-no-pool' || mode === 'manual';
+      expect(result).toBe(successful ? valid : null);
+      expect(transport).toHaveBeenCalledTimes(successful || mode === 'twice-failed' ? 2 : 1);
+      if (successful || mode === 'twice-failed') expect(transport.mock.calls[1]).toEqual([expect.objectContaining({ classifier: mode === 'manual' ? { providerId: 'synthetic-provider', model: 'synthetic-current' } : classifier, prompt: 'Compute 1+1' })]);
+      expect(state.sdkInputs).toHaveLength(0);
+      expect(store.getSessionMetadata(meta.id)?.taskOrchestration?.execution).toBeUndefined();
+      if (successful) expect(failure).not.toHaveBeenCalled();
+      else expect(failure).toHaveBeenCalledExactlyOnceWith(mode === 'cancelled' || mode === 'selection-changed' ? 'cancelled' : 'transport');
+    },
+  );
+
   it.each(['first-mode', 'retry-mode', 'retry-model', 'retry-provider'] as const)(
     'rejects a valid intent returned after its original selection changes (%s)', async change => {
       const workspace = join(state.home, 'intent-selection-change');

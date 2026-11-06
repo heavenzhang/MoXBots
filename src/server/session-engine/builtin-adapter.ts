@@ -367,6 +367,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
           if (!selectionIsCurrent()) { task.onFailure?.('cancelled'); return null; }
           let text: string | null = null;
           let transportFailure = false;
+          let transportError: ClassifierTransportError | undefined;
           try {
             text = await Promise.race([transport({
               classifier,
@@ -381,6 +382,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
           } catch (error) {
             if (!task.validateResult) throw error;
             transportFailure = true;
+            transportError = error instanceof ClassifierTransportError ? error : undefined;
             invalid = error instanceof ClassifierTransportError && error.reason === 'output_limit' ? 'output_limit' : 'transport';
           }
           if (controller.signal.aborted) { failed(); return null; }
@@ -394,6 +396,7 @@ export function createBuiltinSessionEngine(): SessionEngine {
           console.warn('[structured-utility] rejected result', JSON.stringify({
             providerId: classifier.providerId, model: classifier.model, attempt: attempt + 1,
             reason: invalid, chars: text?.length ?? 0,
+            ...(transportError ? { status: transportError.status, code: transportError.code, retryable: transportError.retryable } : {}),
             sha256: createHash('sha256').update(text ?? '').digest('hex'),
           }));
           if (attempt === 1) break;
@@ -409,7 +412,12 @@ export function createBuiltinSessionEngine(): SessionEngine {
             && fresh.entries.has(autoModelKey(current))
             && autoModelKey(current) !== autoModelKey(classifier)) {
             classifier = current;
-          } else if (transportFailure) break;
+          } else if (transportFailure && !transportError?.retryable) break;
+          // Transient tool-free requests may retry once on the SAME model even
+          // when the current Session model is outside the auto pool, or manual.
+          // Keep the original total budget, selection checks and two-call cap.
+          // Auth/config/TLS and output-limit failures cannot take this path.
+          if (transportFailure) invalid = undefined;
         }
         task.onFailure?.(invalid ?? 'empty_response');
         return null;

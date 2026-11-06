@@ -335,6 +335,19 @@ describe('bounded native execution evidence view', () => {
 });
 
 describe("durable Session execution owner", () => {
+  it('finishes a reply-only calculation without tool evidence, review or automatic continuation', async () => {
+    const prepared = await prepare('1+1等于几？只回答数字。', 'reply-only', {
+      kind: 'answer', objective: '计算1+1', scope: '回复文本', acceptanceCriteria: [], continuationOf: null, preserveExecution: false,
+    });
+    expect(currentExecution()).toBeUndefined();
+    expect(prepared.request.runtimeReminder ?? '').not.toContain('execution_review');
+    expect(executionOwner.sessionExecutionToolDenial(id, prepared.request.queueId!, 'Write', { file_path: '/unexpected' })).toBeTruthy();
+    await prepared.request.onTerminal?.({ status: 'complete', text: '2', assistantMessagePresent: true });
+    expect(currentExecution()).toBeUndefined();
+    expect(store.getSessionMetadata(id)?.taskOrchestration?.executionEvidence ?? []).toEqual([]);
+    expect(continuationRequests).toHaveLength(0);
+  });
+
   it('gives a readonly follow-up current recovery guidance without restarting or replacing the original execution', async () => {
     const original = await prepare();
     await original.request.onTerminal?.({ status: 'error', text: 'Historical request failed', assistantMessagePresent: true });

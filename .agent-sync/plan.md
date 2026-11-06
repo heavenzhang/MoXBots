@@ -1350,3 +1350,8 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 prepares l
 ## MB-CHAT-REVIEW-CLEANUP-20261106 Root combined local5432
 
 Existing sole desktop/macOS/updater/sharedCI/main owner01a12bc2 integrates reviewed cleanup9164/9a606 and recovery93b on the immutable5431 source35c1 plus actual main05ea. Reserve0.5.43/build543.2 for a different artifact; frozen5431 and published5426 stay unchanged. Current-Mac development/checks can progress independently of hosted setup and a pending user maintenance-window answer. Remote main, new local artifact/install and actual awaiting_review Chat/no review-template controls/results-detail/input acceptance remain separate evidence. No automatic task acceptance, business resend/replay, unknown-ledger clearing, UI guard bypass or cloud/mobile/website deployment. CHAT08 real pending/unknown and reading-protection1921 are separate queued tasks, not part of this freeze. Task codex-chat-cleanup-recovery-integration-20261106-f1ade627; private evidence work/chat-review-cleanup-root-20261106/owner.
+
+
+## MB-INTENT-TRANSPORT-20261107
+
+修复发送前工具外分类的暂态失败无同模型重试，以及纯文字答复误分执行导致工具验收循环。任务 `.agent-sync/tasks/codex-intent-transport-20261107-26e0bfab.md`；范围仅 desktop builtin classifier/transport，沿用同一60秒/两次上限、候选池与Stop保护。desktop/macOS/sharedCI/main/updater唯一负责人仍为01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发CI、不分配版本或自行安装；精确提交与真实分类证据交下一未冻结批。原543.2真实1+1测试暴露误分类，不作为修复后验收；原用户任务不重发、不改账本。
