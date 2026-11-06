@@ -1,3 +1,4 @@
+import { nativeRecoveryAncestry } from '../openai-bridge/native-recovery-ancestry';
 import { getSessionMetadata } from '../SessionStore';
 import { ContextRecoveryController, recoveryActionHash, recoveryEvidenceDigest } from '../openai-bridge/context-recovery';
 import type { SessionTaskLedger } from '../../shared/sessionTaskOrchestration';
@@ -22,14 +23,25 @@ export async function reconcileKnownExecutionFailures(deps: ExecutionFailureRevi
   const executionId = taskLedger?.execution?.id;
   const pending = taskLedger?.executionEvidence?.filter(fact => fact.pending && fact.mutating && fact.name === 'Bash');
   if (!executionId || !pending?.length) return;
-  const ledger = deps.load();
+  let verifiedRows: readonly unknown[] | undefined;
+  let ledger = deps.load();
   if (ledger === undefined) return;
+  if (deps.reconcileNativeFailures && deps.readNativeRecords) {
+    const before = recoveryLedgerDigest(ledger);
+    const [records, selected] = await Promise.all([deps.readNativeRecords(), deps.readNative()]);
+    const current = () => deps.isCurrent() && recoveryLedgerDigest(deps.load()) === before
+      && getSessionMetadata(deps.owner.sessionId)?.taskOrchestration?.execution?.id === executionId;
+    if (!current()) return;
+    await deps.reconcileNativeFailures(records, selected, current);
+    verifiedRows = nativeRecoveryAncestry(records, selected, deps.owner.sdkSessionId);
+    ledger = deps.load();
+  }
   const ledgerDigest = recoveryLedgerDigest(ledger);
   const controller = new ContextRecoveryController({ initialLedger: ledger, recoveryOwner: deps.owner,
     scope: () => undefined, isActive: () => false, backup: async () => { throw new Error('Evidence review cannot execute'); } });
   const receipts = controller.inspectSettledBashFailures();
   if (!receipts.length) return;
-  const rows = await deps.readNative();
+  const rows = verifiedRows ?? await deps.readNative();
   const current = () => deps.isCurrent() && recoveryLedgerDigest(deps.load()) === ledgerDigest
     && getSessionMetadata(deps.owner.sessionId)?.taskOrchestration?.execution?.id === executionId;
   if (!current() || rows.length > 50_000) return;

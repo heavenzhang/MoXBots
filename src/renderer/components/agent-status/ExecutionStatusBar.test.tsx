@@ -640,3 +640,19 @@ describe("plan confirmation in the actual execution status composition", () => {
     );
   });
 });
+
+it('keeps the pause reason visible without expanding details or exposing a stale success summary', async () => {
+  tab.messages = []; tab.sessionState = 'idle'; tab.isLoading = false;
+  tab.apiGet.mockResolvedValue({ success: true, sessionId: 's1', ledger: {
+    ...emptyTaskLedger(), execution: {
+      id: 'execution', requestId: 'request', originalInput: '继续', phase: 'paused', reason: 'TOOL_OUTCOME_UNKNOWN',
+      startedAt: 1, deadlineAt: 2, turns: 2, reworks: 0, noProgress: 0,
+      intent: { kind: 'execute', objective: '核对已有成果', scope: '当前任务', acceptanceCriteria: ['核对结果'] },
+      assessment: { decision: 'accept', summary: '先前模型说已经完成', checks: [] },
+    },
+  }});
+  render(<ExecutionStatusBar activity={activity} />);
+  expect(await screen.findByRole('status')).toHaveTextContent('先前工具的结果尚未确认');
+  expect(screen.queryByRole('region')).not.toBeInTheDocument();
+  expect(screen.queryByText('先前模型说已经完成')).not.toBeInTheDocument();
+});

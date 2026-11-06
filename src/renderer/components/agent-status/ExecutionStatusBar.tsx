@@ -403,6 +403,11 @@ export default memo(function ExecutionStatusBar({
               )}
             </div>
           </div>
+          {executionPresentation?.blockingReason && (
+            <p role="status" className="px-3 pb-2 text-xs leading-5 text-[var(--warning)] [overflow-wrap:anywhere]">
+              {executionPresentation.blockingReason}
+            </p>
+          )}
           {shown && (
             <div
               ref={detailRegion}

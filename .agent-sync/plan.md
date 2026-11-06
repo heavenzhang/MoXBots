@@ -1332,3 +1332,13 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 - 旧Message DOM2/2 RED；修复71DOM、type/lint/分类、独立源码审查通过。真实MessageList/Virtuoso WebKit旧码1569→113px反事实；WebKit/Chromium修复3次间隙高度/滚动变化0px、手动阅读及真实终态展开通过。见dev-docs/stream-stability-20261106/acceptance.md。
 - desktop/macOS-arm64/updater/sharedCI/main唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发共享CI或正式构建。冻结542.6不修改，原owner接收精确SHA并在下一未冻结批集成、发布和原会话复验；源码/离线与main/正式/真实验收分别记录。
 - 原会话执行失败另有模型命令schema漏参/任务版本冲突与native证据epoch检查；不通过UI折叠隐藏，不放宽门禁或重放原unknown操作。私有诊断只留本地工作区。
+
+## MB-CONTINUE-RECOVERY-20261106 — continuation misclassification and visibility
+
+- 分支 codex/continue-recovery-20261106；修复 builtin Bash exit 128 被错误计作 unknown、压缩后历史失败无法核对，以及暂停原因被旧摘要遮盖、发送前拒绝没有界面反馈。
+- 源码与模拟验证完成；只读真实历史匹配，未手改运行数据、未重放业务操作。待远端 main、统一桌面构建安装及原任务真实完成验收。
+- desktop/macOS-arm64/sharedCI/main 唯一负责人仍为 01a12bc2-907a-7702-b6dd-788225c5dfe4；本开发会话不分配版本或触发共享 CI。任务记录 .agent-sync/tasks/codex-continue-recovery-20261106-f2d2543b.md，验收说明 dev-docs/continue-recovery-20261106/acceptance.md。
+
+## MB-CONTINUE-RECOVERY-20261106 — Root current-Mac repair candidate
+
+Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 prepares local repair0.5.43/build543.1 from reviewed stream66fd and recoveryc4f169c. Original producer workspaces and published542.6 remain immutable. Root239 recovery tests/type/lint/classification and71stream DOM/WebKit geometry plus exact66fd full12localARM passed; combined-candidate checks and actual native/original-task acceptance are distinct. Current-Mac development/repair candidate validation does not require waiting for unrelated hosted setup. No public publication/tag is admitted by this local record; later main/CI/public promotion need their own exact evidence. Original recovery owner alone coordinates one business continuation after Root safe backup/normal maintenance install; no clearing unknown ledgers, model/permission change, business replay or stale full-config restore. Record `.agent-sync/tasks/codex-recovery-local-repair-0543-20261106-9e3af6dc.md`; private controls `work/recovery-local-0543-20261106/owner`.

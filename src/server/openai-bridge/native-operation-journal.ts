@@ -114,6 +114,15 @@ export class NativeOperationJournal {
     }
     this.legacy.delete(actionHash);
   }
+  /** Correct only a returned error with the identical original result digest. */
+  reviewBashFailure(toolUseId: string, actionHash: string, resultDigest: string): void {
+    const attempt = [...this.entries.values()].find(a => a.toolUseId === toolUseId);
+    if (!attempt || attempt.toolName !== 'Bash' || attempt.actionHash !== actionHash
+      || attempt.status !== 'unresolved' || attempt.outcome !== 'error' || attempt.resultDigest !== resultDigest) {
+      throw new Error('Native failure proof does not match the recorded attempt');
+    }
+    attempt.status = 'returned'; attempt.outcome = 'bash-exit';
+  }
   markLegacy(actionHash: string): void { this.legacy.add(actionHash); }
   hasUnresolved(actionHash: string): boolean { return [...this.entries.values()].some(a => a.actionHash === actionHash && a.status !== 'returned'); }
   hasReturnedAction(toolUseId: string, actionHash: string): boolean {
