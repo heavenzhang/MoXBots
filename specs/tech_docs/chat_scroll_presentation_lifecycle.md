@@ -85,6 +85,8 @@ Virtuoso 的 Footer 必须使用模块级稳定组件类型，动态内容通过
 
 消息过程的 live 资格来自消息 owner 的 `isLoading`，不能用“当前是否存在未结束块”推断。原生工具完成与下一思考/正文开始之间可以暂时没有未结束块；此时自动切换成历史折叠，会把同一消息高度反复收缩和恢复，跟随运动无法消除这种跳动。`BlockGroup` 在消息真实结束后才进入历史折叠，每个思考/工具仍由自身完成位及真实回执决定 outcome；保持 live 资格不等于把已完成行显示成执行中。`Message.processContinuity.test.tsx` 与 `scripts/verify-chat-process-continuity.mjs` 分别验证块间隙的行可见性及真实 Virtuoso 几何。
 
+整轮真实结束时，Message先保留live展示树，在DOM提交后采样原follow意图、选区与手动展开详情。正在阅读则保留过程分组和嵌套状态，新增收起入口放在末尾，避免插入高度推走读者；仅明确收起才隐藏。正常跟随仍自动折叠，已完成历史初次挂载仍按原默认，搜索仍可展开。MessageList的单一selectionchange订阅仅向原控制器发送阅读意图，不持有第二份follow状态。`verify-chat-reading-closeout.mjs`验证终态的阅读锚点、选区、详情及正常跟随；离线页面不替代原生卡片验收。
+
 `useVirtuosoScroll` 持有用户是否跟随最新内容的意图。`atBottomStateChange` 仅描述虚拟列表的几何位置；正文、Footer、提示卡或输入框增高导致离底，不能关闭跟随。上滚 wheel、touch、viewport key 或抓取 scrollbar 进入阅读模式；平滑追赶尚未到达底部时，向下输入也先接管当前运动，向下输入到达真实底部（1px舍入容差）或显式“回到底部”恢复跟随。输入框内的光标移动不属于 viewport key。
 
 主动展开消息/工具详情也是阅读意图，`onRowLayoutChanged` 在 direct-toggle 分支暂停跟随；不能再依赖展开后的几何离底来推断用户意图。搜索已挂载命中的快速路径也先调用控制器的 `pauseAutoScroll()`，再定位文字范围。

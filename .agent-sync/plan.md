@@ -1371,3 +1371,8 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 ## MB-CHAT-STYLE-20261104 · CHAT08 unknown visibility — 2026-11-07
 
 真实隔离Bash操作启动后普通Stop，journal仍reserved且无原生错误证明；当前UI仅失败，无unknown提示。codex/chat-unknown-visibility-20261107从mainbfbc92f补最近终态轮的精确未决调用只读提示，保留Stop和全部执行门禁；不把历史/匿名/在途调用投成用户待办。先补此真实验收，随后阅读保护1921独立交付。唯一桌面/sharedCI/main owner01a12bc2不变，543.3冻结批保留，新源下一未冻结批。详见当前任务记录。
+
+
+## MB-CHAT-STYLE-20261104 / CHAT08–11（2026-11-06）
+
+新授权先补待确认/unknown真实原生验收，再保护终态阅读并合入main交原owner统一发布。codex/chat-reading-protection-20261106基于05ea1e2，保留PR256间隙live修复；Message终态采样原follow/选区/手动详情，阅读者保留原树，正常跟随/历史默认/搜索保留。104DOM和双引擎真实组件受控页面通过，旧码2388px跳动反事实已复现；不是原生卡片通过。CHAT08仍由原owner协调无业务副作用的正常产品路径样本。desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4，543.1当前冻结批不覆盖，新成果下一未冻结批。详见dev-docs/chat-reading-protection-20261106/acceptance.md与当前任务记录，开发不运行共享CI/正式包。
