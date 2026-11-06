@@ -1,4 +1,4 @@
-<!-- git-project-sync-task:source-digest=ecfa406dbbfd87d736a38b33cc6d92e3fa4aa68d72709d6334cde16fb6e9ee2e -->
+<!-- git-project-sync-task:source-digest=ee4102827bdb0cc174f0e99c1b44f03425b077244ec36e4122673a9cd1c9201a -->
 <!-- git-project-sync-task:version=2 -->
 <!-- git-project-sync-task:id=0a3defff-d350-44fd-ad09-bac24c90bcd8 -->
 <!-- git-project-sync-task:branch=codex/failed-message-recovery-20261106 -->
@@ -26,15 +26,17 @@
 
 ## Verification
 
+- Source digest: `ee4102827bdb0cc174f0e99c1b44f03425b077244ec36e4122673a9cd1c9201a`; Final canonical-empty dismiss guard: all 192 targeted DOM/unit tests PASS, full tsc PASS, affected ESLint PASS, renderer build plus 8 theme tests PASS. Earlier actual-component IAB 1280/800 interaction checks unchanged. Plist now542.6 installed by original owner, excludes this branch; next-unfrozen main/CI/native acceptance pending.
+
 - Source digest: `ecfa406dbbfd87d736a38b33cc6d92e3fa4aa68d72709d6334cde16fb6e9ee2e`; Documentation status only; production source unchanged from f3de6d6f44c047776fc82af9e050f63ed3ae35fd. Prior 192 tests/type/lint/build/IAB checks apply; main/native release remains with original owner.
 
 - Source digest: `ecfa406dbbfd87d736a38b33cc6d92e3fa4aa68d72709d6334cde16fb6e9ee2e`; 192 targeted DOM/unit tests PASS; stale retry effect repair 3 PASS; tsc --noEmit PASS; targeted ESLint PASS; test classification PASS; renderer build with 8 theme tests PASS; IAB actual Message synthetic mouse/keyboard/draft/1280 and 800 viewport checks PASS. Native installed acceptance and main delivery pending original desktop owner.
 
-- 192项定向测试、全树tsc、定向eslint、classification、renderer build（另含8项theme测试）PASS；新加过期重试用例修正effect后再次通过。真实组件IAB1280/800鼠标、键盘、草稿与无横溢出PASS；全部为隔离合成验收。见dev-docs/failed-message-recovery-20261106/acceptance.md。
+- 192项定向测试、全树tsc、定向eslint、classification、renderer build（另含8项theme测试）PASS；新加过期重试用例修正effect后再次通过。最终复核补齐canonical空正文时移除预览的守卫，192项/typecheck/受影响lint/renderer build重验PASS。真实组件IAB1280/800鼠标、键盘、草稿与无横溢出PASS；全部为隔离合成验收。见dev-docs/failed-message-recovery-20261106/acceptance.md。
 
 ## Blockers and unknowns
 
-- 原 desktop/sharedCI/main owner 正在准备冻结542.6；本任务进入其下一未冻结批。Chronicle 未运行；本机日志与截图定位。
+- 原desktop/sharedCI/main owner已安装冻结542.6并继续原生验收，本任务进入其下一未冻结批，542.6不含本修复。Chronicle 未运行；本机日志与截图定位。
 
 ## Deployment request
 

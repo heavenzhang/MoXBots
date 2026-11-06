@@ -1018,7 +1018,13 @@ describe('TabProvider session activity ownership', () => {
     const retry = () => tab.sendMessage('hello', undefined, undefined, undefined, undefined, undefined,
       undefined, undefined, undefined, undefined, undefined, undefined, failed.id);
     if (transition === 'dismissed') act(() => tab.dismissFailedSend(failed.id));
-    else if (transition === 'canonical-empty') emit('chat:transcript-operation', { sessionId, operation: { kind: 'message-create', message: { id: 'accepted', role: 'user', content: '', timestamp: new Date(0).toISOString(), metadata: { source: 'desktop', clientRequestId: failed.metadata?.clientRequestId } } } });
+    else if (transition === 'canonical-empty') {
+      emit('chat:transcript-operation', { sessionId, operation: { kind: 'message-create', message: { id: 'accepted', role: 'user', content: '', timestamp: new Date(0).toISOString(), metadata: { source: 'desktop', clientRequestId: failed.metadata?.clientRequestId } } } });
+      const beforeDismiss = screen.getByTestId('history-identities').textContent;
+      act(() => tab.dismissFailedSend(failed.id));
+      expect(screen.getByTestId('history-identities').textContent).toBe(beforeDismiss);
+      expect(screen.getByTestId('history-content')).toHaveTextContent('hello');
+    }
     else {
       act(() => { void retry(); });
       await waitFor(() => expect(tauriHarness.proxyFetch).toHaveBeenCalledTimes(2));

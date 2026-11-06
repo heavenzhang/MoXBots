@@ -1061,11 +1061,6 @@ export default function TabProvider({
     pendingDesktopMessagesRef.current = next;
     rawSetPendingDesktopMessages(next);
   }, []);
-  const dismissFailedSend = useCallback((messageId: string) => {
-    setPendingDesktopMessages(rows => rows.filter(row =>
-      row.id !== messageId || row.deliveryStatus !== 'failed' || row.deliveryUnconfirmed,
-    ));
-  }, [setPendingDesktopMessages]);
   const [displayedHistorySessionId, setDisplayedHistorySessionId] = useState<string | null>(null);
   const [historyMessages, rawSetHistoryMessages] = useState<Message[]>([]);
   // Publish each event's projection before React batches its rendering. A
@@ -1073,6 +1068,14 @@ export default function TabProvider({
   const transcriptSessionIdRef = useRef<string | null>(null);
   const transcriptPageRef = useRef<TranscriptPage | null>(null);
   const historyMessagesRef = useRef<Message[]>(historyMessages);
+  const dismissFailedSend = useCallback((messageId: string) => {
+    setPendingDesktopMessages(rows => rows.filter(row =>
+      row.id !== messageId || row.deliveryStatus !== 'failed' || row.deliveryUnconfirmed ||
+      (!!row.metadata?.clientRequestId && historyMessagesRef.current.some(canonical =>
+        canonical.role === 'user' && canonical.metadata?.clientRequestId === row.metadata?.clientRequestId,
+      )),
+    ));
+  }, [setPendingDesktopMessages]);
   const setHistoryMessages = useCallback(
     (action: React.SetStateAction<Message[]>) => {
       let next =
