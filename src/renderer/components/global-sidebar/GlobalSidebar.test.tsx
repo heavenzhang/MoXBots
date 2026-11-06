@@ -59,6 +59,9 @@ const mocks = vi.hoisted(() => ({
   buildProfile: 'myagents' as 'myagents' | 'moxbot',
 }));
 
+vi.mock('@/components/bot-care/BotCarePanel', () => ({ default: ({ onStartWork, onClose }: { onStartWork: (project: unknown) => void; onClose: () => void }) =>
+  <div role="dialog" aria-label="My Bots manager"><button onClick={() => onStartWork(mocks.projects[0])}>Start managed Bot</button><button onClick={onClose}>Close manager</button></div> }));
+
 vi.mock('../../../shared/appProfile', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../../shared/appProfile')>()),
   get APP_BUILD_PROFILE() { return mocks.buildProfile; },
@@ -218,6 +221,8 @@ describe('GlobalSidebar rail flyout', () => {
   beforeEach(async () => {
     vi.useFakeTimers();
     vi.clearAllMocks();
+    mocks.buildProfile = 'myagents';
+    mocks.config.agents = [];
     window.localStorage.clear();
     mocks.projects.length = 0;
     mocks.taskData.sessions.length = 0;
@@ -256,6 +261,23 @@ describe('GlobalSidebar rail flyout', () => {
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();
+  });
+
+  it('opens Bot management and hands formal work to the existing conversation dialog without sending', async () => {
+    mocks.buildProfile = 'moxbot';
+    mocks.projects.push({ id: 'bot-project', agentId: 'bot-a', name: 'Care Bot', path: '/care-bot' });
+    mocks.config.agents = [{ id: 'bot-a', name: 'Care Bot', enabled: false, channels: [] } as unknown as AgentConfig];
+    const onStartBotConversation = vi.fn(async () => ({ status: 'opened' as const }));
+    renderSidebar({ onStartBotConversation });
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: '管理 Bots' }));
+      await vi.dynamicImportSettled();
+    });
+    expect(screen.getByRole('dialog', { name: 'My Bots manager' })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Start managed Bot' }));
+    expect(screen.queryByRole('dialog', { name: 'My Bots manager' })).toBeNull();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(onStartBotConversation).not.toHaveBeenCalled();
   });
 
   it('continues only the selected unfinished Session and prevents repeat clicks during navigation', async () => {

@@ -1332,3 +1332,14 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 - 旧Message DOM2/2 RED；修复71DOM、type/lint/分类、独立源码审查通过。真实MessageList/Virtuoso WebKit旧码1569→113px反事实；WebKit/Chromium修复3次间隙高度/滚动变化0px、手动阅读及真实终态展开通过。见dev-docs/stream-stability-20261106/acceptance.md。
 - desktop/macOS-arm64/updater/sharedCI/main唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发共享CI或正式构建。冻结542.6不修改，原owner接收精确SHA并在下一未冻结批集成、发布和原会话复验；源码/离线与main/正式/真实验收分别记录。
 - 原会话执行失败另有模型命令schema漏参/任务版本冲突与native证据epoch检查；不通过UI折叠隐藏，不放宽门禁或重放原unknown操作。私有诊断只留本地工作区。
+
+
+## MB-BOT-CARE-20261106 — 我的 Bots 集中管理
+
+- [x] CARE-01 源码：ConfigProvider真实名册、定义/记忆文件编辑、技能scope和既有设置，独立只读检查与正式工作dialog分开。
+- [x] CARE-02 本地验证：127 DOM、28 unit、12 Rust CRUD及type/lint；独立审阅修复草稿和安装保护。验收记录dev-docs/bot-care-20261106/acceptance.md。
+- [ ] CARE-03 集成：工作分支codex/bot-care-20261106，最新主干同步、精确远端handoff和实际main包含待核实。依赖CARE-02。
+- [ ] CARE-04 原生发布/验收：desktop/macOS-arm64/updater/sharedCI/main唯一负责人沿用01a12bc2-907a-7702-b6dd-788225c5dfe4；下一未冻结批，版本由owner分配，不替换543.2或已有制品。依赖CARE-03及owner批次。
+- [ ] CARE-05 真实效果：在包含成果的原生客户端验证受控Bot定义/技能/记忆持久化、作用域、草稿和正式工作/检查分离，再给用户真实截图。浏览器原型或空态不代替此项。
+
+本任务记录.agent-sync/tasks/codex-bot-care-20261106-24b5927a.md。无云、网站或移动端部署；当前开发不操作正式工作数据。

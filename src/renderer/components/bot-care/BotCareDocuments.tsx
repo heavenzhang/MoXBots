@@ -121,8 +121,9 @@ const BotCareDocuments = forwardRef<BotCareDocumentsRef, Props>(function BotCare
     setRefresh(value => value + 1);
   }, []);
 
-  return <section className="space-y-4" aria-label={t(kind === 'definition' ? 'botCare.docs.definitionTitle' : 'botCare.docs.memoryTitle', { defaultValue: kind === 'definition' ? '定义文档' : '记忆文档' })}>
+  return <section className="mx-auto max-w-3xl space-y-4 p-6" aria-label={t(kind === 'definition' ? 'botCare.docs.definitionTitle' : 'botCare.docs.memoryTitle', { defaultValue: kind === 'definition' ? '定义文档' : '记忆文档' })}>
     <p className="text-sm text-[var(--ink-muted)]">{t('botCare.docs.description', { defaultValue: '直接查看和编辑此 Bot 工作区中的真实文件。' })}</p>
+    <p className="rounded-lg bg-[var(--paper-inset)] px-4 py-3 text-sm leading-relaxed text-[var(--ink-muted)]">{t(kind === 'definition' ? 'botCare.docs.definitionHint' : 'botCare.docs.memoryHint')}</p>
     <button type="button" disabled={loading || creating || !!preview} onClick={() => setRefresh(value => value + 1)} className="rounded-lg border border-[var(--line)] px-3 py-1.5 text-sm disabled:opacity-50">{t('botCare.docs.refresh', { defaultValue: '刷新文件' })}</button>
     {loading && <p role="status">{t('botCare.docs.loading', { defaultValue: '正在查找文档…' })}</p>}
     {error && <p role="alert" className="text-sm text-[var(--error)]">{error}</p>}

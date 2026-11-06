@@ -9,8 +9,8 @@ use std::path::Path;
 use serde::Serialize;
 
 use super::path_safety::{
-    reject_managed_global_skill_mutation, resolve_inside_workspace, validate_item_name,
-    validate_workspace_root,
+    create_workspace_file_no_follow, reject_managed_global_skill_mutation,
+    resolve_inside_workspace, validate_item_name, validate_workspace_root,
 };
 
 /// Symlink-aware existence probe. `Path::exists()` follows symlinks, which
@@ -68,12 +68,14 @@ pub async fn cmd_workspace_new_file(
     if slot_occupied(&target) {
         return Err("File already exists".to_string());
     }
-    fs::write(&target, "").map_err(|e| format!("Failed to create file: {}", e))?;
     let rel = target
         .strip_prefix(&workspace_root)
         .map_err(|_| "Path escaped workspace".to_string())?
         .to_string_lossy()
         .replace('\\', "/");
+    // Atomic no-replace publication: a concurrent editor or symlink must never
+    // be truncated between the existence probe and creation.
+    create_workspace_file_no_follow(&workspace_root, &rel, b"")?;
     Ok(CreatePathResult {
         success: true,
         path: rel,
@@ -302,7 +304,7 @@ mod tests {
     #[tokio::test]
     async fn rejects_existing_file() {
         let ws = make_test_workspace("crud_existing_file");
-        fs::write(ws.join("a.txt"), "").unwrap();
+        fs::write(ws.join("a.txt"), "preserve existing definition").unwrap();
         let res = cmd_workspace_new_file(
             ws.to_string_lossy().to_string(),
             "".to_string(),
@@ -310,6 +312,10 @@ mod tests {
         )
         .await;
         assert!(res.is_err());
+        assert_eq!(
+            fs::read_to_string(ws.join("a.txt")).unwrap(),
+            "preserve existing definition"
+        );
         let _ = fs::remove_dir_all(&ws);
     }
 

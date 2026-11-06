@@ -153,6 +153,7 @@ import {
 import { fetchSkillZip, TarballFetchError } from './skills/tarball-fetcher';
 import { loadSkillTree, SkillSourceLoadError } from './skills/source-loader';
 import { resolveSkillInstallTarget } from './skills/install-target';
+import { readSkillFolderEntry } from './skills/folder-source';
 import {
   analyseTree,
   buildInstallPayload,
@@ -8142,8 +8143,8 @@ async function main() {
             );
           }
 
-          // Read SKILL.md to get the skill name
-          const skillMdContent = readFileSync(skillMdPath, 'utf-8');
+          // Read only an entry that can actually be imported by the no-link copier.
+          const skillMdContent = readSkillFolderEntry(sourcePath);
           let folderName = basename(sourcePath);
 
           // Try to extract name from SKILL.md frontmatter
