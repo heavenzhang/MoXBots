@@ -10,11 +10,11 @@
 
 一键继续携带 `continueFromTurnId` 时也进入同一可信输入准入，分类确认的 `continuationOf` 由既有执行 owner 绑定原执行、清单及证据；不能只恢复 transcript 而跳过执行账本。facade 在异步分类前捕获原 transcript 代次与 turn，在提交时组合原 continuation guard 与新 execution guard，并使用新 queue 身份排除自己的队列占位。继续输入的可见 root 在同步 commit 接纳后才创建，否则会让自己的新消息提前使原 turn 校验失效。旧 turn 改变、重复点击、Stop 或执行保护拒绝仍不得进入 SDK；准备阶段被拒绝时释放原执行准入。
 
-分类使用当前运行时的 tool-free utility，总预算最多60秒（包括初始化及纠正调用），直接 builtin transport 每次提供4096输出token供推理与完整JSON共用；可选建议仍保持8秒/1024输出token。结构化结果失败时最多一次纠正，始终严格解析完整 JSON 和 schema，不截断、不补字段、不从文字猜测权限。auto 可使用当前 Session 模型接管，但必须仍在最新可用目录与启用候选池中；手动模式不换模型。格式错误可在原模型纠正；连接或 output_limit 失败仅在存在不同的合格当前模型时接管一次。取消、Session/模型/模式变化或原总预算到期立即结束，不调用业务工具。日志只记录实际 provider/model、次数、失败类型、长度和摘要，不记录响应正文或提示词。
+分类使用当前运行时的 tool-free utility，总预算最多60秒（包括初始化及纠正调用），直接 builtin transport 每次提供4096输出token供推理与完整JSON共用；可选建议仍保持8秒/1024输出token。结构化结果失败时最多一次纠正，始终严格解析完整 JSON 和 schema，不截断、不补字段、不从文字猜测权限。auto 可使用当前 Session 模型接管，但必须仍在最新可用目录与启用候选池中；手动模式不换模型。格式错误可在原模型纠正；连接或 output_limit 失败可在存在不同的合格当前模型时接管一次；没有该候选时，已知暂态 HTTP（408/429/5xx）或连接错误允许原模型重试一次，手动模式仍不换模型。鉴权、配置、TLS 校验及 output_limit 不走同模型重试，总调用次数仍不超过两次。取消、Session/模型/模式变化或原总预算到期立即结束，不调用业务工具。日志只记录实际 provider/model、次数、失败类型、HTTP 状态/受限网络码、长度和摘要，不记录供应商错误正文、响应正文或提示词。
 
 分类最终失败返回结构化 `EXECUTION_INTENT_UNCONFIRMED`，在原生派发与 Product turn 创建前结束；不再启动一个隐式只读业务轮，不替换原 execution/admission/evidence。前端只凭该明确未执行响应区分安全重试与发送结果未知，保留输入；普通网络断开和同名错误文本仍保持未知保护。该网络调用期限与已移除的整任务30分钟期限无关。
 
-输出受 schema 约束的 `answer/plan/execute/control`、目标、范围、验收条件与任务关系。当前已存在 execution 时，fresh 分类必须明确 `preserveExecution`。用户明确要求临时只读复核且不续接/新建/替换任务时返回 true，`continuationOf` 必须为 null；即使 kind=execute，也不创建或替换任务、不清证据/评审、不生成新清单、不自动续跑。该输入仅可调用既有只读工具及 task list，不可写入、派发子任务或提交 execution_review。随后明确的正常工作/续接返回 false，沿既有身份和权限门禁处理；本轮复核不会成为永久只读规则。普通明确行动仍采用 execute；只讨论、先给方案、不开发仍采用 plan。新目标的正常 execution 创建语义不变。本版本不自动还原此前已经被替换的历史 execution；原生备份和已发生覆盖的修复须单独验证。
+输出受 schema 约束的 `answer/plan/execute/control`、目标、范围、验收条件与任务关系。分类按实际交付内容：计算、解释、翻译和仅在回复中给出文本属于 answer，即使用户使用“任务/验收”等措辞也不因此创建执行账本或要求工具证据；真实文件、代码、外部资源操作与原执行接续仍为 execute。不得把“不调用工具”等限制转换成必须用工具验收的行动条件。当前已存在 execution 时，fresh 分类必须明确 `preserveExecution`。用户明确要求临时只读复核且不续接/新建/替换任务时返回 true，`continuationOf` 必须为 null；即使 kind=execute，也不创建或替换任务、不清证据/评审、不生成新清单、不自动续跑。该输入仅可调用既有只读工具及 task list，不可写入、派发子任务或提交 execution_review。随后明确的正常工作/续接返回 false，沿既有身份和权限门禁处理；本轮复核不会成为永久只读规则。普通明确行动仍采用 execute；只讨论、先给方案、不开发仍采用 plan。新目标的正常 execution 创建语义不变。本版本不自动还原此前已经被替换的历史 execution；原生备份和已发生覆盖的修复须单独验证。
 
 原始用户文本单独保留为 visibleText，执行提醒不伪装成人类输入。此版本普通行动闭环仅接入 builtin；外部 CLI 与 DSH 不因分类结果获得这套自动续跑能力。
 
