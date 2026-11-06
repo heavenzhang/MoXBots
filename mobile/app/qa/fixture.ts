@@ -293,7 +293,11 @@ function makeSnapshot(sessionId: string, agentId: string, state: Snapshot['state
       { id: 'qa-message-2', role: 'user', timestamp: new Date(Date.now() - 6 * 60_000).toISOString(), content: '梳理移动端的会话体验，优先解决主界面布局。', truncated: false, tools: [] },
       { id: 'qa-message-3', role: 'assistant', timestamp: new Date(Date.now() - 5 * 60_000).toISOString(), content: scenario === 'rich-text' ? messagePresentationFixture : '建议把会话内容作为主视图：顶部保留标题、Bot 和成果入口；输入区保持单行，需要附件或语音时再展开辅助操作。', truncated: false, tools: scenario === 'rich-text' ? [{ id: 'qa-tool-display', name: 'Bash', status: 'complete', summary: 'CONTROLLED_TOOL_OUTPUT\n  second line\n' + 'long_output_'.repeat(45) + '\nline\n'.repeat(60) }] : [] },
     ],
-    interactions: includeApproval ? [{
+    interactions: includeApproval ? scenario === 'work-question' ? [{
+      requestId: 'qa-question-1', generation, turnId: turnId ?? 'qa-turn-1', interaction: 'question',
+      title: '补充交付要求', description: '切换对话后，本次回答应保留。', actionable: true,
+      questions: [{ answerKey: 'scope', question: '需要补充哪些修改要求？', options: [], multiSelect: false }],
+    }] : [{
       requestId: 'qa-approval-1', generation, turnId: turnId ?? 'qa-turn-1', interaction: 'permission',
       title: '允许读取项目文件？', description: '演示审批卡用于验证审批布局与提交前刷新。', actionable: true, questions: [],
     }] : [],
@@ -311,7 +315,7 @@ function sessionReply(request: SessionRequest): unknown {
         return { kind: 'error', code: 'TARGET_OWNER_UNAVAILABLE' };
       }
       if (active && active.agentId === request.agentId && active.sessionId === request.sessionId) return active;
-      const needs=scenario === 'approval' || scenario === 'stale-approval' || scenario === 'bot-work' && request.agentId === target.agentId;
+      const needs=scenario === 'work-question' || scenario === 'approval' || scenario === 'stale-approval' || scenario === 'bot-work' && request.agentId === target.agentId;
       return makeSnapshot(request.sessionId,request.agentId,needs?'waiting_user_action':scenario==='bot-work'?'running':'idle','qa-generation-1',needs?'qa-turn-1':null,needs);
     }
     readCount += 1;
@@ -332,7 +336,7 @@ function sessionReply(request: SessionRequest): unknown {
       return active;
     }
     if (!active || active.sessionId !== request.sessionId) {
-      const approval = scenario === 'approval' || scenario === 'stale-approval' || scenario === 'bot-work' && request.agentId === target.agentId;
+      const approval = scenario === 'work-question' || scenario === 'approval' || scenario === 'stale-approval' || scenario === 'bot-work' && request.agentId === target.agentId;
       active = makeSnapshot(request.sessionId, request.agentId, approval ? 'waiting_user_action' : scenario === 'bot-work' ? 'running' : 'idle', 'qa-generation-1', approval ? 'qa-turn-1' : null, approval);
       if (scenario === 'bot-work') active.messages.push(...Array.from({ length: 20 }, (_, i) => ({ id: `qa-work-${i}`, role: 'assistant' as const, timestamp: '', content: `工作记录 ${i + 1}\n\n已整理当前方案，等待你核对文件读取请求。继续时保留原会话和已有成果。`, truncated: false, tools: [] })));
     }

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import type { Snapshot } from '../src/native.ts';
-import { conversationWorkExcerpts, conversationWorkProgress } from '../src/conversationWork.ts';
+import { conversationWorkExcerpts, conversationWorkProgress, currentWorkRequests } from '../src/conversationWork.ts';
 
 const snapshot = (patch: Partial<Snapshot> = {}): Snapshot => ({ kind: 'snapshot', agentId: 'bot-a', sessionId: 'session-a', generation: 'g', turnId: 't', revision: '1', state: 'idle', title: '继续完善报告', runtime: 'codex', model: null, terminal: null, messages: [], interactions: [], hasMoreBefore: false, nextBefore: null, ...patch });
 const input = (value: Snapshot | null) => ({ snapshot: value, online: true, awaiting: false, reading: false, sending: false, receipt: null });
@@ -42,4 +42,16 @@ test('excerpts remain bounded to the current authoritative snapshot and retain m
   const b = conversationWorkExcerpts(snapshot({ messages: [message('b', 'assistant', '乙的回复')], hasMoreBefore: true, nextBefore: 'b' }));
   assert.equal(a.request?.content, '甲的要求');assert.equal(b.request, null);assert.equal(b.reply?.content, '乙的回复');assert.equal(b.partial, true);
   assert.deepEqual(conversationWorkExcerpts(null), { request: null, reply: null, partial: false });
+});
+
+
+test('request section shows only the active generation and turn, including desktop-only requests', () => {
+  const live = { requestId: 'r', generation: 'g', turnId: 't', interaction: 'permission' as const, title: '本次请求', description: '', actionable: true, questions: [] };
+  const desktopOnly = { ...live, requestId: 'desktop', actionable: false };
+  const current = snapshot({ state: 'waiting_user_action', interactions: [live, { ...live, requestId: 'old-g', generation: 'old' }, { ...live, requestId: 'old-t', turnId: 'old' }, desktopOnly] });
+  assert.deepEqual(currentWorkRequests(current), [live, desktopOnly]);
+  assert.match(conversationWorkProgress(input(current)).detail, /^1 项/);
+  assert.deepEqual(currentWorkRequests({ ...current, state: 'running' }), []);
+  assert.deepEqual(currentWorkRequests({ ...current, state: 'idle' }), []);
+  assert.deepEqual(currentWorkRequests(null), []);
 });

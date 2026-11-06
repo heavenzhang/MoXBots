@@ -1,5 +1,12 @@
 import type { Snapshot } from './native';
 
+/** A waiting view may contain stale requests; only the active turn is presented. */
+export function currentWorkRequests(snapshot: Snapshot | null) {
+  return snapshot?.state === 'waiting_user_action'
+    ? snapshot.interactions.filter(item => item.generation === snapshot.generation && item.turnId === snapshot.turnId)
+    : [];
+}
+
 export type WorkAction = 'compose' | 'requests' | 'query' | 'read';
 export type WorkProgress = { title: string; detail: string; tone: 'neutral' | 'active' | 'attention' | 'error'; action: WorkAction; actionLabel: string };
 
@@ -16,7 +23,7 @@ export function conversationWorkProgress(input: {
   if (!snapshot) return { title: '准备开始工作', detail: '第一条消息发送后才会创建会话。', tone: 'neutral', action: 'compose', actionLabel: '写下要求' };
   if (snapshot.state === 'unavailable') return { title: '当前进展暂不可用', detail: '保留已有记录，重新同步后再核对下一步。', tone: 'error', action: 'read', actionLabel: '重新同步' };
   if (snapshot.state === 'waiting_user_action') {
-    const count = snapshot.interactions.filter(item => item.actionable && item.generation === snapshot.generation && item.turnId === snapshot.turnId).length;
+    const count = currentWorkRequests(snapshot).filter(item => item.actionable).length;
     return count
       ? { title: '需要你处理', detail: `${count} 项当前请求等待你核对，处理后沿原会话继续。`, tone: 'attention', action: 'requests', actionLabel: '查看当前请求' }
       : { title: '等待处理信息', detail: '当前没有可在手机提交的请求，请同步核对或在原设备处理。', tone: 'attention', action: 'read', actionLabel: '重新同步' };

@@ -1,0 +1,34 @@
+{
+  "source": "codex/mobile-continue-03-20261106 working tree",
+  "synthetic": true,
+  "viewports": [
+    {
+      "width": 390,
+      "height": 844
+    },
+    {
+      "width": 320,
+      "height": 740
+    }
+  ],
+  "checks": {
+    "conversationAndAnswerPreserved": true,
+    "answerSurvivesArtifactsReturn": true,
+    "responseClearsCurrentRequest": true,
+    "coldStartArtifactDraftContainsOriginalAndId": true,
+    "scrollBefore": 2035,
+    "scrollAfter": 2035,
+    "revisionFromRequestsReturnsComposer": true,
+    "revisionComposerFocused": true,
+    "answerStillPreservedAfterRevision": true,
+    "staleApprovalNotSubmitted": true,
+    "unknownReceiptSendDisabled": true,
+    "newMessagePreservesOldArtifactIdAndSha": true
+  },
+  "invalidEvidence": "/Users/zhangshaohua/Documents/WPS Cloud/【项目】目录/MoxBot/output/mobile-continue-03/hot-refresh-invalid-draft-320.jpg excluded after development Fast Refresh; cold restart repeat passed",
+  "files": {
+    "mobile/app/src/app/index.tsx": "5a3c0a466cfff5f5e4407c72d94001047694692bcac9f988dae6539a9f183477",
+    "mobile/app/src/ConversationWorkPanel.tsx": "61e1f9ede689b83243af8f6338d0598e6888737c51392d969485de72a03bfd50",
+    "mobile/app/src/conversationWork.ts": "b881e60bb911f9f1a1dc0c30f29098a2e5deb0d293bf4ef8518ed1cba172ce1e"
+  }
+}

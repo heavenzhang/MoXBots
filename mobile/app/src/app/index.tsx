@@ -28,7 +28,7 @@ import { ApprovalFlights, approvalFlightKey } from '../approvalFlight';
 import { BotAvatar } from '../BotAvatar';
 import { SessionHomeScreen } from '../SessionHomeScreen';
 import { ConversationWorkPanel } from '../ConversationWorkPanel';
-import type { WorkAction } from '../conversationWork';
+import { currentWorkRequests, type WorkAction } from '../conversationWork';
 import { MobileSheet } from '../MobileSheet';
 import { mobileTheme } from '../mobileTheme';
 import { conversationStyles } from '../conversationStyles';
@@ -153,6 +153,9 @@ function AppBody() {
   const [loading, setLoading] = useState(false);
   const [sending, setSending] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [chatSection, setChatSection] = useState<'conversation' | 'requests'>('conversation');
+  const chatSectionRef = useRef<'conversation' | 'requests'>('conversation');
+  const focusComposerOnLayoutRef = useRef(false);
   const [composerMenuOpen, setComposerMenuOpen] = useState(false);
   const composerMenuTriggerRef = useRef<React.ElementRef<typeof Pressable>>(null);
   const [mobileMode, setMobileMode] = useState<MobileMode>('loading');
@@ -189,7 +192,6 @@ function AppBody() {
   const [password, setPassword] = useState('');
   const passwordInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
   const composerInputRef = useRef<React.ElementRef<typeof TextInput> | null>(null);
-  const requestAnchorRef = useRef<{ epoch: number; y: number } | null>(null);
   const blocksMutation = blocksMutationForScope(pending, target?.targetId ?? null, snapshot?.sessionId ?? null);
   const scrollRef = useRef<React.ElementRef<typeof ScrollView> | null>(null);
   const followTranscriptRef = useRef(true);
@@ -286,6 +288,8 @@ function AppBody() {
     if (currentUpload.errorCode) say(currentUpload.errorCode, 'error');
   }), [releaseAttachmentJob, say, updateAttachments]);
   const moveOwner = useCallback((nextScreen: ViewOwner['screen'], nextTarget: Target | null, sessionId: string | null) => {
+    chatSectionRef.current = 'conversation'; setChatSection('conversation');
+    focusComposerOnLayoutRef.current = false;
     const priorOwner = ownerRef.current;
     const priorAttachmentScope = attachmentScopeKey(targetRef.current, priorOwner.sessionId);
     const nextAttachmentScope = attachmentScopeKey(nextTarget, sessionId);
@@ -636,7 +640,14 @@ function AppBody() {
               await draftReadyRef.current;
               if (!requestIsCurrent() || !viewStillOwned(restoredOwner, ownerRef.current)) return;
               const next = appendArtifactRevisionDraft(draftTextRef.current, artifactReturn.revisionDraft.text);
-              if (next !== null) { saveDraft(next); say('已带回这份成果的引用，请补充修改要求后发送。'); }
+              if (next !== null) {
+                saveDraft(next);
+                const alreadyInConversation = chatSectionRef.current === 'conversation';
+                chatSectionRef.current = 'conversation'; setChatSection('conversation');
+                focusComposerOnLayoutRef.current = !alreadyInConversation;
+                if (alreadyInConversation) composerInputRef.current?.focus();
+                say('已带回这份成果的引用，请补充修改要求后发送。');
+              }
               else say('草稿已满，原内容已保留。请缩短草稿后从成果页再次点击继续修改。', 'error');
             }
             void loadMobileCatalog(returnTarget);
@@ -822,6 +833,7 @@ function AppBody() {
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       if (composerMenuOpen) { setComposerMenuOpen(false); return true; }
       if (menuOpen) { setMenuOpen(false); return true; }
+      if (chatSectionRef.current === 'requests') { chatSectionRef.current = 'conversation'; setChatSection('conversation'); return true; }
       moveOwner('sessions', targetRef.current, null);
       void loadSessions().catch((error) => say(error instanceof Error ? error.message : 'SESSION_LIST_FAILED', 'error'));
       return true;
@@ -1614,8 +1626,15 @@ function AppBody() {
     router.push({ pathname: '/artifacts', params: { targetId: target.targetId, sessionId: snapshot.sessionId } });
   };
 
+  const switchChatSection = (next: 'conversation' | 'requests') => {
+    if (ownerRef.current.epoch !== ownerEpoch || ownerRef.current.screen !== 'chat') return;
+    Keyboard.dismiss(); setComposerMenuOpen(false);
+    if (next === 'requests') focusComposerOnLayoutRef.current = false;
+    chatSectionRef.current = next; setChatSection(next);
+  };
   const revealLatest = () => {
     if (ownerRef.current.epoch !== ownerEpoch || ownerRef.current.screen !== 'chat') return;
+    switchChatSection('conversation');
     followTranscriptRef.current = true;
     userScrolledTranscriptRef.current = false;
     setShowTranscriptBottom(false);
@@ -1632,14 +1651,13 @@ function AppBody() {
       else if (snapshot) void run('snapshot', () => openSnapshot({ sessionId: snapshot.sessionId, title: snapshot.title, preview: '', updatedAt: '', runtime: snapshot.runtime }));
     } else if (action === 'requests') {
       if (!sessionSnapshotReady(ownerRef.current, snapshotRef.current) || snapshotRef.current?.state !== 'waiting_user_action') return;
-      const anchor = requestAnchorRef.current;
-      if (anchor?.epoch === ownerEpoch) {
-        followTranscriptRef.current = false;
-        userScrolledTranscriptRef.current = true;
-        setShowTranscriptBottom(true);
-        scrollRef.current?.scrollTo({ y: Math.max(0, anchor.y - 8), animated: true });
-      } else revealLatest();
-    } else if (!sending && !hideSubmittedDraft) composerInputRef.current?.focus();
+      switchChatSection('requests');
+    } else if (!sending && !hideSubmittedDraft) {
+      if (chatSectionRef.current === 'requests') {
+        focusComposerOnLayoutRef.current = true;
+        switchChatSection('conversation');
+      } else composerInputRef.current?.focus();
+    }
   };
 
   return <SafeAreaView style={styles.safe} edges={['top', 'bottom']}><StatusBar style="dark"/><KeyboardAvoidingView style={[styles.fill, styles.appFrame]} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
@@ -1695,7 +1713,6 @@ function AppBody() {
       <View accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} style={styles.chatToolbar}>
         <Pressable accessibilityRole="button" accessibilityLabel="返回会话列表" onPress={() => { moveOwner('sessions', targetRef.current, null); void run('sessions', loadSessions); }} style={styles.back}><ArrowLeft size={22} color={C.ink}/></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="查看当前 Bot 信息" onPress={() => setBotProfileOpen(true)} style={styles.chatToolbarTitle}><Text numberOfLines={1} style={styles.chatTitle}>{snapshot?.title || (awaitingSnapshot ? '读取已有会话' : '新会话')}</Text><Text numberOfLines={1} style={styles.chatSubtitle}>{target?.name ?? 'Bot'} · {awaitingSnapshot ? (snapshotStatus === 'pending' ? '读取中' : '待读取') : conversationStatus(snapshot?.state, target?.online)}</Text></Pressable>
-        <Pressable accessibilityRole="button" accessibilityLabel="查看会话成果" disabled={!snapshot?.sessionId || awaitingSnapshot} accessibilityState={{ disabled: !snapshot?.sessionId || awaitingSnapshot }} onPress={openArtifacts} style={[styles.toolbarAction, (!snapshot?.sessionId || awaitingSnapshot) && { opacity: 0.35 }]}><FileText size={20} color={C.ink}/></Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="更多会话信息" onPress={() => setMenuOpen((value) => !value)} style={styles.toolbarAction}><MoreHorizontal size={22} color={C.ink}/></Pressable>
       </View>
       <ConversationWorkPanel key={`${account?.principalId ?? ''}:${ownerEpoch}`}
@@ -1703,6 +1720,7 @@ function AppBody() {
         awaiting={awaitingSnapshot} reading={snapshotStatus === 'pending'} sending={sending}
         receipt={chatPendingReceipt ? receiptStates[chatPendingReceipt.operationId] === 'processing' || chatPendingReceipt.status === 'processing' ? 'processing' : 'unknown' : null}
         busy={!!loading} canQuery={canQueryChatReceipt} canCompose={!sending && !hideSubmittedDraft}
+        section={chatSection} onConversation={() => switchChatSection('conversation')} onRequests={() => switchChatSection('requests')}
         onAction={actOnWork} onArtifacts={openArtifacts} onLatest={revealLatest}/>
       <BotProfileSheet target={botProfileOpen ? target : null} onClose={() => setBotProfileOpen(false)} onConversations={(selected) => {setFocusBot({key:botKey(selected),serial:Date.now()});moveOwner('sessions',selected,null);}} onNew={(selected) => {moveOwner('chat',selected,null);void loadMobileCatalog(selected);}}/>
       <MobileSheet title="会话信息" visible={menuOpen} onClose={() => setMenuOpen(false)}>
@@ -1710,15 +1728,20 @@ function AppBody() {
         <Text style={[styles.body, { marginBottom: 10 }]}>Bot：{target?.name ?? '未知'}</Text>
         <Text style={[styles.body, { marginBottom: 10 }]}>设备：{target?.deviceName ?? '未知'}</Text>
         <Text style={[styles.caption, { marginBottom: 20 }]}>运行时：{snapshot?.runtime ?? target?.runtime ?? '未提供'} · {target?.online ? '在线' : '离线'}</Text>
-        <Pressable accessibilityRole="button" accessibilityLabel="在会话信息中查看成果" disabled={!snapshot?.sessionId || awaitingSnapshot} onPress={openArtifacts} style={styles.secondaryButton}><Text style={styles.secondaryText}>查看会话成果</Text></Pressable>
       </MobileSheet>
       {chatNotice && <NoticeView notice={chatNotice} action={chatPendingReceipt ? undefined : retryNotificationAction} onDismiss={chatPendingReceipt ? undefined : dismissNotification}/>}
       {chatPendingReceipt?.submittedText && !snapshot?.messages.some((message) => message.role === 'user' && message.content === chatPendingReceipt.submittedText) && <View style={styles.pendingBox}><Text style={styles.pendingTitle}>待确认消息 · 原文已保留</Text><Text selectable numberOfLines={4} style={styles.body}>{chatPendingReceipt.submittedText}</Text></View>}
-      <ScrollView accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} ref={scrollRef} accessibilityLabel="聊天消息" style={styles.transcript} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" scrollEventThrottle={32}
+      <ScrollView accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} ref={scrollRef} accessibilityLabel="聊天消息" style={[styles.transcript, chatSection !== 'conversation' && styles.hiddenSection]} contentContainerStyle={styles.transcriptContent} keyboardShouldPersistTaps="handled" scrollEventThrottle={32}
+        onLayout={() => {
+          if (chatSectionRef.current !== 'conversation') return;
+          if (followTranscriptRef.current) scrollRef.current?.scrollToEnd({ animated: false });
+          else scrollRef.current?.scrollTo({ y: transcriptMetricsRef.current.y, animated: false });
+        }}
         onTouchStart={() => { userScrolledTranscriptRef.current = true; }}
         {...(Platform.OS === 'web' ? { onWheel: () => { userScrolledTranscriptRef.current = true; } } : {})}
         onScrollBeginDrag={() => { userScrolledTranscriptRef.current = true; }}
         onScroll={({ nativeEvent }) => {
+          if (chatSectionRef.current !== 'conversation') return;
           transcriptMetricsRef.current = { y: nativeEvent.contentOffset.y, height: nativeEvent.contentSize.height };
           if (!userScrolledTranscriptRef.current) return;
           const bottom = isTranscriptAtBottom(nativeEvent.contentOffset.y, nativeEvent.layoutMeasurement.height, nativeEvent.contentSize.height);
@@ -1726,6 +1749,7 @@ function AppBody() {
           setShowTranscriptBottom(!bottom);
         }}
         onContentSizeChange={(_width, height) => {
+          if (chatSectionRef.current !== 'conversation') return;
           const prepend = prependPositionRef.current;
           transcriptMetricsRef.current.height = height;
           if (prepend && prepend.epoch === ownerRef.current.epoch) {
@@ -1741,10 +1765,19 @@ function AppBody() {
         {transcript?.messages.map((item) => <View key={item.id} style={[styles.messageRow, item.role === 'user' && styles.userMessageRow]}><View style={[styles.messageBubble, item.role === 'user' ? styles.userBubble : styles.assistantBubble]}>{item.role !== 'user' && target && <View style={{flexDirection:'row',alignItems:'center',gap:8,marginBottom:8}}><BotAvatar target={target} size={24}/><Text style={styles.messageMeta}>{target.name}</Text></View>}{item.role === 'user' ? <Text selectable style={[styles.messageText, styles.userText]}>{item.content}</Text> : <MessageContent content={item.content}/>}{item.truncated && <Text style={styles.messageMeta}>内容已截断</Text>}{item.tools.map((tool) => <ToolResult key={`${item.id}:${tool.id}`} tool={tool}/>)}</View><Text style={styles.messageTimestamp}>{formatMessageTime(item.timestamp)}</Text></View>)}
         {snapshot?.state === 'running' && <View style={styles.thinking}><ActivityIndicator color={C.green}/><Text style={styles.caption}>正在处理…</Text></View>}
         {approvalSubmitting && <Text accessibilityLiveRegion="polite" style={styles.caption}>正在核对并提交当前请求…</Text>}
-        {snapshot?.state === 'waiting_user_action' && <View onLayout={(event) => { requestAnchorRef.current = { epoch: ownerEpoch, y: event.nativeEvent.layout.y }; }}>{snapshot.interactions.map((item) => <ApprovalCard key={`${item.generation}:${item.turnId}:${item.requestId}`} item={item} onRespond={respond} disabled={sending || approvalSubmitting || blocksMutation}/>)}</View>}
+      </ScrollView>
+      <ScrollView key={JSON.stringify([account?.principalId, target?.identityKey, target?.agentId, requestedSessionId])} accessibilityLabel="当前待处理请求" style={[styles.transcript, chatSection !== 'requests' && styles.hiddenSection]} contentContainerStyle={styles.requestsContent} keyboardShouldPersistTaps="handled">
+        <Text style={styles.requestContext}>{snapshot?.title || '当前工作'} · {target?.name ?? 'Bot'}</Text>
+        {currentWorkRequests(awaitingSnapshot ? null : snapshot).length > 0
+          ? <><Text style={styles.caption}>核对本次操作后再决定；处理结果会同步回原会话。</Text>{currentWorkRequests(snapshot).map(item => <ApprovalCard key={`${item.generation}:${item.turnId}:${item.requestId}`} item={item} onRespond={respond} disabled={!target?.online || sending || approvalSubmitting || blocksMutation}/>)}</>
+          : <EmptyState title={awaitingSnapshot ? '当前请求待同步' : snapshot?.state === 'waiting_user_action' ? '当前没有可显示的请求' : '当前没有待处理请求'} detail={awaitingSnapshot ? '读取原会话后再核对，已有输入会保留。' : snapshot?.state === 'waiting_user_action' ? '请求可能已更新，请重新同步或到原设备核对。' : '已处理的请求不会重复出现。可以回到对话查看进展，或继续补充。'} action="回到对话" onAction={() => switchChatSection('conversation')}/>}
       </ScrollView>
       {composerMenuOpen && <Pressable accessibilityRole="button" accessibilityLabel="关闭更多操作" onPress={() => setComposerMenuOpen(false)} style={styles.composerMenuBackdrop}/>}
-      <View style={styles.composerArea}>
+      <View style={[styles.composerArea, chatSection !== 'conversation' && styles.hiddenSection]} onLayout={() => {
+        if (chatSectionRef.current === 'conversation' && focusComposerOnLayoutRef.current) {
+          focusComposerOnLayoutRef.current = false; composerInputRef.current?.focus();
+        }
+      }}>
       {showTranscriptBottom && <Pressable accessibilityElementsHidden={composerMenuOpen} importantForAccessibility={composerMenuOpen ? 'no-hide-descendants' : 'auto'} accessibilityRole="button" accessibilityLabel="回到最新消息" onPress={() => { followTranscriptRef.current = true; userScrolledTranscriptRef.current = false; setShowTranscriptBottom(false); scrollRef.current?.scrollToEnd({ animated: true }); }} style={styles.transcriptBottom}><Text style={styles.transcriptBottomText}>↓ 回到最新消息</Text></Pressable>}
         <ComposerPopover visible={composerMenuOpen} onClose={() => setComposerMenuOpen(false)} triggerRef={composerMenuTriggerRef}>
           <View style={styles.menuActionRow}>
@@ -1826,6 +1859,7 @@ function ApprovalCard({ item, onRespond, disabled }: { item: Interaction; onResp
 export default function App() { return <SafeAreaProvider><AppBody/></SafeAreaProvider>; }
 
 const baseStyles = StyleSheet.create({
+  hiddenSection: { display: 'none' }, requestsContent: { paddingHorizontal: 20, paddingTop: 14, paddingBottom: 24, gap: 10 }, requestContext: { color: C.muted, fontSize: 12, lineHeight: 19, marginBottom: 8 },
   safe: { flex: 1, backgroundColor: C.paper }, fill: { flex: 1 }, appFrame: Platform.OS === 'web' ? { width: '100%', maxWidth: 480, alignSelf: 'center', borderLeftWidth: 1, borderRightWidth: 1, borderColor: C.line } : {}, topbar: { height: 54, paddingHorizontal: 18, flexDirection: 'row', alignItems: 'center', borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: C.line }, back: { width: 44, height: 44, justifyContent: 'center' }, backText: { fontSize: 34, lineHeight: 40, color: C.ink, fontWeight: '300' }, brand: { marginLeft: 4, flexDirection: 'row', alignItems: 'baseline', gap: 7 }, brandName: { color: C.ink, fontSize: 14, fontWeight: '800', letterSpacing: 1.1 }, brandSub: { color: C.muted, fontSize: 9, fontWeight: '700', letterSpacing: 1.4 }, headerRight: { flex: 1 }, headerAction: { marginLeft: 'auto', minWidth: 52, minHeight: 44, justifyContent: 'center', alignItems: 'flex-end' }, headerActionText: { color: C.green, fontSize: 14, fontWeight: '600' }, accountAvatar: { width: 44, height: 44, marginLeft: 10, justifyContent: 'center', alignItems: 'center' },
   loginPage: { flex: 1, backgroundColor: C.canvas }, loginScroll: { flexGrow: 1, paddingBottom: 24 }, loginFields: { marginTop: 24, gap: 8 }, consentRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, minHeight: 48, paddingVertical: 8, marginTop: 8 }, consentBox: { width: 22, height: 22, borderWidth: 1, borderColor: C.line, borderRadius: 5, alignItems: 'center', justifyContent: 'center' }, consentBoxChecked: { backgroundColor: C.green, borderColor: C.green }, consentLabel: { flex: 1, color: C.muted, fontSize: 12, lineHeight: 18 }, fieldLabel: { color: C.ink, fontSize: 13, marginTop: 8 }, loginInput: { height: 48, paddingHorizontal: 14, borderWidth: 1, borderColor: C.line, borderRadius: 10, fontSize: 16, color: C.ink, backgroundColor: C.canvas }, loginCard: { marginHorizontal: 24, marginTop: 32, padding: 24, borderRadius: 20, backgroundColor: C.paper, borderWidth: 1, borderColor: C.line }, logoMark: { width: 72, height: 72, marginLeft: -12 }, title: { marginTop: 18, fontSize: 24, letterSpacing: -0.4, fontWeight: '700', color: C.ink }, subtitle: { marginTop: 6, color: C.muted, fontSize: 14, lineHeight: 21 }, primaryButton: { height: 50, marginTop: 24, borderRadius: 12, backgroundColor: C.green, alignItems: 'center', justifyContent: 'center' }, primaryText: { color: '#fff', fontSize: 15, fontWeight: '700' }, pendingLogin: { alignItems: 'center', paddingVertical: 25, gap: 10 }, body: { color: C.ink, fontSize: 15 }, caption: { color: C.muted, fontSize: 12, lineHeight: 18 },
   targetsBar: { paddingHorizontal: 18, paddingTop: 16, paddingBottom: 10 }, sectionEyebrow: { color: C.muted, fontWeight: '700', fontSize: 10, letterSpacing: 1.2, marginBottom: 9 }, chips: { gap: 8, paddingRight: 18 }, targetChip: { minHeight: 44, maxWidth: 220, paddingHorizontal: 13, flexDirection: 'row', alignItems: 'center', borderRadius: 22, borderWidth: 1, borderColor: C.line, gap: 8 }, targetChipActive: { borderColor: C.green, backgroundColor: C.greenWash }, targetChipText: { color: C.muted, fontSize: 13, fontWeight: '600' }, targetChipTextActive: { color: C.green }, dot: { width: 7, height: 7, borderRadius: 4, backgroundColor: C.green }, dotOff: { backgroundColor: '#B5BBB7' },
