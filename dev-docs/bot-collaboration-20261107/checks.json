@@ -1,0 +1,48 @@
+{
+  "task": "MB-BOT-COLLAB-20261107",
+  "base": "bfbc92f3800a3ee4da5785b0f25fc61e2b7a32c2",
+  "unit": {
+    "passed": 68
+  },
+  "integration": {
+    "passed": 30,
+    "runtime": "mock",
+    "persistence": "actual isolated SessionStore"
+  },
+  "rust": {
+    "passed": 4,
+    "full_lib_compiled": true,
+    "inert_bundle_fixtures": true
+  },
+  "independent_review": {
+    "passed": 55,
+    "P1_P2": 0,
+    "overlaps_primary": true
+  },
+  "typecheck": "PASS",
+  "changed_eslint": "PASS",
+  "server_build": "PASS",
+  "classification": "PASS",
+  "docs": "PASS",
+  "dependencies": {
+    "errors": 0,
+    "warnings": 20
+  },
+  "remote_main": "PENDING_OWNER",
+  "native_release": "NOT_RUN",
+  "real_model_two_bot": "NOT_RUN",
+  "owner": "01a12bc2-907a-7702-b6dd-788225c5dfe4",
+  "eslintFiles": [
+    "src/shared/projectSpaces.ts",
+    "src/shared/projectSpaceHandoff.test.ts",
+    "src/server/inbox/project-handoff.ts",
+    "src/server/inbox/project-handoff.integration.test.ts",
+    "src/server/inbox/start-handler.ts",
+    "src/server/inbox/start-admin-handler.ts",
+    "src/server/inbox/start-admin-handler.unit.test.ts",
+    "src/server/inbox/drain-handler.ts",
+    "src/server/inbox/session-event.ts",
+    "src/server/inbox/session-event.unit.test.ts",
+    "src/server/index.ts"
+  ]
+}

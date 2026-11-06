@@ -1,4 +1,5 @@
 import { APP_DISPLAY_NAME } from '../../shared/appProfile';
+import { renderProjectContext } from '../../shared/projectContext';
 import {
   SESSION_EVENT_TAG,
   SYSTEM_REMINDER_CLOSE,
@@ -248,8 +249,9 @@ function payloadForEvent(event: RenderableSessionEvent): string {
   return neutralizeSessionEventStructuralTags(event.payload || '(no text response)');
 }
 
-export function renderSessionEventPrompt(event: SessionEvent): string {
+export function renderSessionEventPrompt(event: SessionEvent, projectSpace?: import('../../shared/projectSpaces').ProjectSpaceSessionSnapshot): string {
   assertRenderableSessionEvent(event);
+  if (projectSpace && event.type !== 'send.request') throw new Error('Only a fresh request can inherit project context');
   return [
     SYSTEM_REMINDER_OPEN,
     renderOpenTag(event),
@@ -260,6 +262,8 @@ export function renderSessionEventPrompt(event: SessionEvent): string {
     payloadForEvent(event),
     '</payload>',
     `</${SESSION_EVENT_TAG}>`,
+    ...(projectSpace ? [renderProjectContext({ projectId: projectSpace.projectId, projectSpace,
+      sources: [], scannedSessions: 0, totalSessions: 0, unavailableSessions: 0 })] : []),
     SYSTEM_REMINDER_CLOSE,
   ].join('\n');
 }

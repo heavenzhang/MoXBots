@@ -60,6 +60,14 @@ describe('project createSession through real materialization client', () => {
     await birth;
     expect(bodyOf(mocks.sessionSidecarFetch.mock.calls[0]).projectSpaceSelection).toEqual(selection);
   });
+  it('freezes collaboration members before startup and strips caller-proposed authoritative identity', async () => {
+    installSuccess(); let ready!: () => void;
+    mocks.ensureSessionSidecar.mockReturnValue(new Promise<void>(resolve => { ready = resolve; }));
+    const chosen = { ...selection, collaborationMemberBotIds: ['bot', 'worker'], collaboration: { leadSessionId: 'injected' } };
+    const birth = createSession('/bot-cwd', 'builtin', { projectSpaceSelection: chosen }, owner);
+    chosen.collaborationMemberBotIds[1] = 'changed'; ready(); await birth;
+    expect(bodyOf(mocks.sessionSidecarFetch.mock.calls[0]).projectSpaceSelection).toEqual({ ...selection, collaborationMemberBotIds: ['bot', 'worker'] });
+  });
   it('rejects project creation without an owner before any Sidecar or Global write', async () => {
     await expect(createSession('/bot-cwd', 'builtin', { projectSpaceSelection: selection })).rejects.toThrow(/owner/);
     expect(mocks.ensureSessionSidecar).not.toHaveBeenCalled();

@@ -1,0 +1,97 @@
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { SessionMetadata } from '@/api/sessionClient';
+import type { Message } from '@/types/chat';
+import type { ProjectSpaceSessionSnapshot } from '../../../shared/projectSpaces';
+import CollaborationDetails, { collaborationSessions } from './CollaborationDetails';
+import ProjectConversationDialog from './ProjectConversationDialog';
+import type { AgentConfig } from '../../../shared/types/agent';
+import type { Project } from '@/config/types';
+const state = vi.hoisted(() => ({ sessions: [] as SessionMetadata[], read: vi.fn(), openFile: vi.fn() }));
+vi.mock('@/hooks/useTaskCenterData', () => ({ useTaskCenterData: () => { state.read(); return { sessions: state.sessions, isSessionsLoading: false, sessionsError: null }; } }));
+vi.mock('@/components/agent-status/useSessionTaskOrchestration', () => ({ useSessionTaskOrchestrationContext: () => ({ sessionId: 'root', tasks: [], stale: false, retry: vi.fn() }) }));
+vi.mock('@/context/FileActionContext', () => ({ useFileAction: () => ({ openFileTarget: state.openFile }) }));
+const at = '2026-11-07T00:00:00Z';
+const snapshot: ProjectSpaceSessionSnapshot = { schemaVersion: 1, projectId: 'p', projectName: '产品协作', projectRevision: 1, botId: 'lead', botName: '负责 Bot', workspacePath: '/lead', capturedAt: at, description: '', instructions: '', materials: [], resources: [], collaboration: { leadSessionId: 'root', leadBotId: 'lead', members: [{ id: 'lead', name: '负责人' }, { id: 'writer', name: '撰写助手' }] } };
+const session = (id: string, fixed = snapshot) => ({ id, title: id, agentDir: fixed.workspacePath, projectSpace: fixed, createdAt: at, lastActiveAt: at } as SessionMetadata);
+const writer = { ...snapshot, botId: 'writer', botName: '撰写助手', workspacePath: '/writer' };
+beforeEach(() => { state.read.mockClear(); state.openFile.mockClear(); state.sessions = [session('root'), session('member', writer)]; });
+describe('progressive collaboration details', () => {
+  it('opens only on demand, restores focus and unmounts on inactive tab', () => {
+    const props = { snapshot, sessionId: 'root', messages: [], isActive: true };
+    const view = render(<CollaborationDetails {...props} />);
+    expect(state.read).not.toHaveBeenCalled(); expect(screen.queryByRole('dialog')).toBeNull();
+    const trigger = screen.getByRole('button', { name: /协作详情/ }); trigger.focus(); fireEvent.click(trigger);
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('dialog'), { key: 'Escape' }); expect(trigger).toHaveFocus();
+    fireEvent.click(trigger); view.rerender(<CollaborationDetails {...props} isActive={false} />);
+    expect(screen.queryByRole('dialog')).toBeNull(); view.rerender(<CollaborationDetails {...props} />); expect(screen.queryByRole('dialog')).toBeNull();
+  });
+  it('wraps keyboard focus around visible controls when project materials are nested in collapsed details', () => {
+    render(<CollaborationDetails snapshot={{ ...snapshot, materials: [{ id: 'brief', title: 'Nested material', content: 'Reference' }] }} sessionId="root" messages={[]} isActive />);
+    fireEvent.click(screen.getByRole('button', { name: /协作详情/ }));
+    const lastVisible = screen.getByText('项目说明');
+    lastVisible.focus(); fireEvent.keyDown(lastVisible, { key: 'Tab' });
+    expect(screen.getByRole('button', { name: '关闭' })).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole('button', { name: '关闭' }), { key: 'Tab', shiftKey: true });
+    expect(lastVisible).toHaveFocus();
+    lastVisible.closest('details')!.open = true;
+    const nested = screen.getByText('Nested material'); nested.focus();
+    fireEvent.keyDown(nested, { key: 'Tab' }); expect(screen.getByRole('button', { name: '关闭' })).toHaveFocus();
+  });
+  it('opens the exact member metadata in its workspace and treats a fork as a member', () => {
+    const open = vi.fn(); render(<CollaborationDetails snapshot={snapshot} sessionId="fork" messages={[]} isActive onOpenConversation={open} />);
+    fireEvent.click(screen.getByRole('button', { name: /协作详情/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'member' }));
+    expect(open).toHaveBeenCalledWith(expect.objectContaining({ id: 'member', agentDir: '/writer' }));
+    expect(screen.queryByRole('dialog')).toBeNull();
+  });
+  it('scopes records by exact root and project, preserving fallback when root is absent', () => {
+    const other = session('other', { ...writer, collaboration: { ...writer.collaboration!, leadSessionId: 'other-root' } });
+    const alien = session('alien', { ...writer, projectId: 'different' });
+    const malformed = { ...session('malformed', writer), agentDir: '/wrong' };
+    expect(collaborationSessions(snapshot, [...state.sessions, other, alien, malformed]).map(item => item.id)).toEqual(['root', 'member']);
+    expect(collaborationSessions(snapshot, [state.sessions[1]]).map(item => item.id)).toEqual(['member']);
+  });
+  it('exposes current-session tasks and safe assistant file references, never user attachments', () => {
+    const messages = [{ id: 'user', role: 'user', content: '[input](input.md)' }, { id: 'assistant', role: 'assistant', content: '[成果](result.md)' }] as Message[];
+    render(<CollaborationDetails snapshot={snapshot} sessionId="root" messages={messages} isActive />);
+    fireEvent.click(screen.getByRole('button', { name: /协作详情/ }));
+    fireEvent.click(screen.getByRole('tab', { name: '任务' })); expect(screen.getByText('当前会话还没有记录任务')).toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole('tab', { name: '任务' }), { key: 'ArrowRight' }); expect(screen.getByRole('tab', { name: '成果' })).toHaveFocus();
+    expect(screen.queryByRole('button', { name: 'input.md' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'result.md' })); expect(state.openFile).toHaveBeenCalledOnce();
+  });
+});
+it('creates an explicit collaboration task and fences uncertain retries', async () => {
+  const agents = [{ id: 'lead', name: '负责人', enabled: true, permissionMode: 'plan', channels: [] }, { id: 'writer', name: '撰写助手', enabled: true, permissionMode: 'plan', channels: [] }] as AgentConfig[];
+  const workspaces = agents.map(bot => ({ id: bot.id, name: bot.name, path: `/${bot.id}`, agentId: bot.id, providerId: null, permissionMode: null })) as Project[];
+  const spaces = [{ id: 'p', name: '产品协作', description: '', instructions: '', memberBotIds: agents.map(bot => bot.id), materials: [], resources: [], revision: 1, createdAt: at, updatedAt: at }];
+  const open = vi.fn(async () => ({ status: 'uncertain' as const, tabId: 'original' }));
+  render(<ProjectConversationDialog open spaces={spaces} agents={agents} workspaces={workspaces} request={{ id: 1, projectId: 'p', botId: 'lead' }} onOpen={open} onClose={vi.fn()} onCreateBot={vi.fn()} onCreateProject={vi.fn()} onViewAttempt={vi.fn()} />);
+  const invite = screen.getByText('邀请 Bot 协作').closest('details')!; invite.open = true;
+  fireEvent.click(screen.getByRole('checkbox', { name: '撰写助手' }));
+  await act(async () => fireEvent.submit(screen.getByLabelText('协作任务').closest('form')!));
+  expect(open).not.toHaveBeenCalled();
+  fireEvent.change(screen.getByLabelText('协作任务'), { target: { value: '一起完成产品方案' } });
+  await act(async () => fireEvent.submit(screen.getByLabelText('协作任务').closest('form')!));
+  expect(open).toHaveBeenCalledWith({ kind: 'project', selection: { projectId: 'p', botId: 'lead', projectRevision: 1, collaborationMemberBotIds: ['lead', 'writer'] } }, { text: '一起完成产品方案' });
+  expect(screen.getByRole('checkbox', { name: '撰写助手' })).toBeDisabled();
+  await act(async () => fireEvent.submit(screen.getByLabelText('协作任务').closest('form')!)); expect(open).toHaveBeenCalledOnce();
+});
+
+it('exchanges a selected collaborator with the lead without silently leaving collaboration', async () => {
+  const agents = [{ id: 'lead', name: '负责人', enabled: true, permissionMode: 'plan', channels: [] }, { id: 'writer', name: '撰写助手', enabled: true, permissionMode: 'plan', channels: [] }] as AgentConfig[];
+  const workspaces = agents.map(bot => ({ id: bot.id, name: bot.name, path: `/${bot.id}`, agentId: bot.id, providerId: null, permissionMode: null })) as Project[];
+  const spaces = [{ id: 'p', name: '产品协作', description: '', instructions: '', memberBotIds: agents.map(bot => bot.id), materials: [], resources: [], revision: 1, createdAt: at, updatedAt: at }];
+  const open = vi.fn(async () => ({ status: 'opened' as const }));
+  render(<ProjectConversationDialog open spaces={spaces} agents={agents} workspaces={workspaces} request={{ id: 1, projectId: 'p', botId: 'lead' }} onOpen={open} onClose={vi.fn()} onCreateBot={vi.fn()} onCreateProject={vi.fn()} onViewAttempt={vi.fn()} />);
+  screen.getByText('邀请 Bot 协作').closest('details')!.open = true;
+  fireEvent.click(screen.getByRole('checkbox', { name: '撰写助手' }));
+  fireEvent.click(screen.getByRole('button', { name: '负责 Bot' }));
+  fireEvent.click(screen.getByRole('button', { name: '撰写助手' }));
+  expect(screen.getByRole('checkbox', { name: '负责人' })).toBeChecked();
+  fireEvent.change(screen.getByLabelText('协作任务'), { target: { value: '完成方案' } });
+  await act(async () => fireEvent.submit(screen.getByLabelText('协作任务').closest('form')!));
+  expect(open).toHaveBeenCalledWith({ kind: 'project', selection: { projectId: 'p', botId: 'writer', projectRevision: 1, collaborationMemberBotIds: ['writer', 'lead'] } }, { text: '完成方案' });
+});

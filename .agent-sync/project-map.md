@@ -100,3 +100,7 @@ Current mobile deployment unit owner (2026-10-21): `01a12b99-7b38-78b1-831f-9c60
 ## 统一执行状态栏
 
 `src/renderer/components/agent-status/ExecutionStatusBar.tsx` 由 SimpleChatInput 挂载，复用既有待办/子 Agent 投影和 Goal 控制回调；唯一详情区与外置暂停。规范 `specs/tech_docs/goal_todo_interaction.md`，验证 `dev-docs/unified-statusbar/acceptance.md`，不新增执行/持久化 owner。
+
+## 持久 Bot 协作入口 BC-02
+
+`projectSpace.collaboration` 沿原 Session 出生 owner 固定负责 Session 与 2–8 成员；项目内 Inbox 交接保留组及当前准入。`CollaborationDetails` 按需投影成员/当前任务/文件，侧栏收纳与活动时间只读，跨工作区交回 App 原导航。计划与边界 `dev-docs/bot-collaboration-entry-20261107/PLAN.md`、验收同目录acceptance.md。main/CI/桌面发行仍由01a12bc2-907a-7702-b6dd-788225c5dfe4负责；源码及合成验证不代表安装版真实协作。

@@ -34,6 +34,7 @@ export interface ChatOpenIntent {
 }
 
 export interface ChatRenderBinding {
+  onOpenRelatedConversation?: (session: import('@/api/sessionClient').SessionMetadata) => void;
   startupError?: (tabId: string) => string | null;
   onRetryStartup?: (tabId: string) => Promise<void>;
   registerFileEditSubmitter?: (tabId: string, submit: () => Promise<boolean>, canEvict?: () => boolean) => () => void;
@@ -108,6 +109,7 @@ const ChatTabRenderer = memo(function ChatTabRenderer({
             registerFileEditSubmitter={binding.registerFileEditSubmitter}
             windowPresentation={binding.windowPresentation}
             onOpenSession={(sessionId, title, source) => binding.onOpenHistorySession(tab.id, sessionId, title, source)}
+            onOpenRelatedConversation={binding.onOpenRelatedConversation}
             onOpenSessionInNewTab={(sessionId, title) =>
               binding.onOpenHistorySession(tab.id, sessionId, title, 'chat_dropdown_new_tab')
             }

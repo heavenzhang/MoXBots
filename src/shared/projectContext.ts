@@ -125,8 +125,10 @@ export function renderProjectContext(snapshot: ProjectContextSnapshot): string {
       description: excerpt(project.description, 400), instructions: excerpt(project.instructions, 900),
       materials: project.materials.map(item => ({ title: item.title, ...excerpt(item.content, 220) })),
       resources: project.resources,
+      ...(project.collaboration ? { collaboration: { leadSessionId: project.collaboration.leadSessionId, leadBotId: project.collaboration.leadBotId,
+        members: project.collaboration.members.map(member => ({ id: member.id, name: excerpt(member.name, 80).text })) } } : {}),
     };
-    const prefix = '\n项目出生时固定的配置；目录仅为资料引用，不改变工作目录或权限。省略内容可从当前会话 metadata.projectSpace 核对。\n<project_configuration>';
+    const prefix = (project.collaboration ? '\n协作由 leadBotId 负责，leadSessionId 是原负责会话。仅按当前任务需要向列出的成员交接；不自动广播或重复派发，不把回报当作验收。\n' : '') + '\n项目出生时固定的配置；目录仅为资料引用，不改变工作目录或权限。省略内容可从当前会话 metadata.projectSpace 核对。\n<project_configuration>';
     const end = '</project_configuration>';
     let descriptionBudget = 400, instructionsBudget = 900, nameBudget = bytes(project.projectName);
     let projected = escapeSystemReminderText(JSON.stringify(config));

@@ -285,6 +285,12 @@ Goal 的详细产品行为和 Task/Goal provider routing 见 [`task_center.md`](
 
 backend-created target 只有在 Runtime dispatch claim 成功后才发布 prepared Session；ACK 不明时保留 identity，不能自动重试导致重复执行。`session start/send` 的每一层外部 timeout 都大于内层 owner/ACK timeout；transport error、成功状态但不可解析的 ACK 和外层超时统一是 `admission_unconfirmed`，只有明确拒绝才是 definitive failure。
 
+桌面项目对话可选 `collaborationMemberBotIds`（2–8位、含负责Bot），由原出生编译器从当前项目及唯一有效Bot工作区生成固定 `projectSpace.collaboration`。最终 `leadSessionId` 仅在 `preparePendingProductSession` 分配真实ID后、首个metadata保存前绑定；重复prepare以同一ID比较。持久化禁止未绑定或pending负责人；fork保留原组，只有ID等于leadSessionId且Bot等于leadBotId的原Session是根。旧snapshot无此可选字段保持原语义，不新增群Store、通信协议或执行owner。
+
+协作成员交接同时校验固定成员和当前项目成员。动态项目历史只在projectId和collaboration.leadSessionId同时匹配时读取；普通项目会话与协作组双向隔离。固定有界提醒带负责Bot、原Session及成员ID，沿用单个隐藏系统提醒。侧栏只读收纳成员并投影未读/最近活动，孤立或置顶成员仍独立可达。协作详情按需挂载原TaskCenter读取，任务来自当前Session原orchestration observer，文件仅从已加载assistant内容/成功文件编辑投影，不宣称全组验收。成员导航交回App原workspace/session开启入口。
+
+本地项目内 `session start --agent` 从来源 Session 的持久 `projectSpace` 自动继承固定背景。Admin先核对成员/工作区，Rust仅转发 `inheritProject`，目标出生owner再次从本地SessionStore/config/projects编译：项目须仍有效、双方须仍是成员且各有唯一有效工作区，来源归档/缺失/损坏则拒绝。目标保留来源的项目内容与revision，改绑自己的Bot身份/工作区；模型、工具和权限仍由目标Agent snapshot决定。首次Inbox不走desktop query准备，因此通过既有单个send.request隐藏提醒携带有界固定配置；不展开动态项目历史，不新增共享记忆或群Store。外部CLI和跨设备入口不继承本地项目，现有会话的send不修改身份；旧请求缺少标记按原语义读取。
+
 本地与跨设备 fresh Inbox 共用上述出生入口。目标 Sidecar 启动时 metadata 尚不存在；出生完成后，DSH/外部 adapter 必须在 Inbox admission 从已写入的 owned Session snapshot 捕获权限、模型与推理配置，不能沿用 bootstrap 的空 desired state。已有 owned Session 的缺失字段仍按产品默认解析，不重新继承 Agent 当前设置。DSH 原生 Plan 状态只更新 Runtime 的 Plan owner，不投影为权限变化或写回 Session permission snapshot。
 
 Session Inbox 与用户手动 query 的投递时机独立：通用 `chatQueueResponseMode` 只控制手动 query；builtin / DSH / Codex 的 Inbox 固定 realtime。原 Runtime queue 负责接纳与派发，native receipt 决定消费与上屏；排队 HTTP 回执不代表模型已感知。A 运行、手动 B 等下一轮时，Inbox C 可在 A 的安全消费点进入 A，B 仍等待 A terminal。已消费的多个请求由原 turn owner 保存关联，在 terminal 前同步取走快照，分别返回同轮结果；未消费输入不能借用 A 的结果，reply / watch notification 也不触发自动回复。

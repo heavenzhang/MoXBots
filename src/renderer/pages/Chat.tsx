@@ -1,3 +1,4 @@
+import CollaborationDetails from '@/features/project-spaces/CollaborationDetails';
 import ProjectContextBadge from '@/features/project-spaces/ProjectContextBadge';
 import { SessionRecoveryPanels } from '../components/SessionRecoveryPanels';
 import { RECOVERY_REVIEW_ACTIONS_PATH, RECOVERY_RECONCILE_PATH, type RecoveryActionSnapshot } from '../../shared/recoveryReconciliation';
@@ -662,6 +663,7 @@ interface ChatProps {
     historyEntrySource?: HistoryEntrySource,
   ) => void;
   /** Explicit per-row new-tab action; it shares the same canonical App path. */
+  onOpenRelatedConversation?: (session: import('@/api/sessionClient').SessionMetadata) => void;
   onOpenSessionInNewTab?: (sessionId: string, title: string) => void;
   /** Initial message from Launcher for auto-send on workspace open */
   initialMessage?: InitialMessage;
@@ -717,6 +719,7 @@ function ChatContent({
   onNewSession,
   onOpenSession,
   onOpenSessionInNewTab,
+  onOpenRelatedConversation,
   initialMessage,
   pendingContinuation,
   onContinuationConsumed,
@@ -6447,7 +6450,7 @@ function ChatContent({
                   onOpen={handleOpenAgentSettings}
                 />
               )}
-              {sessionMeta?.projectSpace && <ProjectContextBadge snapshot={sessionMeta.projectSpace} />}
+              {sessionMeta?.projectSpace && (sessionMeta.projectSpace.collaboration && sessionId ? <CollaborationDetails snapshot={sessionMeta.projectSpace} sessionId={sessionId} messages={messages} isActive={isActive} onOpenConversation={onOpenRelatedConversation} /> : <ProjectContextBadge snapshot={sessionMeta.projectSpace} />)}
               <UserTagPills
                 tags={sessionMeta?.userTags}
                 onTagClick={(name) => onOpenHistoryTag?.(name)}

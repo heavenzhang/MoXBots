@@ -5,6 +5,7 @@ import type { SessionMetadata } from "@/api/sessionClient";
 import type { Tab } from "@/types/tab";
 import type { ProjectSpaceSessionSnapshot } from '../../../shared/projectSpaces';
 import {
+  foldCollaborationConversations,
   botConversationProjects,
   projectBotConversations,
 } from "./botConversationProjection";
@@ -162,4 +163,16 @@ describe("Bot conversation projection", () => {
     ]);
     expect(botConversationProjects(projects, "unknown")).toEqual([]);
   });
+});
+
+it('folds exact collaboration members without losing unread, pinned or orphaned conversations', () => {
+  const base = { schemaVersion: 1, projectId: 'group-project', projectName: 'Project', projectRevision: 1, botId: 'b1', botName: 'Lead', workspacePath: '/work/product', capturedAt: '2026-11-07T00:00:00Z', description: '', instructions: '', materials: [], resources: [], collaboration: { leadSessionId: 'root', leadBotId: 'b1', members: [{ id: 'b1', name: 'Lead' }, { id: 'b2', name: 'Writer' }] } } as ProjectSpaceSessionSnapshot;
+  const row = (id: string, fixed = base) => ({ id, title: id, agentDir: fixed.workspacePath, createdAt: base.capturedAt, lastActiveAt: base.capturedAt, projectSpace: fixed } as SessionMetadata);
+  const source = projectBotConversations({ projects, agents, tabs: [], badges: new Map([['member', 2]]), sessions: [row('root'), { ...row('member', { ...base, botId: 'b2', workspacePath: '/work/sales' }), lastActiveAt: '2026-11-08T00:00:00Z' }, row('fork'), { ...row('pinned'), pinnedAt: base.capturedAt }, row('other', { ...base, collaboration: { ...base.collaboration!, leadSessionId: 'absent' } })] });
+  const grouped = foldCollaborationConversations(source);
+  const root = grouped.find(item => item.session.id === 'root')!;
+  expect(root.collaborators?.map(item => item.session.id).sort()).toEqual(['fork', 'member']); expect(root.unread).toBe(2); expect(root.displayLastActiveAt).toBe('2026-11-08T00:00:00Z'); expect(root.session.lastActiveAt).toBe(base.capturedAt); expect(grouped.map(item => item.session.id)).toEqual(['pinned', 'root', 'other']);
+  expect(grouped.map(item => item.session.id).sort()).toEqual(['other', 'pinned', 'root']);
+  expect(foldCollaborationConversations(source.filter(item => item.session.id !== 'root')).map(item => item.session.id).sort()).toEqual(['fork', 'member', 'other', 'pinned']);
+  expect(source.find(item => item.session.id === 'root')?.unread).toBe(0);
 });

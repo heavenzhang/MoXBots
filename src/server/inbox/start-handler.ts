@@ -12,6 +12,7 @@ import type { InboxAdmissionResult } from '../session-engine/types';
 import type { DispatchGuard } from '../session-core/turn-queue';
 import { buildSessionEventPrompt, buildTurnMeta } from './drain-handler';
 import type { PendingInboxMessage } from './types';
+import { compileLocalProjectHandoff } from './project-handoff';
 
 export interface FreshSessionStartContext {
   sessionId: string;
@@ -20,6 +21,7 @@ export interface FreshSessionStartContext {
   runtime: RuntimeType;
   runtimeSource?: RuntimeSource;
   managedCodexProviderReady?: boolean;
+  inheritProject?: boolean;
 }
 
 export type FreshSessionInjector = (
@@ -72,6 +74,15 @@ export async function handleFreshSessionStart(
   }
 
   const origin = { kind: 'session-inbox', surface: 'session_send' } as const;
+  // Validate before creating prepared metadata or admitting any model work.
+  let projectSpace;
+  try {
+    projectSpace = context.inheritProject
+      ? compileLocalProjectHandoff(message, context.agent.id, context.workspacePath)
+      : undefined;
+  } catch (error) {
+    return { accepted: false, reason: error instanceof Error ? error.message : String(error) };
+  }
   const metadata = createMaterializedSessionMetadata({
     agentDir: context.workspacePath,
     sessionId: context.sessionId,
@@ -84,6 +95,7 @@ export async function handleFreshSessionStart(
     origin,
   });
   metadata.materializationState = 'prepared';
+  if (projectSpace) metadata.projectSpace = projectSpace;
   metadata.materializationSourceSessionId = message.messageId;
   await saveSessionMetadata(metadata);
 
@@ -115,7 +127,7 @@ export async function handleFreshSessionStart(
   );
 
   try {
-    const result = await inject(buildSessionEventPrompt(message), {
+    const result = await inject(buildSessionEventPrompt(message, projectSpace), {
       inboxMeta: buildTurnMeta(message),
       queueId: message.messageId,
       beforeDispatch,

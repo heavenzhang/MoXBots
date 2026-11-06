@@ -11951,12 +11951,13 @@ description: >
           const body = (await request.json().catch(() => null)) as {
             agentId?: unknown;
             message?: unknown;
+            inheritProject?: unknown;
           } | null;
           const agentId = typeof body?.agentId === 'string' ? body.agentId : '';
           const message = body?.message as
             | import('./inbox/types').PendingInboxMessage
             | undefined;
-          if (!agentId || !message) {
+          if (!agentId || !message || (body?.inheritProject !== undefined && typeof body.inheritProject !== 'boolean')) {
             return jsonResponse(
               { accepted: false, reason: 'invalid body' },
               400,
@@ -12011,6 +12012,7 @@ description: >
               sessionId: message.toSessionId,
               workspacePath: identity.workspacePath,
               agent: identity.agent as unknown as AgentConfig,
+              inheritProject: body?.inheritProject === true,
               runtime: runtimeIdentity.runtime,
               runtimeSource: runtimeIdentity.runtimeSource,
               managedCodexProviderReady: isManagedCodexProviderReady(

@@ -1,3 +1,7 @@
+## BC-02 — 持久负责 Bot 协作对话入口（2026-11-07）
+
+任务 `.agent-sync/tasks/codex-bot-collaboration-entry-20261107-dd098257.md`，可勾验收 `dev-docs/bot-collaboration-entry-20261107/PLAN.md`。负责 Session 固定组、成员准入及历史隔离、侧栏持久入口、按需详情已实现；131项本地回归、独立87项与实际组件明暗/窄窗口/键盘验证通过。依赖1471ec01f；SimpleUX综合8240ddbc仍为独立待集成项。desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4统一选择下一未冻结候选；本开发会话不占用543.5、不触发共享CI或正式构建。下一步：精确源码保存交接，按实际主干和签名制品分别核验。
+
 ## MB-FORM-SCROLLBARS-20261106 — 输入框与项目表单滚动
 
 任务 `.agent-sync/tasks/codex-form-scrollbars-20261106-c4291ee9.md`，验收 `dev-docs/form-scrollbars-20261106/acceptance.md`。审计 40 个产品文件的 53 处 textarea，通过共享 base 样式统一软换行和仅纵向自动滚动，保留 wrap=off/编辑器内部例外；ProjectSpaceEditor 标题/footer 不压缩，由独立 div 负责表单滚动。真实组件双引擎 192 组、聊天缩放 120 组、59 个不同 DOM 用例、类型/lint/MoXBots Web 构建和主题检查通过。主 Agent 自验，未宣称独立审阅或原生安装验收。desktop/macOS-arm64/updater/sharedCI/main 沿用唯一负责人 `01a12bc2-907a-7702-b6dd-788225c5dfe4`，开发分支交接后由其统一 CI/main/版本/下一未冻结候选与安装版复验，不涉及其他部署单元。
@@ -1387,3 +1391,10 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exact intent dd972c3, unknown23d98cdd, reading1921e850 and remediation9f818331 (including e2e025c) atop remote main4ceeb2d21, preserving PR257 cleanup and PR258 revision/human-response fixes. Reserve0.5.43/build543.4 for a new immutable artifact; frozen543.3 and published542.6 remain unchanged. Combined checks, exactCI/currentMac ARM, remote main, signed artifact, safe maintenance install and each actual native acceptance remain separate. Original report owner alone currently runs authorized business; no Root UI/restart while active. No unknown replay/ledger edits/permission expansion/cloud/mobile/website deployment or unrelated Bot feature batching. Root record codex-release-intent-recovery-0543-20261107-82a4ca2f; private controls work/intent-recovery-integration-20261107/owner.
 
 R2真实验收补充：543.3原群报告已在同execution完成5项验收；真实502暴露turn_error提示笼统。本分支经原native terminal传递有界HTTP状态，原execution持久保存闭集只读failure说明，UI显示原因/下一步，保持原code/status及未知保护不变。10文件403回归和实际组件通过，下一批由同一桌面owner集成安装；不将543.3原报告成功视为追加改动已安装。
+
+
+## MB-BOT-COLLAB-20261107 · BC-02/03 local project handoff
+
+用户要求继续简洁Bot协作开发。codex/bot-collaboration-20261107基于mainbfbc92f：本地项目会话session start沿原Inbox保留来源固定projectSpace背景，按当前成员/工作区重新核对目标出生，模型/权限仍取接收Bot；单个隐藏send.request携带固定配置，外部/跨设备不继承，不放宽动态历史。无新Store/队列/持久群schema。稳定清单与验证见dev-docs/bot-collaboration-20261107/；群主题、成员入口与真实模型联调仍未完成。
+
+原desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4；本分支只本地检查/保存/交接，不触发共享CI/正式构建/安装或分配版本。无其他单元/迁移依赖。前两批SimpleUX组合8240ddbc仍是独立待收源，当前分支不把其main/发行门禁算作已完成。
