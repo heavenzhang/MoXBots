@@ -1,0 +1,110 @@
+{
+  "taskId": "MB-CHAT-JITTER-20261106",
+  "data": "synthetic only; no business calls",
+  "baselineMotionCommit": "9668179c487afbe48edc414dd3c6c06338d99fed",
+  "nativeWK110": {
+    "baseline": {
+      "pending": {
+        "frames": 8,
+        "scrollTopRange": [
+          37798,
+          42577
+        ],
+        "missingTailFrames": 4
+      },
+      "settled": {
+        "frames": 160,
+        "scrollTopRange": [
+          37798,
+          37798
+        ],
+        "missingTailFrames": 160
+      },
+      "expectedVerdict": "FAIL"
+    },
+    "fixed": {
+      "pending": {
+        "frames": 8,
+        "scrollTopRange": [
+          37797,
+          37797
+        ],
+        "missingTailFrames": 0
+      },
+      "settled": {
+        "frames": 160,
+        "scrollTopRange": [
+          42576,
+          42576
+        ],
+        "missingTailFrames": 0
+      },
+      "verdict": "PASS"
+    },
+    "scope": "isolated WKWebView, not installed application acceptance"
+  },
+  "webKit": {
+    "verdict": "PASS",
+    "pending": {
+      "frames": 8,
+      "scrollTopRange": [
+        37896,
+        37896
+      ],
+      "missingTailFrames": 0
+    },
+    "idle": {
+      "frames": 392,
+      "scrollTopRange": [
+        36830,
+        36830
+      ],
+      "missingTailFrames": 0
+    },
+    "idleScrollWrites": 0,
+    "geometryChecks": [
+      "cold",
+      "expanded",
+      "collapsed",
+      "fractional-spacer",
+      "without-tasks",
+      "tasks-restored",
+      "tall-measured",
+      "tail-shrunk",
+      "readmitted",
+      "explicit-bottom"
+    ]
+  },
+  "chromium": {
+    "verdict": "PASS",
+    "pending": {
+      "frames": 8,
+      "scrollTopRange": [
+        37896,
+        37896
+      ],
+      "missingTailFrames": 0
+    },
+    "idle": {
+      "frames": 781,
+      "scrollTopRange": [
+        36830,
+        36830
+      ],
+      "missingTailFrames": 0
+    },
+    "idleScrollWrites": 0
+  },
+  "existingFullScrollRegression": {
+    "webkit": "PASS",
+    "chromium": "PASS"
+  },
+  "targetedDOMTests": {
+    "passed": 68,
+    "failed": 0
+  },
+  "typecheck": "PASS",
+  "targetedESLint": "PASS",
+  "diffCheck": "PASS",
+  "installedOriginalSessionAcceptance": "PENDING existing desktop owner"
+}

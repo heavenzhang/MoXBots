@@ -27,6 +27,10 @@ export function useChatFollowMotion({
     let position = scroller.scrollTop;
     let velocity = 0;
     let lastTime = 0;
+    let lastOverflowHeight = scroller.scrollHeight;
+    const extent = scroller.querySelector<HTMLElement>(
+      ':scope > [data-viewport-type="element"] > [data-virtuoso-scroll-extent]',
+    );
 
     const cancel = () => {
       if (frame !== null) cancelAnimationFrame(frame);
@@ -34,7 +38,17 @@ export function useChatFollowMotion({
       velocity = 0;
     };
     const canFollow = () => !!followEnabledRef.current && scroller.clientHeight > 0;
-    const bottom = () => Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+    const bottom = () => {
+      // React can commit a taller row before Virtuoso measures it. Native
+      // overflow already includes that row, but navigating beyond the size
+      // tree's committed extent makes Virtuoso render an empty range. The row
+      // then disappears before ResizeObserver can measure it, native overflow
+      // shrinks, and following can repeat the grow/clamp/unmount cycle.
+      // The existing projection is owned by Virtuoso, including its deviation;
+      // never drive measured following ahead of that committed geometry.
+      const height = extent ? Math.min(scroller.scrollHeight, extent.offsetHeight) : scroller.scrollHeight;
+      return Math.max(0, height - scroller.clientHeight);
+    };
     const write = (top: number) => virtuosoRef.current?.scrollTo({ top, behavior: 'auto' });
     const needsImmediate = (gap: number) => initial || motionPreference?.matches
       || followEnabledRef.current === 'force' || gap < 0
@@ -72,11 +86,18 @@ export function useChatFollowMotion({
       if (!canFollow()) { cancel(); return; }
       const target = bottom();
       const gap = target - scroller.scrollTop;
+      const overflowChanged = lastOverflowHeight !== scroller.scrollHeight;
+      lastOverflowHeight = scroller.scrollHeight;
       const immediate = needsImmediate(gap);
       initial = false;
       if (immediate) {
         cancel();
-        if (gap !== 0) write(target);
+        if (gap !== 0 || overflowChanged) write(target);
+      } else if (overflowChanged) {
+        // Take over an older index transaction even when the new DOM has not
+        // been measured yet. A same-offset pixel call cancels its size retries
+        // without advancing past the model or adding work to settled renders.
+        write(Math.min(scroller.scrollTop, target));
       }
       // A size notification can precede Virtuoso's padding/footer DOM commit.
       // Always reconcile that notification on the next frame, even if geometry
@@ -101,6 +122,10 @@ export function useChatFollowMotion({
     alignRef.current = align;
     const observer = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(align);
     observer?.observe(scroller);
+    // totalListHeightChanged can precede React's projection commit. Observe that
+    // commit too, so a callback/RAF that still saw the old extent cannot leave
+    // following behind after the measurement catches up (notably Chromium).
+    if (extent) observer?.observe(extent);
     motionPreference?.addEventListener('change', align);
     align();
     return () => {
