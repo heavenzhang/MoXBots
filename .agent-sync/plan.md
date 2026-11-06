@@ -1380,3 +1380,8 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 ## MB-EXECUTION-REMEDIATION-20261107 — 执行阻断整改与原报告恢复
 
 在原task-revision修复07dcf4d27上补齐已知取消/接续失败的说明与恢复详情的依赖任务名称。自动原生回执核对、已知失败纠正、未知结果保留、按原任务资源/依赖继续独立工作沿既有owner，回归矩阵见dev-docs/execution-remediation-20261107/acceptance.md。543.3冻结制品不修改；原报告由恢复会话单独接续。desktop/macOS-arm64/updater/sharedCI/main仍唯一负责人01a12bc2-907a-7702-b6dd-788225c5dfe4，本分支精确SHA交其下一未冻结批统一审阅/主干/发布。源码、安装、真实报告分别验收。
+
+
+## MB-INTENT-RECOVERY-INTEGRATION-20261107 Root combined5434
+
+Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exact intent dd972c3, unknown23d98cdd, reading1921e850 and remediatione2e025c atop remote main4ceeb2d21, preserving PR257 cleanup and PR258 revision/human-response fixes. Reserve0.5.43/build543.4 for a new immutable artifact; frozen543.3 and published542.6 remain unchanged. Combined checks, exactCI/currentMac ARM, remote main, signed artifact, safe maintenance install and each actual native acceptance remain separate. Original report owner alone currently runs authorized business; no Root UI/restart while active. No unknown replay/ledger edits/permission expansion/cloud/mobile/website deployment or unrelated Bot feature batching. Root record codex-release-intent-recovery-0543-20261107-82a4ca2f; private controls work/intent-recovery-integration-20261107/owner.

@@ -21,12 +21,12 @@
 ## Completed
 
 - 基于当前main4cee隔离worktree，修改前task-init clean PASS。
-- Root逐源审阅intent dd972、unknown23d98、reading1921、remediation e2e025；当前先合入intent，无代码门禁豁免。
+- Root逐源审阅intent dd972、unknown23d98、reading1921、remediation e2e025；四源已正常local merge并保留Git祖先，文档追加段和两份界面测试均保留，无代码门禁豁免。
 - 543.3已安装并原报告owner接续真实业务，本批不抢UI或在业务运行中重启。
 
 ## Verification
 
-- 作者相关unit/integration/真实分类与受控组件证据已核范围；Root combined尚待执行。
+- 作者相关unit/integration/真实分类与受控组件证据已核范围；Root259unit/129DOM、395集成case覆盖（首394pass1fail仅新增blockedTasks严格expected，精确补齐后受影响4/4通过）、type/scopedlint/classification/3version与双尺寸unknown+reading WebKit通过；原失败保留，不冒整命令首次全绿。
 - 私密控制/原始日志：work/intent-recovery-integration-20261107/owner，不进入Git。
 
 ## Blockers and unknowns
@@ -36,4 +36,4 @@
 
 ## Next step
 
-完成四源隔离集成、combined测试与新source冻结；保留所有旧制品及真实unknown样本。
+等待原整改作者基于真实502补充窄范围只读原因展示的精确SHA，审阅后复核受影响测试再冻结；新543.4安装必须等待原业务终态与窗口交还。
