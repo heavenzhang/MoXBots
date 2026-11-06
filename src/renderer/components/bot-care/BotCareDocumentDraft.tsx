@@ -64,7 +64,7 @@ export default function BotCareDocumentDraft({ path, workspacePath, onSave, onSa
   return <OverlayBackdrop portal className="z-[210] p-4 sm:p-8" onClose={cancel}>
     <div ref={dialog} role="dialog" aria-modal="true" aria-labelledby="bot-care-draft-title" aria-busy={saving}
       className="flex max-h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-[var(--line)] bg-[var(--paper)] p-5 text-[var(--ink)] shadow-2xl sm:p-6">
-      <h3 id="bot-care-draft-title" className="text-lg font-semibold">{t('botCare.docs.draftTitle', { defaultValue: '新建文档：{{path}}', path })}</h3>
+      <h3 id="bot-care-draft-title" className="break-all text-lg font-semibold">{t('botCare.docs.draftTitle', { defaultValue: '新建文档：{{path}}', path })}</h3>
       <p className="mt-2 text-sm text-[var(--ink-muted)]">{t('botCare.docs.draftDescription', { defaultValue: '填写内容并保存后才会创建文件；取消不会写入。' })}</p>
       <p className="mt-2 truncate text-xs text-[var(--ink-muted)]" title={workspacePath}>{workspacePath}</p>
       <textarea ref={input} aria-label={t('botCare.docs.draftContent', { defaultValue: '文档内容（Markdown）' })}

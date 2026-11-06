@@ -2556,7 +2556,13 @@
       "definitionHint": "内置运行环境读取 CLAUDE.md 和规则文件；Codex 优先读取 AGENTS.md，再兼容 CLAUDE.md。创建 AGENTS.md 前请确认其中保留所需的工作要求。",
       "memoryHint": "规则中的记忆会随指令加载，memory 目录中的笔记供 Bot 按需读取。将复盘结论写成明确、可复用的经验。",
       "definitionDetails": "定义如何生效",
-      "memoryDetails": "记忆如何使用"
+      "memoryDetails": "记忆如何使用",
+      "draftTitle": "新建文档：{{path}}",
+      "draftDescription": "填写内容并保存后才会创建文件；取消不会写入。",
+      "draftContent": "文档内容（Markdown）",
+      "cancelDraft": "取消",
+      "savingDraft": "正在保存…",
+      "saveDraft": "保存并创建"
     },
     "checks": {
       "readOnly": "独立检查 · 只读",
