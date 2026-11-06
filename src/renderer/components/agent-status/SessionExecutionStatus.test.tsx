@@ -69,6 +69,19 @@ describe("SessionExecutionStatus", () => {
     expect(screen.getByText('评审结果连续未确认，已停止自动续接；任务进度已保留')).toBeInTheDocument();
     expect(screen.queryByText('连续几轮没有确认到进展')).not.toBeInTheDocument();
   });
+  it('shows the persisted HTTP reason and recovery action without replacing unknown-operation protection', () => {
+    const execution:SessionExecution={...base,phase:'incomplete',reason:'turn_error',failure:{kind:'modelService',httpStatus:502}};
+    const view=render(<SessionExecutionStatus execution={execution} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.getByText(/模型服务或连接暂时异常.*HTTP 502/)).toBeInTheDocument();
+    view.rerender(<SessionExecutionStatus execution={{...execution,reason:'TOOL_OUTCOME_UNKNOWN'}} />);
+    fireEvent.click(screen.getByRole('button'));
+    expect(screen.queryByText(/HTTP 502/)).not.toBeInTheDocument();
+    expect(screen.getByText(i18n.t('executionStatus.execution.reasons.toolOutcomeUnknown',{ns:'app'}))).toBeInTheDocument();
+    view.rerender(<SessionExecutionStatus execution={{...execution,phase:'running',reason:undefined}} />);
+    expect(screen.queryByText(/HTTP 502/)).not.toBeInTheDocument();
+  });
+
   it("shows current execution without implying a fixed turn limit", () => {
     render(<SessionExecutionStatus execution={base} />);
     expect(screen.getByText("运行中")).toBeInTheDocument();

@@ -50,6 +50,8 @@ export type TurnTerminalOutcome = {
   error?: string;
   /** Stable runtime failure classification; schedulers must not parse display text. */
   code?: string;
+  /** Native SDK HTTP status for display only; never retry authority. */
+  apiErrorStatus?: number;
   durationMs?: number;
   usage?: {
     inputTokens: number;

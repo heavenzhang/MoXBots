@@ -24,8 +24,18 @@ TypeScript、受影响ESLint、test classification和git diff --check通过。�
 - [x] 现有机制审查、补充源码、受影响回归与实际组件检查。
 - [ ] 精确SHA已推送并通过handoff；原发布负责人审阅。
 - [ ] 远端main包含；下一未冻结候选安装并核对本次投影。
-- [ ] 543.3安装后在原会话唯一接续群报告，实际图文产物和任务状态验证。
+- [x] 543.3安装后由单一恢复负责人接续原群报告，实际图文产物及5项完成验证。
 
 唯一desktop/macOS-arm64/updater/sharedCI/main owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4。543.3已冻结，本次追加修改进入下一未冻结批，不重建/覆盖原制品。当前会话只负责源码及原群报告恢复验收，不触发共享CI或正式构建。云/Host/mobile不涉及。
 
 私有测试原始输出与安装、报告事实放交付工作区work/MB-EXECUTION-REMEDIATION-20261107；不提交业务记录、用户原文或运行账本。
+
+## R2：原生模型失败原因持久展示
+
+原报告在543.3已成功接续同一execution后，于2026-11-07 02:09发生native terminal api_error/HTTP502；本轮已结算且无pending写入，但状态栏只显示“执行过程中遇到问题”。这是本次真实验收发现的额外缺口，不归因于已修复的TASK_REVISION_CONFLICT。
+
+原builtin terminal observer补充有界400～599整数状态（不改变原code、status、回执、重试与调度）；原execution owner映射为7类闭集只读failure诊断，随原任务保存。renderer仅对当前incomplete/turn_error投影原因和下一步；未知操作、未结算、停止等原阻断仍优先，恢复运行后不显示旧诊断。原始响应正文、URL和凭据不进入新增字段；未支持的分类不推断。403项/10文件受影响回归通过，新增native终态到observer、ledger持久化、HTTP/压缩分类及UI防覆盖验证；TypeScript、lint、分类、diff通过。新旧原始失败日志均保留；初次测试中的owner fixture类型和Theme rerender折叠状态已修正。原实际组件IAB已看到HTTP502的固定原因、保留进度和接续说明。
+
+## 543.3原会话真实完成
+
+543.3精确安装binarySHA256 9833b95b0fa8e16584f177152e179fbff62e4c847ed43768e2ac72be9e8864e5，源6789cf4444a68bd0afa4c97e2838c605edf3a195，远端main4ceeb2d21acc164487ef199b4a5788d7d27c65f1已独立包含核验。原会话02:02接续，真实502终态后02:10从原进度继续，02:17原5步骤全部accept、phasecompleted；UI已确认。总计2次合法人工接续，第二次在已结算且无pending写入后，没有重复未知业务操作。HTML/Markdown/三张SVG通过210项报告检查；主Agent独立哈希读回与实际IAB图表检查通过。原报告和原数据保留。真实报告完成不等于R2新增字段已安装，R2仍须下一统一候选。

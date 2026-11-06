@@ -4,6 +4,23 @@ import { z } from "zod";
 export type ExecutionIntentFailure = 'timeout' | 'cancelled' | 'unavailable' | 'transport'
   | 'empty_response' | 'output_limit' | 'invalid_json' | 'invalid_schema' | 'missing_continuation' | 'missing_steps' | 'missing_execution_disposition';
 
+/** Display-only terminal diagnostics. Never used to admit/retry/settle operations. */
+const executionFailureSchema = z.object({
+  kind: z.enum(['modelService', 'modelLimit', 'modelAccess', 'modelRequest', 'compaction', 'context', 'replay']),
+  httpStatus: z.number().int().min(400).max(599).optional(),
+}).strict();
+export type ExecutionFailure = z.infer<typeof executionFailureSchema>;
+export function executionFailureDiagnostic(code?: string, status?: number): ExecutionFailure | undefined {
+  const kinds: Record<string, ExecutionFailure['kind']> = {
+    compaction_failed: 'compaction', context_recovery_required: 'context',
+    automatic_replay_blocked: 'replay', provider_invalid_request: 'modelRequest',
+  };
+  if (code && Object.hasOwn(kinds, code)) return { kind: kinds[code] };
+  if (typeof status !== 'number' || !Number.isInteger(status) || status < 400 || status > 599) return undefined;
+  return { kind: status >= 500 ? 'modelService' : status === 429 ? 'modelLimit'
+    : status === 401 || status === 403 ? 'modelAccess' : 'modelRequest', httpStatus: status };
+}
+
 const boundedText = (max: number) => z.string().trim().min(1).max(max);
 const idSchema = boundedText(256);
 
@@ -97,6 +114,7 @@ export const sessionExecutionSchema = z
     continuation: continuationSchema.optional(),
     reason: z.string().max(2000).optional(),
     assessment: executionAssessmentSchema.optional(),
+    failure: executionFailureSchema.optional(),
   })
   .strict()
   .superRefine((state, ctx) => {
@@ -160,6 +178,7 @@ export type ExecutionTerminal = {
   progressDigest: string;
   blocked?: string;
   reviewReceiptUnconfirmed?: boolean;
+  failure?: ExecutionFailure;
 };
 
 type ExecutionAcceptanceIssue =
@@ -223,6 +242,7 @@ export function settleSessionExecution(
   const next: SessionExecution = {
     ...state,
     lastSettledQueueId: terminal.queueId,
+    failure: undefined,
     ...(state.continuation?.queueId === terminal.queueId
       ? { continuation: undefined }
       : {}),
@@ -241,6 +261,7 @@ export function settleSessionExecution(
       ...next,
       phase: "incomplete",
       reason: terminal.blocked ?? "turn_error",
+      failure: terminal.failure,
     };
   if (
     terminal.blocked ||

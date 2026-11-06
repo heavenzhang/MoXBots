@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EXECUTION_LIMITS,
+  executionFailureDiagnostic,
   canContinueSessionExecution,
   createSessionExecution,
   executionAssessmentSchema,
@@ -398,5 +399,20 @@ describe("session execution schema and policy", () => {
       ),
     ).toBe(false);
     expect(canContinueSessionExecution({ ...initial(), deadlineAt: 2000, lastSettledQueueId: "queue-1" }, 86_400_000)).toBe(true);
+  });
+});
+
+describe('display-only execution failure classification', () => {
+  it.each([[502,'modelService'],[503,'modelService'],[429,'modelLimit'],[401,'modelAccess'],[403,'modelAccess'],[400,'modelRequest']] as const)
+    ('classifies native HTTP %s without raw response text', (status, kind) => {
+      expect(executionFailureDiagnostic(undefined,status)).toEqual({kind,httpStatus:status});
+    });
+  it.each([undefined,NaN,Infinity,200,600,502.5])('rejects an invalid HTTP diagnostic %s', status => {
+    expect(executionFailureDiagnostic('private raw response',status)).toBeUndefined();
+    expect(executionFailureDiagnostic('toString',status)).toBeUndefined();
+  });
+  it('preserves a known context cause instead of attributing it to the provider', () => {
+    expect(executionFailureDiagnostic('compaction_failed',502)).toEqual({kind:'compaction'});
+    expect(executionFailureDiagnostic('automatic_replay_blocked')).toEqual({kind:'replay'});
   });
 });

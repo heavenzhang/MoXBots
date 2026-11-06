@@ -1360,3 +1360,5 @@ desktop/macOS-arm64/updater/sharedCI/main 唯一负责人仍 01a12bc2-907a-7702-
 ## MB-EXECUTION-REMEDIATION-20261107 — 执行阻断整改与原报告恢复
 
 在原task-revision修复07dcf4d27上补齐已知取消/接续失败的说明与恢复详情的依赖任务名称。自动原生回执核对、已知失败纠正、未知结果保留、按原任务资源/依赖继续独立工作沿既有owner，回归矩阵见dev-docs/execution-remediation-20261107/acceptance.md。543.3冻结制品不修改；原报告由恢复会话单独接续。desktop/macOS-arm64/updater/sharedCI/main仍唯一负责人01a12bc2-907a-7702-b6dd-788225c5dfe4，本分支精确SHA交其下一未冻结批统一审阅/主干/发布。源码、安装、真实报告分别验收。
+
+R2真实验收补充：543.3原群报告已在同execution完成5项验收；真实502暴露turn_error提示笼统。本分支经原native terminal传递有界HTTP状态，原execution持久保存闭集只读failure说明，UI显示原因/下一步，保持原code/status及未知保护不变。10文件403回归和实际组件通过，下一批由同一桌面owner集成安装；不将543.3原报告成功视为追加改动已安装。
