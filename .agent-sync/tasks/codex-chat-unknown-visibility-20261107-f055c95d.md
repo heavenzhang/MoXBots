@@ -37,6 +37,8 @@ CHAT08-UNKNOWN：真实受控停止后存在未决操作，但无任务计划时
 
 158项unit/DOM、15项模拟集成、完整TypeScript、定向lint、分类与diff通过；真实组件WebKit桌面/窄屏通过（合成快照，非安装版）。详见dev-docs/chat-unknown-visibility-20261107/acceptance.md。主干基线bfbc92f3800a3ee4da5785b0f25fc61e2b7a32c2；阅读保护保持独立已推送分支，不在本分支重复引入。
 
+追加已知unknown的刷新失败保留：新增RED→GREEN，27项受影响DOM、类型/lint及双尺寸WebKit再次通过；不把初始检查失败制造为用户待办。
+
 ## Next step
 
 提交推送并交原owner审阅，下一未冻结批先用保留的真实QA验收未确认结果提示，再验阅读保护；不能以当前本地通过宣布真实验收完成。

@@ -12,6 +12,7 @@
       "viewed": [
         "tool-1"
       ],
+      "failRead": false,
       "overflow": false,
       "noticeVisible": true,
       "resultVisible": true,
@@ -26,6 +27,7 @@
       "viewed": [
         "tool-1"
       ],
+      "failRead": false,
       "overflow": false,
       "noticeVisible": true,
       "resultVisible": true,

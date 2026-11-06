@@ -19,18 +19,18 @@ await i18n.changeLanguage('zh-CN');
 const snapshot={sessionId:'fixture',sdkSessionId:'native',epoch:1,reviewAuthority:'fixture',ledgerDigest:'d',resolvedCount:0,
  unresolvedTurn:{turnId:'turn',actionHashes:['call-hash']},actions:[{actionHash:'call-hash',tool:'Bash',eligible:false,
  reason:'external_receipt_required',presentation:{kind:'command'},toolUseIds:['tool-1']}]};
-window.audit={writes:0,viewed:[]};
-const inspect=async()=>snapshot;
+window.audit={writes:0,viewed:[],failRead:false};
+const inspect=async()=>{if(window.audit.failRead)throw new Error('Synthetic unavailable read');return snapshot;};
 const reconcile=async()=>{window.audit.writes++;throw new Error('Read-only fixture must not reconcile');};
-function Fixture(){const[expanded,setExpanded]=useState(false);const[open,setOpen]=useState(true);
+function Fixture(){const[expanded,setExpanded]=useState(false);const[open,setOpen]=useState(true);const[revision,setRevision]=useState(0);
  return <main style={{maxWidth:820,margin:'0 auto',padding:16}}>
  <p>独立页面验收 · 合成数据</p><h1 style={{fontSize:24}}>测试已停止</h1>
  <button onClick={()=>setExpanded(!expanded)}>{expanded?'收起执行过程':'查看执行过程'}</button>
  {expanded&&<div data-testid="process">已返回的工具步骤和原始错误记录</div>}
  <p style={{padding:'16px 0'}}>最终结果仍保留；本轮未继续执行。</p><a href="#artifact" id="artifact">测试成果.txt</a>
- {open&&<RecoveryActionReview sessionId="fixture" disabled={false} inspect={inspect} reconcile={reconcile}
+ {open&&<RecoveryActionReview sessionId="fixture" disabled={false} inspectRevision={String(revision)} inspect={inspect} reconcile={reconcile}
  onViewOperation={id=>{window.audit.viewed.push(id);setExpanded(true);}}/>}
- <button onClick={()=>setOpen(!open)}>{open?'关闭测试页面':'重新打开测试页面'}</button>
+ <button onClick={()=>setRevision(revision+1)}>刷新测试状态</button><button onClick={()=>setOpen(!open)}>{open?'关闭测试页面':'重新打开测试页面'}</button>
  </main>;
 }
 createRoot(document.getElementById('root')).render(<ThemeRuntimeProvider selection={{themeId:'proof',appearanceMode:'dark'}}><Fixture/></ThemeRuntimeProvider>);
@@ -58,6 +58,10 @@ try {
   await page.getByRole('button',{name:'查看未确认结果',exact:true}).click();await page.getByRole('dialog').waitFor();
   assert.equal(await page.getByRole('button',{name:'补充信息',exact:true}).count(),0);
   await page.getByRole('dialog').getByRole('button',{name:'关闭',exact:true}).click();
+  await page.evaluate(()=>{window.audit.failRead=true;});
+  await page.getByRole('button',{name:'刷新测试状态',exact:true}).click();
+  await page.getByText('暂时无法读取最新状态；这里保留上次检查发现的未确认结果。',{exact:true}).waitFor();assert.ok(await notice.isVisible());
+  await page.evaluate(()=>{window.audit.failRead=false;});
   await page.getByRole('button',{name:'关闭测试页面',exact:true}).click();assert.equal(await notice.count(),0);
   await page.getByRole('button',{name:'重新打开测试页面',exact:true}).click();await notice.waitFor();
   const state=await page.evaluate(()=>({...window.audit,overflow:document.documentElement.scrollWidth>innerWidth}));

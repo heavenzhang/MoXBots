@@ -276,3 +276,23 @@ it('keeps stopped-turn uncertainty outside collapsed process without implying a 
   expect(await screen.findByText('recoveryReview.unresolved.title')).toBeVisible();
   expect(p.reconcile).not.toHaveBeenCalled();
 });
+
+it('retains an already observed unresolved outcome during a refresh failure until a fresh snapshot clears it', async () => {
+  const p = props(); const known = { ...snapshot, attention: undefined,
+    unresolvedTurn: { turnId: 'stopped-turn', actionHashes: ['mutating'] }, actions: snapshot.actions.slice(1) };
+  p.inspect.mockResolvedValue(known);
+  const view = render(<RecoveryActionReview {...p} inspectRevision="first" />);
+  await screen.findByText('recoveryReview.unresolved.title');
+  let reject!: (reason: Error) => void;
+  p.inspect.mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+  view.rerender(<RecoveryActionReview {...p} inspectRevision="refresh" />);
+  await waitFor(() => expect(p.inspect).toHaveBeenCalledTimes(2));
+  expect(screen.getByText('recoveryReview.unresolved.title')).toBeVisible();
+  await act(async () => { reject(new Error('temporary read failure')); });
+  expect(screen.getByText('recoveryReview.unresolved.title')).toBeVisible();
+  expect(screen.getByText('recoveryReview.unresolved.refreshFailed')).toBeVisible();
+  expect(p.reconcile).not.toHaveBeenCalled();
+  p.inspect.mockResolvedValue({ ...known, actions: [], unresolvedTurn: undefined });
+  view.rerender(<RecoveryActionReview {...p} inspectRevision="confirmed" />);
+  await waitFor(() => expect(screen.queryByText('recoveryReview.unresolved.title')).not.toBeInTheDocument());
+});

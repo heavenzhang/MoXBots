@@ -137,10 +137,13 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
   const decisionHashes = snapshot?.attention?.actionHashes ?? [];
   const attentionActions = snapshot?.actions.filter(action => decisionHashes.includes(action.actionHash)
     || snapshot.unresolvedTurn?.actionHashes.includes(action.actionHash)) ?? [];
-  const hasDecision = attentionActions.some(action => decisionHashes.includes(action.actionHash));
+  const hasDecision = !busy && !error && attentionActions.some(action => decisionHashes.includes(action.actionHash));
   const titleKey = hasDecision ? 'recoveryReview.decision.title' : 'recoveryReview.unresolved.title';
   const attentionCount = attentionActions.length;
-  const showCard = !disabled && !busy && !error && attentionCount > 0;
+  // An unavailable refresh is not proof that an already observed outcome was
+  // settled. Keep its notice; never manufacture one from an initial read error.
+  const hasObservedUnknown = attentionActions.some(action => snapshot?.unresolvedTurn?.actionHashes.includes(action.actionHash));
+  const showCard = !disabled && attentionCount > 0 && (hasObservedUnknown || !busy && !error);
   useEffect(() => {
     publishRecovery?.(showCard ? { sessionId, count: attentionCount, checking: false, failed: false, inline: true, open: openDetails } : undefined);
     return () => publishRecovery?.(undefined);
@@ -151,6 +154,7 @@ export function RecoveryActionReview({ inspect, reconcile, disabled, sessionId, 
       <div className="mx-auto max-w-3xl rounded-lg border border-[var(--line)] bg-[var(--paper-inset)] px-3 py-2.5">
         <p role="status" className="font-medium text-[var(--ink)]">{t(titleKey)}</p>
         <p className="mt-1">{t(hasDecision ? 'recoveryReview.decision.explanation' : 'recoveryReview.unresolved.explanation')}</p>
+        {hasObservedUnknown && (busy || error) && <p className="mt-1">{t(error ? 'recoveryReview.unresolved.refreshFailed' : 'recoveryReview.unresolved.refreshing')}</p>}
         <ul className="mt-2 space-y-2">
           {attentionActions.slice(0, 3).map(action => <li key={action.actionHash}>
             <p className="break-words font-medium text-[var(--ink)]">{t(`recoveryReview.kinds.${action.presentation?.kind ?? 'unknown'}`)} · {action.presentation?.target ?? t('recoveryReview.decision.targetMissing')}</p>

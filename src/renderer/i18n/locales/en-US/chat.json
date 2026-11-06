@@ -1613,6 +1613,8 @@
     },
     "reviewedCount": "View reviewed records ({{count}})",
     "unresolved": {
+      "refreshing": "Checking the latest records. Previously observed unconfirmed outcomes are retained.",
+      "refreshFailed": "The latest status is temporarily unavailable. These outcomes were unconfirmed at the last successful check.",
       "title": "Some outcomes from this turn are unconfirmed",
       "explanation": "Stopping or receiving a tool error does not prove that an operation had no effect. The original records are retained. Check the outcome before repeating it.",
       "details": "View unconfirmed outcomes",

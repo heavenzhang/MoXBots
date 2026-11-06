@@ -16,6 +16,8 @@
 - Node24完整TypeScript检查、定向ESLint、test classification（485 server、140 integration、6 credentialed）、脚本语法与diff检查通过。
 - `node scripts/verify-chat-unknown-notice.mjs`：WebKit真实RecoveryActionReview组件、合成快照，1100×760与390×844均验证收起过程后提示/成果可见、定位原工具、打开详情、卸载重挂载；写入请求0、横向溢出0、页面错误0。根会话已查看两张截图。该受控页面不是安装版业务验收；数值见evidence.json。
 
+追加刷新失败边界：已成功观察到的当前轮unknown在再次检查期间或读取失败时保持可见，标明正在核对/上次已知状态，直到新的有效快照确认已结清；首次检查失败仍不制造unknown。新增确定性RED，修复后27项受影响DOM、完整tsc/局部lint及双尺寸WebKit（含模拟读取失败）通过。后台/恢复引擎未改动。
+
 ## 交付与下一步
 
 基线main `bfbc92f3800a3ee4da5785b0f25fc61e2b7a32c2`，分支 `codex/chat-unknown-visibility-20261107`。本分支不重复包含阅读保护1921；两份源由唯一桌面/macOS-arm64/updater/sharedCI/main owner `01a12bc2-907a-7702-b6dd-788225c5dfe4` 审阅及统一交付，新源进入下一未冻结批，保留543.3原候选。
