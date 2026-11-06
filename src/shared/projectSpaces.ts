@@ -167,6 +167,31 @@ export function compileProjectSpaceSessionSnapshot(input: {
     materials: project.materials, resources: project.resources,
   });
 }
+/** A local handoff keeps the source's fixed brief, but the recipient owns its
+ * identity and workspace. Current membership is admission, not a brief update. */
+export function compileProjectSpaceHandoffSnapshot(input: {
+  source: unknown; sourceWorkspacePath: string; targetBotId: string;
+  projectSpaces: unknown; bots: readonly ProjectSpaceBotIdentity[];
+  workspaces: readonly ProjectSpaceWorkspace[]; workspacePath: string; capturedAt: string;
+}): ProjectSpaceSessionSnapshot {
+  const source = normalizeProjectSpaceSessionSnapshot(input.source);
+  if (!workspacePathsEqual(source.workspacePath, input.sourceWorkspacePath)) {
+    throw new ProjectSpaceError('workspace-conflict', 'Source conversation does not own its project workspace');
+  }
+  const project = readProjectSpaces(input.projectSpaces).find(item => item.id === source.projectId);
+  if (!project) throw new ProjectSpaceError('not-found', 'Project no longer exists');
+  if (project.archivedAt) throw new ProjectSpaceError('archived', 'Project is archived');
+  // Validate both current identities through the same desktop birth policy.
+  for (const [botId, workspacePath] of [[source.botId, input.sourceWorkspacePath], [input.targetBotId, input.workspacePath]]) {
+    compileProjectSpaceSessionSnapshot({ ...input,
+      selection: { projectId: project.id, projectRevision: project.revision, botId }, workspacePath });
+  }
+  const target = input.bots.find(bot => bot.id === input.targetBotId)!;
+  const { botIcon: _sourceIcon, ...fixed } = source;
+  return normalizeProjectSpaceSessionSnapshot({ ...fixed, botId: target.id, botName: target.name,
+    ...(target.icon && target.icon.length <= 4_096 ? { botIcon: target.icon } : {}),
+    workspacePath: input.workspacePath, capturedAt: input.capturedAt });
+}
 export type ProjectSpaceMutation =
   | { kind: 'create'; id: string; draft: ProjectSpaceDraft; at: string }
   | { kind: 'update'; id: string; expectedRevision: number; draft: ProjectSpaceDraft; at: string }

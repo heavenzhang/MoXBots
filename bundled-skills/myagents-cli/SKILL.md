@@ -492,7 +492,9 @@ myagents agent network-diagnose --json                 # 本机连接、协议�
 # 查看某 Agent 最近可复用的历史上下文（只读，不唤醒）
 myagents session list --agent <agentId> [--limit 10]
 
-# 在目标 Agent 下开启干净的新上下文
+# 在目标 Agent 下开启新上下文（保留目标自己的模型/工具/权限）
+# 当前是本地项目会话时，start自动继承其固定项目要求；目标须仍是同项目成员。
+# 不合并个人历史；项目/成员已失效时先处理拒绝原因，不改用无项目请求绕过。
 myagents session start --agent <agentId> -p "<prompt>"
 myagents session start --agent <agentId> --prompt-file <abs-path>
 

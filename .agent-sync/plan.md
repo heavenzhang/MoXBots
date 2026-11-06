@@ -1399,3 +1399,9 @@ G02/G03/HANDOFF实际成员UI、独立Bot真实收发与交接尚未完成；不
 codex/bot-group-ui-20261107沿已交接G01 producer86d89e69继续：实际成员编辑、显式单一接收者、原Tab签名配置客户端和SessionBotGroupEditor，原Chat task observer共享群投影，无第二轮询。冲突保留草稿、未知先核对、同命令显式重试、原Session/runtime/epoch隔离已实现，48项及WebKit/类型/lint/renderer build本地验证。详见dev-docs/bot-group-ui-20261107/PLAN.md与acceptance.md。
 
 G02实际Chat入口依赖G03真实独立Bot收发，尚未开放；G03/G04交接/真实业务/主干和发行仍未完成。阶段源交原desktop/macOS-arm64/updater/sharedCI/main唯一owner01a12bc2-907a-7702-b6dd-788225c5dfe4审阅和统一交付，不改冻结修复包或各端版本，不触发共享CI。
+
+## MB-BOT-COLLAB-20261107 · BC-02/03 local project handoff
+
+用户要求继续简洁Bot协作开发。codex/bot-collaboration-20261107基于mainbfbc92f：本地项目会话session start沿原Inbox保留来源固定projectSpace背景，按当前成员/工作区重新核对目标出生，模型/权限仍取接收Bot；单个隐藏send.request携带固定配置，外部/跨设备不继承，不放宽动态历史。无新Store/队列/持久群schema。稳定清单与验证见dev-docs/bot-collaboration-20261107/；群主题、成员入口与真实模型联调仍未完成。
+
+原desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4；本分支只本地检查/保存/交接，不触发共享CI/正式构建/安装或分配版本。无其他单元/迁移依赖。前两批SimpleUX组合8240ddbc仍是独立待收源，当前分支不把其main/发行门禁算作已完成。

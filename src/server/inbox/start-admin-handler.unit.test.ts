@@ -221,3 +221,46 @@ describe('handleAdminSessionStart', () => {
     expect(mocks.cancellableFetch).not.toHaveBeenCalled();
   });
 });
+
+describe('project-aware local handoff admission', () => {
+  const at = '2026-11-07T00:00:00Z';
+  beforeEach(() => {
+    vi.clearAllMocks();
+    process.env.MYAGENTS_MANAGEMENT_PORT = '43123';
+    const current = registry();
+    mocks.resolvePersistedAgentWorkspaceRegistry.mockResolvedValue({ ...current,
+      config: { agents: [{ id: 'lead', name: 'Lead' }, { id: 'agent-1', name: 'Target' }],
+        projectSpaces: [{ id: 'A', name: 'Project', description: '', instructions: '', materials: [], resources: [],
+          memberBotIds: ['lead', 'agent-1'], revision: 2, createdAt: at, updatedAt: at }] },
+      projects: [{ id: 'lead-workspace', path: '/source', agentId: 'lead' }, current.agentProjections[0].project] });
+    mocks.getSessionMetadata.mockReturnValue({ id: 'source-session', title: 'Source', agentDir: '/source',
+      projectSpace: { schemaVersion: 1, projectId: 'A', projectName: 'Original project', projectRevision: 1,
+        botId: 'lead', botName: 'Lead', workspacePath: '/source', capturedAt: at, description: '', instructions: '', materials: [], resources: [] } });
+    mocks.cancellableFetch.mockResolvedValue(new Response(JSON.stringify({ ok: true, outcome: {
+      status: 'accepted', agentId: 'agent-1', sessionId: 'fresh-session', messageId: 'message-1', replyBack: true,
+    } })));
+  });
+  it('derives inheritance from persisted source without sending caller-owned snapshots', async () => {
+    expect((await handleAdminSessionStart('source-session', { agentId: 'agent-1', prompt: 'Work' }, 'internal-session')).response.accepted).toBe(true);
+    const sent = JSON.parse(mocks.cancellableFetch.mock.calls[0][1].body);
+    expect(sent).toMatchObject({ inheritProject: true, fromSessionId: 'source-session' });
+    expect(sent.projectSpace).toBeUndefined();
+  });
+  it('rejects removed membership before starting a sidecar', async () => {
+    const current = await mocks.resolvePersistedAgentWorkspaceRegistry();
+    current.config.projectSpaces[0].memberBotIds = ['lead'];
+    const result = await handleAdminSessionStart('source-session', { agentId: 'agent-1', prompt: 'Work' }, 'internal-session');
+    expect(result.response).toMatchObject({ accepted: false, error: { code: 'project_handoff_rejected' } });
+    expect(mocks.cancellableFetch).not.toHaveBeenCalled();
+  });
+  it.each(['inheritProject', 'projectSpace', 'projectSpaceSelection'])('does not accept caller %s override', async field => {
+    const result = await handleAdminSessionStart('source-session', { agentId: 'agent-1', prompt: 'Work', [field]: false }, 'internal-session');
+    expect(result.response).toMatchObject({ accepted: false, error: { code: 'target_config_override_forbidden' } });
+    expect(mocks.cancellableFetch).not.toHaveBeenCalled();
+  });
+  it('never inherits a local source on an external CLI request', async () => {
+    await handleAdminSessionStart('source-session', { agentId: 'agent-1', prompt: 'Work' }, 'external-cli');
+    expect(mocks.getSessionMetadata).not.toHaveBeenCalled();
+    expect(JSON.parse(mocks.cancellableFetch.mock.calls[0][1].body)).toMatchObject({ inheritProject: false, sourceKind: 'external-cli', replyBack: false });
+  });
+});

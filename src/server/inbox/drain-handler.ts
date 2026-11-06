@@ -24,6 +24,7 @@ import type { DispatchGuard } from '../session-core/turn-queue';
 import type { InboxAdmissionResult } from '../session-engine/types';
 import { buildTaskCommentReminder } from '../../shared/systemReminder';
 import { parseNetworkReturnReference } from '../../shared/agentNetworkReturn';
+import type { ProjectSpaceSessionSnapshot } from '../../shared/projectSpaces';
 
 function nowIsoFromMessage(msg: PendingInboxMessage): string {
   return new Date(msg.timestampMs || Date.now()).toISOString();
@@ -60,7 +61,7 @@ function legacySendResultEvent(msg: PendingInboxMessage): SessionEvent {
   };
 }
 
-export function buildSessionEventPrompt(msg: PendingInboxMessage): string {
+export function buildSessionEventPrompt(msg: PendingInboxMessage, projectSpace?: ProjectSpaceSessionSnapshot): string {
   if (msg.kind === 'event' && msg.sessionEvent?.type === 'space.issue_delivery') {
     return msg.text;
   }
@@ -76,7 +77,7 @@ export function buildSessionEventPrompt(msg: PendingInboxMessage): string {
     });
   }
   if (msg.sessionEvent) {
-    return renderSessionEventPrompt(msg.sessionEvent);
+    return renderSessionEventPrompt(msg.sessionEvent, projectSpace);
   }
   if (msg.kind === 'reply') {
     return renderSessionEventPrompt(legacySendResultEvent(msg));
@@ -98,7 +99,7 @@ export function buildSessionEventPrompt(msg: PendingInboxMessage): string {
       latestResult: msg.text || 'Missing structured session event payload.',
     });
   }
-  return renderSessionEventPrompt(legacySendRequestEvent(msg));
+  return renderSessionEventPrompt(legacySendRequestEvent(msg), projectSpace);
 }
 
 /// Build per-turn InboxTurnMeta to bind on the dequeued message. Only present
