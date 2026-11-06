@@ -2150,6 +2150,8 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           && activeSessionContextRecovery?.canRetryInference() !== false,
         canRetryRejectedResponse: () => inferenceOwnerAllowsRetry()
           && activeSessionContextRecovery?.canRetryRejectedInference() === true,
+        canRetryPreResponse: () => inferenceOwnerAllowsRetry()
+          && activeSessionContextRecovery?.canRetryRejectedInference() === true,
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => {
           const usage = getSessionMetadata(productSessionId)?.lastContextUsage;

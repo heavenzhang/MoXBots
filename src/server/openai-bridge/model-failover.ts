@@ -69,6 +69,8 @@ export class ModelFailoverController implements BridgeModelFailover {
     canRetry?: () => boolean;
     /** Only after an actual, complete HTTP rejection on this exact attempt. */
     canRetryRejectedResponse?: () => boolean;
+    /** New client-tool inference only, after this attempt's trusted pre-response socket failure. */
+    canRetryPreResponse?: () => boolean;
     /** Ordinary distinct inference on the exact already-elected route, never retry or a new election. */
     canUsePinnedRoute?: () => boolean;
     /** Separate owner gate for native connection establishment before HTTP dispatch. */
@@ -163,6 +165,7 @@ export class ModelFailoverController implements BridgeModelFailover {
     let rejectedStatus: number | undefined;
     let completeRejectedResponse = false;
     let connectionFailed = false;
+    let preResponseFailed = false;
     const finish = () => { activeAttempt++; lease.finish(); };
     const executeAttempt = (target: UpstreamConfig): Promise<Response> => {
       observedTarget = target;
@@ -170,6 +173,7 @@ export class ModelFailoverController implements BridgeModelFailover {
       rejectedStatus = undefined;
       completeRejectedResponse = false;
       connectionFailed = false;
+      preResponseFailed = false;
       attemptInterruption = undefined;
       attemptDiagnostic = undefined;
       const onModelProgress = (): boolean => {
@@ -182,9 +186,14 @@ export class ModelFailoverController implements BridgeModelFailover {
         if (attemptInterruption !== 'unproven') attemptInterruption = cause;
         attemptDiagnostic ??= safeStreamFailure(diagnostic);
       };
-      const admittedTarget: UpstreamConfig = this.options.canRetryRejectedResponse ? { ...target, onRejectedResponse: status => {
+      const rejectedTarget: UpstreamConfig = this.options.canRetryRejectedResponse ? { ...target, onRejectedResponse: status => {
         if (attempt === activeAttempt && live()) rejectedStatus = status;
       } } : target;
+      const admittedTarget: UpstreamConfig = this.options.canRetryPreResponse ? { ...rejectedTarget,
+        onPreResponseFailure: () => {
+          if (attempt === activeAttempt && live()) preResponseFailed = true;
+        },
+      } : rejectedTarget;
       return execute(this.options.canRetryConnection ? { ...admittedTarget,
         onConnectionFailure: error => {
           if (attempt === activeAttempt && live() && isConnectionEstablishmentFailure(error)) connectionFailed = true;
@@ -200,7 +209,8 @@ export class ModelFailoverController implements BridgeModelFailover {
     // HTTP rejection permits only the existing attempt budget and configured backup.
     const rejectionRetryLive = () => completeRejectedResponse && this.options.canRetryRejectedResponse?.() === true;
     const connectionRetryLive = () => connectionFailed && this.options.canRetryConnection?.() === true;
-    const failoverLive = () => live() && rootLive() && (this.options.canRetry?.() !== false || rejectionRetryLive() || connectionRetryLive());
+    const preResponseRetryLive = () => preResponseFailed && this.options.canRetryPreResponse?.() === true;
+    const failoverLive = () => live() && rootLive() && (this.options.canRetry?.() !== false || rejectionRetryLive() || connectionRetryLive() || preResponseRetryLive());
     const pinnedRouteLive = () => live() && rootLive()
       && (this.options.canUsePinnedRoute?.() ?? (this.options.canRetry?.() !== false));
     let inferenceAttempts = 0;
@@ -296,7 +306,7 @@ export class ModelFailoverController implements BridgeModelFailover {
     const runTarget = async (backup: boolean, onAdmitted?: (target: UpstreamConfig) => void, initialPinnedIdentity?: string,
     ): Promise<Response> => {
       cooldownNextAttempt = 0;
-      const retryLive = () => live() && (this.options.canRetry?.() !== false || rootLive() && rejectionRetryLive()) &&
+      const retryLive = () => live() && (this.options.canRetry?.() !== false || rootLive() && (rejectionRetryLive() || preResponseRetryLive())) &&
         withinDeadline() &&
         (!backup || rootLive());
       // Four attempts per inference/provider: initial call plus three safe retries.
@@ -319,6 +329,7 @@ export class ModelFailoverController implements BridgeModelFailover {
         if (!live()) { cancelResponse(response); return cancelled(); }
         const inspected = await inspectFailure(response);
         completeRejectedResponse = inspected.recoverable && rejectedStatus === inspected.response.status;
+        preResponseFailed = preResponseFailed && inspected.recoverable && inspected.response.status === 502;
         if (!live()) { cancelResponse(inspected.response); return cancelled(); }
         if (inspected.recoverable)
           this.options.onObservation?.(target, "failure");

@@ -1392,3 +1392,10 @@ R2真实验收补充：543.3原群报告已在同execution完成5项验收；真
 ## MB-CHAT-STYLE-20261104 CHAT08-COLD — 543.4 native followup
 
 PR259/maina650 includes unknown23d98 and reading1921. Native543.4 originalunknown sample still lacks card after cold initial GET409; ledger unchanged, no replay. Isolatedcodex/chat-review-ready-20261107 adds scoped readonly review revision on existing status stream when actual current Query is ready/parked; existing reviewer refreshes once. 168DOM/20simulatedintegration/type/lint/classification pass; not native acceptance. Sole desktop/sharedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 takes exactsource nextunfrozen batch with separate initial-send fix; original5434immutable. Native N02 originalunknown first, then realapproval/read-protection gates, then publication. Task record codex-chat-review-ready-20261107-abf7e3c6, evidence dev-docs/chat-review-ready-20261107/acceptance.md.
+
+
+## MB-BRIDGE-PRECONTENT-RECOVERY-20261107 — 已知旧未知操作下的新推理连接恢复
+
+用户要求继续完成稳定性验收及正式更新。真实原会话出现首响应前 UND_ERR_SOCKET 映射本地 502；旧未知记录使新推理的严格恢复不可用。独立分支从 main 4ceeb2d2 修首个 Chat Completions 响应前 socket 失败的有限恢复，保留旧操作 fence/原请求预算/流重放禁止，不清账本、不更改全局只读或业务授权。源码与证据见 `.agent-sync/tasks/codex-bridge-precontent-recovery-20261107-3b76992e.md`、`dev-docs/bridge-precontent-recovery-20261107/acceptance.md`。
+
+桌面、共享 CI、版本、签名、安装、正式 updater 仍由 01a12bc2-907a-7702-b6dd-788225c5dfe4 唯一负责；543.4 已冻结且不包含本次源码，不覆盖其制品或中止其验收。开发方交精确源后由该 owner 选择下一批。代码/本地实际 SDK/主干/安装/真实供应商验收分别记录；没有全链验收不宣称所有 502 已解决。
