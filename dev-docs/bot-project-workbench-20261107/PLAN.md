@@ -16,8 +16,8 @@
 - [x] 复用 Rust TaskStore 与被动 Session/Goal 观察；不启动执行、不发送消息。
 - [x] 空闲不作为完成；归档 Task 由原状态机 Done → Archived 保证已完成，归档 Session 不代表完成。
 - [x] 当前工作先于历史；默认展示 6 条，更多折叠；项目对话与成果分栏。
-- [x] 本地 22 项回归、类型/lint/依赖边界、产品 profile renderer build、真实组件 WebKit。
-- [ ] 精确源码提交/远端与同步 gate。
+- [x] 本地 25 项回归、类型/lint/依赖边界、产品 profile renderer build、真实组件 WebKit。
+- [x] 初次精确源码提交/远端与同步 gate（56d5a02）；会话索引补充修复完成后更新最终 SHA。
 - [ ] 原发布 owner 独立审阅、主干/共享 CI。
 - [ ] 原发布 owner 新制品、安装、真实项目路径和下载通道复验。
 

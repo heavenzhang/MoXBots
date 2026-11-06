@@ -33,4 +33,18 @@ describe('project current work and results', () => {
     fireEvent.click(screen.getByText('更多工作（4）'));
     expect(details.open).toBe(true);
   });
+  it('preserves the session-index failure and retries its actual owner as well as work observations', () => {
+    const data = work(); const retry = vi.fn();
+    render(<ProjectSpaceWorkSection mode="current" work={data} sessionRead={{ loading: false, error: 'unavailable', retry }} onOpenConversation={vi.fn()} />);
+    expect(screen.getByRole('alert')).toBeTruthy();
+    expect(screen.queryByText(/暂无进行中的工作/)).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: '更新工作状态' }));
+    expect(retry).toHaveBeenCalledOnce();
+    expect(data.refresh).toHaveBeenCalledOnce();
+  });
+  it('does not report empty results before the session index finishes reading', () => {
+    render(<ProjectSpaceWorkSection mode="results" work={work()} sessionRead={{ loading: true, retry: vi.fn() }} onOpenConversation={vi.fn()} />);
+    expect(screen.getByRole('status')).toBeTruthy();
+    expect(screen.queryByText('还没有明确完成的记录。')).toBeNull();
+  });
 });

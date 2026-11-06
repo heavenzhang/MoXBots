@@ -1,4 +1,4 @@
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AgentConfig } from '../../../shared/types/agent';
 import type { ProjectSpace } from '../../../shared/projectSpaces';
@@ -24,6 +24,7 @@ describe('ProjectSpacePage actual product wiring', () => {
     vi.clearAllMocks(); mocks.mutate.mockReset(); mocks.reload.mockReset();
     mocks.config = { agents: [{ id: 'bot', name: 'Shared Bot', enabled: true, permissionMode: 'plan', channels: [] }], projectSpaces: [space('a'), space('b')] };
     mocks.data.sessionsError = null;
+    mocks.data.isSessionsLoading = false;
   });
 
   it('passes distinct project IDs for the same Bot and retains the original Bot creation entrance', () => {
@@ -57,5 +58,20 @@ describe('ProjectSpacePage actual product wiring', () => {
     view.rerender(<ProjectSpacePage projectId="a" isActive {...callbacks} />);
     expect(screen.getByRole('heading', { level: 1, name: saved.name })).toBeInTheDocument();
     expect(mocks.mutate).toHaveBeenCalledOnce();
+  });
+  it('passes session-index loading and failure to current work and retries the original index owner', () => {
+    mocks.data.isSessionsLoading = true;
+    const callbacks = binding();
+    const view = render(<ProjectSpacePage projectId="a" isActive {...callbacks} />);
+    const current = within(screen.getByRole('region', { name: '当前工作' }));
+    expect(current.getByRole('status')).toBeTruthy();
+    expect(current.queryByText(/暂无进行中的工作/)).toBeNull();
+    mocks.data.isSessionsLoading = false;
+    mocks.data.sessionsError = 'Session index unavailable';
+    view.rerender(<ProjectSpacePage projectId="a" isActive {...callbacks} />);
+    expect(current.getByRole('alert')).toBeTruthy();
+    expect(current.queryByText(/暂无进行中的工作/)).toBeNull();
+    fireEvent.click(current.getByRole('button', { name: '更新工作状态' }));
+    expect(mocks.data.refresh).toHaveBeenCalledOnce();
   });
 });

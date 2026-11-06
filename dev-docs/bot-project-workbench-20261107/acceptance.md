@@ -10,9 +10,9 @@ useProjectSpaceWork 仅活动可见页面观察，30 秒刷新，单实例最多
 
 ## 本地证据
 
-- 5 个文件共 22 项测试通过：投影 8、观察生命周期 4、工作区块 3、项目页面 2、原项目交互 5。
+- 5 个文件共 25 项测试通过：投影 8、观察生命周期 4、工作区块 5、项目页面 3、原项目交互 5。
 - TypeScript、修改文件 ESLint、测试分类通过；依赖边界 0 errors，既有 20 warnings。
-- MYAGENTS_BUILD_PROFILE=moxbot 的 renderer Vite build 通过（29.64 秒）；不是正式桌面构建。
+- MYAGENTS_BUILD_PROFILE=moxbot 的 renderer Vite build 通过；不是正式桌面构建。
 - scripts/verify-project-workbench.mjs：隔离 WebKit，真实产品组件和合成数据，PASS。验证当前工作优先、明确成果、打开原 Session 回调、同 Bot 跨项目隔离、部分失败与重试、390px 无横溢、主题和键盘 tabs。
 - moxbot profile 最终深浅主题截图检查：当前工作清晰，说明默认折叠，窄屏成果/成员身份可读。测试数据顶部带“本地合成数据”标识，不能视为真实业务完成证据。
 - 私有证据位置：WPS 项目 work/MB-BOT-NAV-20261102/project-20261107；日志与截图不进入 Git。脚本可在具备项目依赖和 WebKit 的本地执行：MYAGENTS_BUILD_PROFILE=moxbot node scripts/verify-project-workbench.mjs。
@@ -20,3 +20,7 @@ useProjectSpaceWork 仅活动可见页面观察，30 秒刷新，单实例最多
 ## 未证明的环节
 
 未运行共享 CI、正式桌面构建、日常应用安装、真实账号/TaskStore/原会话业务联调或下载通道更新；远端主干包含与发布由原唯一负责人确认。GROUP-01/HANDOFF-01 尚未完成，不能把本批视为总体目标完成。
+
+## 会话索引联动复核
+
+原会话列表读取中/失败时不能显示无工作或无成果。新增两项反例在初次提交上失败，补齐 View → WorkSection 索引状态与原刷新回调后通过；实际 Page 联动回归另验证 loading → failed → 原 owner retry。最终共25项，类型/lint、WebKit和renderer build复跑通过。保留反事实失败日志。

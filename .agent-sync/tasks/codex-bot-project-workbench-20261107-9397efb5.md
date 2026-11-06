@@ -4,7 +4,7 @@
 <!-- git-project-sync-task:status=in-progress -->
 <!-- git-project-sync-task:scaffold=false -->
 <!-- git-project-sync-task:id=eca9faba-6a6e-46e7-9c09-302451a6c701 -->
-<!-- git-project-sync-task:source-digest=0f8a9ec9b6385e9b1c7369df2738e65b31ebdf92b4432cc0831ccc1ce78410e7 -->
+<!-- git-project-sync-task:source-digest=455c95c57768644e4d0bcab465175b601ea833e51d5cf6d3d3d38d7dcd21bbb7 -->
 
 # Task: MB-BOT-NAV-20261102 PROJECT-01 项目工作台
 
@@ -25,7 +25,7 @@ PROJECT-01 实现完成：当前工作、项目对话、成果、原资料/成�
 
 ## Verification
 
-本地 5 文件 22 项测试通过；TypeScript、修改文件 ESLint、分类与依赖边界通过；moxbot renderer build 通过。隔离 WebKit 实际组件合成数据检查通过：原会话回调、同 Bot 项目隔离、失败重试、390px、主题与键盘。验收边界与复现入口见 dev-docs/bot-project-workbench-20261107/acceptance.md。未运行共享 CI/正式构建/安装/真实业务验收。
+本地 5 文件 25 项测试通过；TypeScript、修改文件 ESLint、分类与依赖边界通过；moxbot renderer build 通过。隔离 WebKit 实际组件合成数据检查通过：原会话回调、同 Bot 项目隔离、失败重试、390px、主题与键盘。验收边界与复现入口见 dev-docs/bot-project-workbench-20261107/acceptance.md。未运行共享 CI/正式构建/安装/真实业务验收。
 
 ## Blockers and unknowns
 
@@ -33,4 +33,4 @@ PROJECT-01 实现完成：当前工作、项目对话、成果、原资料/成�
 
 ## Next step
 
-提交并核对远端精确 SHA 后交原 owner 独立审阅与 main/下一未冻结批发布；继续 GROUP-01/HANDOFF-01，整体目标不缩减。
+初次56d5a02已远端同步/gate通过并交接；会话索引联动修复更新精确 SHA 后交原 owner 独立审阅与 main/下一未冻结批发布；继续 GROUP-01/HANDOFF-01，整体目标不缩减。
