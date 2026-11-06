@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('@/config/useConfigData', () => ({ useConfigData: () => ({ config: mocks.config }) }));
 vi.mock('@/hooks/useTaskCenterData', () => ({ useTaskCenterData: () => mocks.data }));
+vi.mock('./useProjectSpaceWork', () => ({ useProjectSpaceWork: () => ({ rows: [], checking: false, taskError: false, failedCount: 0, unobservedCount: 0, refresh: vi.fn() }) }));
 vi.mock('@/config/services/projectSpaceService', () => ({ mutateProjectSpace: mocks.mutate, loadProjectSpace: mocks.reload }));
 
 function space(id: string): ProjectSpace {

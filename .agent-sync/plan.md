@@ -1361,3 +1361,10 @@ desktop/macOS-arm64/updater/sharedCI/main 唯一负责人仍 01a12bc2-907a-7702-
 ## MB-TASK-REVISION-CONTINUE-20261107 Root local5433
 
 Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exactproducer07dc from mainbfbc, preserving PR257 cleanup. Allocate0.5.43/build543.3 for a different localrepair artifact; installed543.2 and published542.6 remain immutable. Fix only exact positional task-review classification and newtrustedhuman response to an exactsettled rootconfirmed pausedassessment, keeping original intent/ledger/unknown/Stop/approval/background guards. Actualsourcechecks/main, newimmutablelocalbuild/safeinstall and originalsession behavior are separate acceptance claims. LocalMac repair doesnot wait for unavailable hostedrunner; publicpublication/tag is not admitted by localcandidate record. No business replay, ledger edits, cloud/mobile/website release or laterfeature batching. Root task codex-release-task-revision-0543-20261107-7734669b; private controls work/task-revision-continue-root-20261107/owner.
+
+
+## MB-BOT-NAV-20261102 PROJECT-01 · 项目工作台
+
+codex/bot-project-workbench-20261107 基于 main4ceeb2d21acc164487ef199b4a5788d7d27c65f1。实际项目页面增加当前工作、项目对话与明确完成记录；严格冻结项目归属、被动有限观察，不启动会话或业务执行。22 项回归、类型/lint/分类/依赖边界、moxbot renderer build、隔离 WebKit 实际组件深浅/390px/原会话/项目隔离/失败重试通过。证据 dev-docs/bot-project-workbench-20261107/acceptance.md，稳定 ID 和未完成项见同目录 PLAN.md。
+
+NAV 独立 producer80a58f3a 已交原 owner；本批 PROJECT 独立提交后继续 GROUP-01/HANDOFF-01。desktop/macOS-arm64/updater/sharedCI/main 唯一 owner 仍01a12bc2-907a-7702-b6dd-788225c5dfe4，由其审阅/集成/版本/正式制品/安装与真实验收；不改变现有冻结批。不把源码或合成组件通过当作主干、已安装或业务完成。

@@ -2359,6 +2359,29 @@
     "projects": "Projects"
   },
   "projectSpaces": {
+    "results": "Results",
+    "work": {
+      "moreWork": "More work ({{count}})",
+      "current": "Current work",
+      "results": "Results and completed work",
+      "refresh": "Refresh work status",
+      "checking": "Updating work status…",
+      "readFailed": "Some work status could not be updated. Existing records remain available; retry or open the original conversation.",
+      "resultsHint": "Review completed work and open the original conversation for deliverables.",
+      "noResults": "No explicitly completed work yet.",
+      "noCurrent": "No work is currently in progress. Continue from a conversation below.",
+      "openConversation": "Open conversation",
+      "moreHistory": "{{count}} older conversations have not had their live status checked. Open them from Conversations.",
+      "allConversations": "View all conversations",
+      "status": {
+        "running": "In progress",
+        "attention": "Needs attention",
+        "completed": "Completion recorded",
+        "idle": "Available",
+        "unknown": "Status unconfirmed",
+        "todo": "Waiting"
+      }
+    },
     "unconfirmed": "Unconfirmed",
     "projects": "Projects",
     "allProjects": "All projects",

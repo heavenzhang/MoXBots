@@ -2357,6 +2357,29 @@
     "projects": "项目"
   },
   "projectSpaces": {
+    "results": "成果",
+    "work": {
+      "moreWork": "更多工作（{{count}}）",
+      "current": "当前工作",
+      "results": "成果与完成记录",
+      "refresh": "更新工作状态",
+      "checking": "正在更新工作状态…",
+      "readFailed": "部分工作状态暂时无法更新，已有记录仍可查看；可重试或打开原会话核对。",
+      "resultsHint": "查看已完成的工作，打开原会话核对交付内容。",
+      "noResults": "还没有明确完成的记录。",
+      "noCurrent": "暂无进行中的工作，可以从下方会话继续。",
+      "openConversation": "打开原会话",
+      "moreHistory": "另有 {{count}} 段较早会话未检查实时状态，可在对话中打开查看。",
+      "allConversations": "查看全部对话",
+      "status": {
+        "running": "进行中",
+        "attention": "需处理",
+        "completed": "已完成记录",
+        "idle": "可继续",
+        "unknown": "状态待核对",
+        "todo": "待执行"
+      }
+    },
     "unconfirmed": "待确认",
     "projects": "项目",
     "allProjects": "全部项目",
