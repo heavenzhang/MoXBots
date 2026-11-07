@@ -2138,7 +2138,7 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
           ),
         recovery: activeSessionModelRecovery,
         isLive: () =>
-          isCurrent() &&
+          isCurrent() && !builtinInterrupt.isInterrupting() &&
           sessionExecutionInferenceAllowed(
             productSessionId,
             getBuiltinCurrentTurnQueueId(),

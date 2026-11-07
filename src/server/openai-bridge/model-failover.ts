@@ -463,8 +463,15 @@ export class ModelFailoverController implements BridgeModelFailover {
         this.options.onObservation?.(observedTarget, "failure");
         const delay = await recovery.wait(request, { status: response.status, attempt: inferenceAttempts,
           retryAfterMs: parseRetryAfter(response.headers.get('retry-after')), usingBackup });
+        // Declining a wait may pause its own retry authority. The live Query
+        // still owns this upstream rejection; a pause is not consumer cancellation.
+        // Real Stop, route, root and owner revocation retain the cancellation path.
+        if (delay === undefined) {
+          if (!live() || !rootLive()) { cancelResponse(response); return cancelled(); }
+          durableStopped = true;
+          break;
+        }
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
-        if (delay === undefined) { durableStopped = true; break; }
         hasDurableRecovery = true;
         // Invalid durable-hook results must never create a hot/unbounded loop.
         if (!Number.isFinite(delay) || delay < 0) throw new Error('Invalid recovery wait');

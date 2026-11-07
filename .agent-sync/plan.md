@@ -1412,3 +1412,7 @@ Native543.5 N02 remainsfailed after SDK-ready refresh. SameSDK can read original
 ## MB-NATIVE-READINESS-REPAIR-20261107 Root next immutable5436
 
 5435 installed local QA retains original7b unknown/history but N02 readonlyGET still409 afterready. Root independently accepted5f4e3b501 summary-independent SDK native evidence reader, preserving selected proof/ledger/reconcile authority and honest collector limits. Local combined integration only; allocate build543.6, no main/public until actual originalN02 and applicable native gates. Existing PR260/sole owner01a12bc2 stays; no competing pipeline, old5435 cannot be rebuilt or overwritten. Targeted combined checks/sourceCI/new package/install remain separately pending.
+
+## MB-MODEL-REJECTION-CAUSE-20261107 — durable wait is not cancellation
+
+543.6 原生有限 HTTP502 验收暴露恢复自己 paused 后 canRetry=false 被误当499；原执行仍 incomplete，未人工Stop。基于 main a650939d 的独立 codex/durable-rejection-cause-main-20261107 保留原始HTTP拒绝并补同步Stop接线；256unit/94integration/type/lint/分类通过，真实两协议基线RED。源码与本地验证完成，main/CI/新不可变包/安装/原会话/正式发布待验；543.6冻结失败制品保留，不原位改写。desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，本开发会话仅提交精确SHA交其现有PR260集成，不触发共享CI/构建/安装；不改业务数据、预算、权限、原账本或未知动作保护。完成标准与下一步见任务记录及 dev-docs/durable-rejection-cause-20261107/acceptance.md。

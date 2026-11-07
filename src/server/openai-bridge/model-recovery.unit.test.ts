@@ -22,6 +22,44 @@ const sse = (events: string[]) => new Response(events.map(type => `event: ${type
 afterEach(() => vi.useRealTimers());
 
 describe('durable inference waiting on the original Query lease', () => {
+  it.each([429, 502, 503])('retains HTTP %s when declining recovery withdraws only retry authority', async status => {
+    let canRetry = true;
+    const recovery = hooks(async () => { canRetry = false; return undefined; });
+    const execute = vi.fn(async () => Response.json({ error: { message: 'original upstream rejection' } },
+      { status, headers: { 'retry-after': '3600' } }));
+    const controller = makeController(recovery, { canRetry: () => canRetry });
+    const response = await controller.run(request(), primary, execute, 'declined-withdraws-retry');
+    expect(response.status).toBe(status);
+    expect(response.headers.get('x-should-retry')).toBe('false');
+    expect(await response.text()).toContain('original upstream rejection');
+    const repeated = await controller.run(request(), primary, execute, 'declined-withdraws-retry');
+    expect(repeated.status).toBe(status);
+    expect(await repeated.text()).toContain('automatic_replay_blocked');
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(recovery.wait).toHaveBeenCalledTimes(1);
+    expect(recovery.complete).not.toHaveBeenCalled();
+  });
+
+  it.each(['Stop', 'Stop before HTTP abort', 'route', 'scope', 'owner'] as const)('keeps %s revocation cancelled when recovery declines', async change => {
+    let canRetry = true; let route = 'route'; let scope = 'root'; let active = true;
+    const abort = new AbortController();
+    const recovery = hooks(async () => {
+      canRetry = false;
+      if (change === 'Stop') abort.abort();
+      else if (change === 'Stop before HTTP abort') active = false;
+      else if (change === 'route') route = 'replacement';
+      else if (change === 'scope') scope = 'replacement';
+      else active = false;
+      return undefined;
+    });
+    const execute = vi.fn(async () => transient({ 'retry-after': '3600' }));
+    const controller = makeController(recovery, { canRetry: () => canRetry,
+      requestIdentity: () => route, scope: () => scope, isActive: () => active });
+    expect((await controller.run(request(abort.signal), primary, execute, 'declined-revoked')).status).toBe(499);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(recovery.complete).not.toHaveBeenCalled();
+  });
+
   it('allows the independently authorized backup before durably waiting for a long Retry-After', async () => {
     const recovery = hooks();
     let calls = 0;
