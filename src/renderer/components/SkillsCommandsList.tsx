@@ -12,7 +12,7 @@ import {
   CapabilitiesIcon,
   TerminalIcon,
 } from '@/components/icons';
-import { useCallback, useEffect, useState, useMemo, useRef } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState, useMemo, useRef, type Dispatch, type SetStateAction } from 'react';
 import { useTranslation } from 'react-i18next';
 
 import { apiGetJson as globalApiGet, apiPostJson as globalApiPost, apiDelete as globalApiDelete } from '@/api/apiFetch';
@@ -24,6 +24,22 @@ import type { SkillItem, CommandItem, SkillsListResponse } from '../../shared/sk
 import type { SkillIntegrityIssue } from '../../shared/skillIntegrity';
 import { CUSTOM_EVENTS } from '../../shared/constants';
 
+export interface SkillsCommandsListRef { isEditing(): boolean }
+
+// Parent navigation admission can run in the same event as a child action.
+// Mirror interaction state before React commits its batched render.
+function useInteractionState<T>(initial: T | (() => T)) {
+    const [value, setValue] = useState(initial);
+    const current = useRef(value);
+    const set = useCallback<Dispatch<SetStateAction<T>>>((next) => {
+        current.current = typeof next === 'function'
+            ? (next as (previous: T) => T)(current.current)
+            : next;
+        setValue(current.current);
+    }, []);
+    return [value, set, current] as const;
+}
+
 interface SkillsCommandsListProps {
     scope: 'user' | 'project';
     agentDir?: string;
@@ -32,13 +48,13 @@ interface SkillsCommandsListProps {
     refreshKey?: number;
 }
 
-export default function SkillsCommandsList({
+const SkillsCommandsList = forwardRef<SkillsCommandsListRef, SkillsCommandsListProps>(function SkillsCommandsList({
     scope,
     agentDir,
     onSelectSkill,
     onSelectCommand,
     refreshKey = 0,
-}: SkillsCommandsListProps) {
+}, ref) {
     const { t } = useTranslation('settings');
     const toast = useToast();
     // Stabilize toast reference to avoid unnecessary effect re-runs
@@ -70,15 +86,33 @@ export default function SkillsCommandsList({
     const [skills, setSkills] = useState<SkillItem[]>([]);
     const [commands, setCommands] = useState<CommandItem[]>([]);
     const [integrityIssues, setIntegrityIssues] = useState<SkillIntegrityIssue[]>([]);
-    const [savingCapabilityIds, setSavingCapabilityIds] = useState<Set<string>>(() => new Set());
-    const [showNewSkillDialog, setShowNewSkillDialog] = useState(false);
-    const [showInstallFromUrlDialog, setShowInstallFromUrlDialog] = useState(false);
-    const [showNewCommandDialog, setShowNewCommandDialog] = useState(false);
+    const [savingCapabilityIds, setSavingCapabilityIds, savingCapabilityIdsRef] = useInteractionState<Set<string>>(() => new Set());
+    const [showNewSkillDialog, setShowNewSkillDialog, showNewSkillDialogRef] = useInteractionState(false);
+    const [showInstallFromUrlDialog, setShowInstallFromUrlDialog, showInstallFromUrlDialogRef] = useInteractionState(false);
+    const [showNewCommandDialog, setShowNewCommandDialog, showNewCommandDialogRef] = useInteractionState(false);
     const [newItemName, setNewItemName] = useState('');
     const [newItemDescription, setNewItemDescription] = useState('');
-    const [creating, setCreating] = useState(false);
-    const [deleteTarget, setDeleteTarget] = useState<{ type: 'skill' | 'command'; name: string; scope: 'user' | 'project' } | null>(null);
-    const [deleting, setDeleting] = useState(false);
+    const [creating, setCreating, creatingRef] = useInteractionState(false);
+    const [deleteTarget, setDeleteTarget, deleteTargetRef] = useInteractionState<{ type: 'skill' | 'command'; name: string; scope: 'user' | 'project' } | null>(null);
+    const [deleting, setDeleting, deletingRef] = useInteractionState(false);
+
+    const [, setPendingOperations, pendingOperationsRef] = useInteractionState(0);
+    const beginOperation = useCallback(() => {
+        setPendingOperations(count => count + 1);
+        let settled = false;
+        return () => {
+            if (settled) return;
+            settled = true;
+            setPendingOperations(count => count - 1);
+        };
+    }, [setPendingOperations]);
+    const isInteracting = useCallback(() => showNewSkillDialogRef.current || showInstallFromUrlDialogRef.current
+        || showNewCommandDialogRef.current || !!deleteTargetRef.current
+        || creatingRef.current || deletingRef.current || savingCapabilityIdsRef.current.size > 0
+        || pendingOperationsRef.current > 0,
+    [showNewSkillDialogRef, showInstallFromUrlDialogRef, showNewCommandDialogRef,
+        deleteTargetRef, creatingRef, deletingRef, savingCapabilityIdsRef, pendingOperationsRef]);
+    useImperativeHandle(ref, () => ({ isEditing: isInteracting }), [isInteracting]);
 
     // Build endpoint with optional agentDir (same pattern as SystemPromptsPanel)
     const buildEndpoint = useCallback((path: string) => {
@@ -124,7 +158,7 @@ export default function SkillsCommandsList({
     }, [scope, api, buildEndpoint]);
 
     const handleProjectCapabilityToggle = useCallback(async (capabilityId: string, enabled: boolean) => {
-        if (scope !== 'project' || savingCapabilityIds.size > 0) return;
+        if (scope !== 'project' || savingCapabilityIdsRef.current.size > 0) return;
         const previousSkills = skills;
         const previousCommands = commands;
         setSkills(current => current.map(item => item.capabilityId === capabilityId ? { ...item, enabled } : item));
@@ -164,7 +198,7 @@ export default function SkillsCommandsList({
                 return next;
             });
         }
-    }, [agentDir, api, commands, isInTabContext, loadData, savingCapabilityIds.size, scope, skills]);
+    }, [agentDir, api, commands, isInTabContext, loadData, savingCapabilityIdsRef, setSavingCapabilityIds, scope, skills]);
 
     useEffect(() => {
         loadData();
@@ -173,6 +207,7 @@ export default function SkillsCommandsList({
 
     // 快速创建技能并立即进入编辑模式
     const handleQuickCreateSkill = useCallback(async (tempName: string) => {
+        const finish = beginOperation();
         try {
             // When using Tab API, no need to pass agentDir (sidecar already has it)
             // When using global API, pass agentDir for project scope
@@ -192,73 +227,68 @@ export default function SkillsCommandsList({
             }
         } catch {
             toastRef.current.error(tRef.current('agentSettings.common.createFailed'));
-        }
-    }, [scope, agentDir, loadData, onSelectSkill, api, isInTabContext]);
+        } finally { finish(); }
+    }, [scope, agentDir, loadData, onSelectSkill, api, isInTabContext, beginOperation]);
 
-    // 上传技能文件
+    // Hold the interaction lock through both local file reading and server import.
     const handleUploadSkill = useCallback(async (file: File) => {
+        const finish = beginOperation();
         try {
-            // 读取文件为 base64
-            const reader = new FileReader();
-            reader.onload = async () => {
-                const base64Content = (reader.result as string).split(',')[1]; // 去除 data:xxx;base64, 前缀
-                try {
-                    const response = await api.post<{
-                        success: boolean;
-                        folderName?: string;
-                        message?: string;
-                        error?: string;
-                    }>('/api/skill/upload', {
-                        filename: file.name,
-                        content: base64Content,
-                        scope
-                    });
-
-                    if (response.success) {
-                        toastRef.current.success(response.folderName
-                            ? tRef.current('agentSettings.skillCommandList.skillImportSuccessNamed', { name: response.folderName })
-                            : tRef.current('agentSettings.skillCommandList.skillImportSuccess'));
-                        setShowNewSkillDialog(false);
-                        loadData();
-                        // 进入新创建的技能详情页
-                        if (response.folderName) {
-                            onSelectSkill(response.folderName, scope, true);
-                        }
-                        window.dispatchEvent(new CustomEvent(CUSTOM_EVENTS.PROJECT_CAPABILITIES_CHANGED));
-                    } else {
-                        toastRef.current.error(response.error || tRef.current('agentSettings.common.importFailed'));
-                    }
-                } catch (err) {
-                    toastRef.current.error(err instanceof Error ? err.message : tRef.current('agentSettings.common.importFailed'));
-                }
-            };
-            reader.onerror = () => {
-                toastRef.current.error(tRef.current('agentSettings.common.readFileFailed'));
-            };
-            reader.readAsDataURL(file);
+            const base64Content = await new Promise<string>((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = () => resolve((reader.result as string).split(',')[1]);
+                reader.onerror = reader.onabort = () => reject(new Error(tRef.current('agentSettings.common.readFileFailed')));
+                reader.readAsDataURL(file);
+            });
+            const response = await api.post<{
+                success: boolean;
+                folderName?: string;
+                message?: string;
+                error?: string;
+            }>('/api/skill/upload', {
+                filename: file.name,
+                content: base64Content,
+                scope,
+                ...(scope === 'project' && agentDir ? { agentDir } : {}),
+            });
+            if (response.success) {
+                toastRef.current.success(response.folderName
+                    ? tRef.current('agentSettings.skillCommandList.skillImportSuccessNamed', { name: response.folderName })
+                    : tRef.current('agentSettings.skillCommandList.skillImportSuccess'));
+                setShowNewSkillDialog(false);
+                loadData();
+                if (response.folderName) onSelectSkill(response.folderName, scope, true);
+                window.dispatchEvent(new CustomEvent(CUSTOM_EVENTS.PROJECT_CAPABILITIES_CHANGED));
+            } else {
+                toastRef.current.error(response.error || tRef.current('agentSettings.common.importFailed'));
+            }
         } catch (err) {
             toastRef.current.error(err instanceof Error ? err.message : tRef.current('agentSettings.common.uploadFailed'));
-        }
-    }, [scope, loadData, onSelectSkill, api]);
+        } finally { finish(); }
+    }, [scope, agentDir, loadData, onSelectSkill, api, beginOperation, setShowNewSkillDialog]);
 
-    // 从 URL 安装 skill — 走 Tab-scoped API，scope 来自 props，
-    // 所以工作区入口会装到 <workspace>/.claude/skills/ 而不是全局 ~/.myagents/skills/
+    // Global My Bots must carry the selected workspace; Session APIs verify ownership.
     const handleInstallFromUrl = useCallback(
         async (
             url: string,
             confirmedSelection?: { pluginName?: string; folderNames?: string[]; overwrite?: string[] },
         ): Promise<InstallFromUrlResponse> => {
-            return api.post<InstallFromUrlResponse>('/api/skill/install-from-url', {
-                url,
-                scope,
-                confirmedSelection,
-            });
+            const finish = beginOperation();
+            try {
+                return await api.post<InstallFromUrlResponse>('/api/skill/install-from-url', {
+                    url,
+                    scope,
+                    confirmedSelection,
+                    ...(scope === 'project' && agentDir ? { agentDir } : {}),
+                });
+            } finally { finish(); }
         },
-        [api, scope],
+        [api, scope, agentDir, beginOperation],
     );
 
     // 导入文件夹
     const handleImportFolder = useCallback(async (folderPath: string) => {
+        const finish = beginOperation();
         try {
             const response = await api.post<{
                 success: boolean;
@@ -267,7 +297,8 @@ export default function SkillsCommandsList({
                 error?: string;
             }>('/api/skill/import-folder', {
                 folderPath,
-                scope
+                scope,
+                ...(scope === 'project' && agentDir ? { agentDir } : {}),
             });
 
             if (response.success) {
@@ -286,8 +317,8 @@ export default function SkillsCommandsList({
             }
         } catch (err) {
             toastRef.current.error(err instanceof Error ? err.message : tRef.current('agentSettings.common.importFailed'));
-        }
-    }, [scope, loadData, onSelectSkill, api]);
+        } finally { finish(); }
+    }, [scope, agentDir, loadData, onSelectSkill, api, beginOperation, setShowNewSkillDialog]);
 
     const handleCreateCommand = useCallback(async () => {
         if (!newItemName.trim()) return;
@@ -296,7 +327,8 @@ export default function SkillsCommandsList({
             const response = await api.post<{ success: boolean; error?: string }>('/api/command-item/create', {
                 name: newItemName.trim(),
                 scope,
-                description: newItemDescription.trim() || undefined
+                description: newItemDescription.trim() || undefined,
+                ...(!isInTabContext && scope === 'project' && agentDir ? { agentDir } : {}),
             });
             if (response.success) {
                 toastRef.current.success(tRef.current('agentSettings.skillCommandList.commandCreateSuccess'));
@@ -313,7 +345,7 @@ export default function SkillsCommandsList({
         } finally {
             setCreating(false);
         }
-    }, [newItemName, newItemDescription, scope, loadData, api]);
+    }, [newItemName, newItemDescription, scope, agentDir, isInTabContext, loadData, api, setCreating, setShowNewCommandDialog]);
 
     const handleDelete = useCallback(async () => {
         if (!deleteTarget) return;
@@ -339,9 +371,10 @@ export default function SkillsCommandsList({
         } finally {
             setDeleting(false);
         }
-    }, [deleteTarget, loadData, api, buildEndpoint]);
+    }, [deleteTarget, loadData, api, buildEndpoint, setDeleteTarget, setDeleting]);
 
-    if (loading) {
+    // A background inventory refresh must not unmount an open dialog's draft.
+    if (loading && !isInteracting()) {
         return (
             <div className="flex h-full items-center justify-center">
                 <LoaderIcon className="h-8 w-8 animate-spin text-[var(--ink-muted)]" />
@@ -384,7 +417,7 @@ export default function SkillsCommandsList({
                             <SkillCard
                                 key={`${skill.scope}-${skill.folderName}`}
                                 skill={skill}
-                                onClick={() => onSelectSkill(skill.folderName, skill.scope)}
+                                onClick={() => { if (!isInteracting()) onSelectSkill(skill.folderName, skill.scope); }}
                                 onToggleEnabled={scope === 'project' && skill.capabilityId && !skill.required
                                     ? handleProjectCapabilityToggle
                                     : undefined}
@@ -522,7 +555,8 @@ export default function SkillsCommandsList({
             )}
         </div>
     );
-}
+});
+export default SkillsCommandsList;
 
 export function SkillIntegrityIssuesPanel({ issues }: { issues: readonly SkillIntegrityIssue[] }) {
     const { t } = useTranslation('settings');

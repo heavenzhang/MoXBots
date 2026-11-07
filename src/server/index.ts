@@ -152,6 +152,8 @@ import {
 } from './skills/url-resolver';
 import { fetchSkillZip, TarballFetchError } from './skills/tarball-fetcher';
 import { loadSkillTree, SkillSourceLoadError } from './skills/source-loader';
+import { resolveSkillInstallTarget } from './skills/install-target';
+import { readSkillFolderEntry } from './skills/folder-source';
 import {
   analyseTree,
   buildInstallPayload,
@@ -6862,6 +6864,19 @@ async function main() {
         };
       };
 
+      const getSkillInstallTarget = (payload: { scope: unknown; agentDir?: unknown }, projectDirectory: 'skills' | 'commands' = 'skills') =>
+        resolveSkillInstallTarget({
+          ...payload,
+          sidecarRole,
+          currentAgentDir: sidecarRole === 'session'
+            ? getSessionEngine().getCurrentSessionContext().workspacePath ?? currentAgentDir
+            : currentAgentDir,
+          userSkillsDir: projectDirectory === 'commands' ? userCommandsBaseDir : userSkillsBaseDir,
+          projectDirectory,
+          validateWorkspace: isValidAgentDir,
+          isRegisteredWorkspace: (path) => !!findProjectAgentByWorkspacePath(path),
+        });
+
       // Default project paths (using currentAgentDir)
       const hasValidAgentDir = currentAgentDir && existsSync(currentAgentDir);
       const projectSkillsBaseDir = hasValidAgentDir
@@ -7746,13 +7761,7 @@ async function main() {
 
           // Sanitize name for folder (supports Unicode)
           const folderName = sanitizeFolderName(payload.name);
-          // Use explicit agentDir if provided for project scope
-          const { skillsDir } = getProjectBaseDirs(payload.agentDir || null);
-          if (payload.scope === 'project' && !skillsDir) {
-            return jsonResponse({ success: false, error: 'Workspace is unavailable' }, 409);
-          }
-          const baseDir =
-            payload.scope === 'user' ? userSkillsBaseDir : skillsDir;
+          const baseDir = getSkillInstallTarget(payload);
           const skillDir = join(baseDir, folderName);
 
           if (existsSync(skillDir)) {
@@ -7795,7 +7804,7 @@ async function main() {
                   ? error.message
                   : 'Failed to create skill',
             },
-            500,
+            error instanceof SkillInstallError ? error.statusCode : 500,
           );
         }
       }
@@ -7807,6 +7816,7 @@ async function main() {
             filename: string;
             content: string; // Base64 encoded file content
             scope: 'user' | 'project';
+            agentDir?: unknown;
             /**
              * Optional explicit folder name. Bypasses heuristic derivation from
              * filename / frontmatter. Required when uploading a bare `SKILL.md`
@@ -7823,8 +7833,7 @@ async function main() {
           }
 
           const ext = extname(payload.filename).toLowerCase();
-          const baseDir =
-            payload.scope === 'user' ? userSkillsBaseDir : projectSkillsBaseDir;
+          const baseDir = getSkillInstallTarget(payload);
 
           // Validate target directory is available
           if (!baseDir) {
@@ -8061,7 +8070,7 @@ async function main() {
                   ? error.message
                   : 'Failed to upload skill',
             },
-            500,
+            error instanceof SkillInstallError ? error.statusCode : 500,
           );
         }
       }
@@ -8075,6 +8084,7 @@ async function main() {
           const payload = (await request.json()) as {
             folderPath: string;
             scope: 'user' | 'project';
+            agentDir?: unknown;
           };
 
           if (!payload.folderPath) {
@@ -8085,8 +8095,7 @@ async function main() {
           }
 
           const sourcePath = payload.folderPath;
-          const baseDir =
-            payload.scope === 'user' ? userSkillsBaseDir : projectSkillsBaseDir;
+          const baseDir = getSkillInstallTarget(payload);
 
           // Validate target directory is available
           if (!baseDir) {
@@ -8129,8 +8138,8 @@ async function main() {
             );
           }
 
-          // Read SKILL.md to get the skill name
-          const skillMdContent = readFileSync(skillMdPath, 'utf-8');
+          // Read only an entry that can actually be imported by the no-link copier.
+          const skillMdContent = readSkillFolderEntry(sourcePath);
           let folderName = basename(sourcePath);
 
           // Try to extract name from SKILL.md frontmatter
@@ -8208,7 +8217,7 @@ async function main() {
                   ? error.message
                   : 'Failed to import skill folder',
             },
-            500,
+            error instanceof SkillInstallError ? error.statusCode : 500,
           );
         }
       }
@@ -8431,6 +8440,7 @@ async function main() {
           const payload = (await request.json()) as {
             url: string;
             scope: 'user' | 'project';
+            agentDir?: unknown;
             /** Analyse only. Never publish even for an unambiguous single Skill. */
             previewOnly?: boolean;
             confirmedSelection?: {
@@ -8444,9 +8454,8 @@ async function main() {
           if (!payload.url || typeof payload.url !== 'string') {
             return jsonResponse({ success: false, error: 'url 参数必填' }, 400);
           }
-          const scope = payload.scope === 'project' ? 'project' : 'user';
-          const baseDir =
-            scope === 'user' ? userSkillsBaseDir : projectSkillsBaseDir;
+          const baseDir = getSkillInstallTarget(payload);
+          const scope = payload.scope;
           if (!baseDir) {
             return jsonResponse(
               { success: false, error: '请先设置工作目录' },
@@ -9387,6 +9396,7 @@ async function main() {
             name: string;
             scope: 'user' | 'project';
             description?: string;
+            agentDir?: unknown;
           };
 
           if (!payload.name) {
@@ -9398,10 +9408,7 @@ async function main() {
 
           // Sanitize name for filename (supports Unicode characters like Chinese)
           const fileName = sanitizeFolderName(payload.name);
-          const baseDir =
-            payload.scope === 'user'
-              ? userCommandsBaseDir
-              : projectCommandsBaseDir;
+          const baseDir = getSkillInstallTarget(payload, 'commands');
 
           // Ensure directory exists
           if (!existsSync(baseDir)) {
@@ -9425,7 +9432,7 @@ async function main() {
           const body = `在这里编写指令的详细内容...`;
           const content = serializeCommandContent(frontmatter, body);
 
-          writeFileSync(cmdPath, content, 'utf-8');
+          writeFileSync(cmdPath, content, { encoding: 'utf-8', flag: 'wx' });
 
           // New user command — sync symlink into project so SDK can discover it
           if (payload.scope === 'user' && agentDir)
@@ -9441,7 +9448,7 @@ async function main() {
                   ? error.message
                   : 'Failed to create command',
             },
-            500,
+            error instanceof SkillInstallError ? error.statusCode : 500,
           );
         }
       }

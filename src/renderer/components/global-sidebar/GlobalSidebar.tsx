@@ -172,6 +172,7 @@ import { RemoteSessionSidebar } from '@/features/remote-session/RemoteSessionSid
 const loadHistorySearchOverlayContent = () => import('@/components/HistorySearchOverlayContent');
 const HistorySearchOverlayContent = lazy(loadHistorySearchOverlayContent);
 const WorkspaceConfigPanel = lazy(() => import('@/components/WorkspaceConfigPanel'));
+const BotCarePanel = lazy(() => import('@/components/bot-care/BotCarePanel'));
 
 const SESSION_PAGE_SIZE = 5;
 const AUTO_RAIL_QUERY = '(max-width: 1080px)';
@@ -576,7 +577,7 @@ export default memo(function GlobalSidebar({
   const [newProjectId, setNewProjectId] = useState(() => crypto.randomUUID());
   const openNewProject = useCallback(() => { if (!newProjectOpen) { setNewProjectId(crypto.randomUUID()); setNewProjectOpen(true); } }, [newProjectOpen]);
   const projectCatalog = useMemo(() => { try { return { spaces: readProjectSpaces(config.projectSpaces), error: false }; } catch { return { spaces: [], error: true }; } }, [config.projectSpaces]);
-  useEffect(() => { if (projectConversationRequest) setNewConversationOpen(true); }, [projectConversationRequest]);
+  useEffect(() => { if (projectConversationRequest) { setCareConversationRequest(null); setNewConversationOpen(true); } }, [projectConversationRequest]);
   const botExperience = APP_BUILD_PROFILE === 'moxbot';
   const [sessionLimits, setSessionLimits] = useState<Record<string, number>>({});
   const [archivedExpanded, setArchivedExpanded] = useState(false);
@@ -605,13 +606,16 @@ export default memo(function GlobalSidebar({
   const [recentlyCreatedWorkspaceKey, setRecentlyCreatedWorkspaceKey] = useState<string | null>(null);
   const [projectToRemove, setProjectToRemove] = useState<Project | null>(null);
   const [agentWorkspacePath, setAgentWorkspacePath] = useState<string | null>(null);
+  const [botCareOpen, setBotCareOpen] = useState(false);
+  const [careConversationRequest, setCareConversationRequest] = useState<ProjectConversationRequest | null>(null);
+  const careRequestId = useRef(0);
   const [pendingDeleteSession, setPendingDeleteSession] = useState<SessionMetadata | null>(null);
   const [statsSession, setStatsSession] = useState<SessionMetadata | null>(null);
   const pinInFlightRef = useRef(new Set<string>());
   const archiveInFlightRef = useRef(new Set<string>());
   const childLayerOpen = newConversationOpen || newProjectOpen || newAgentPanelOpen
     || projectToRemove !== null
-    || agentWorkspacePath !== null
+    || agentWorkspacePath !== null || botCareOpen
     || pendingDeleteSession !== null
     || statsSession !== null;
   const childLayerOpenRef = useRef(childLayerOpen);
@@ -1307,6 +1311,13 @@ export default memo(function GlobalSidebar({
   );
 
   const secondaryNavigation = <>
+          {botExperience && <SidebarNavButton
+            expanded={expanded}
+            active={botCareOpen}
+            icon={<SlidersIcon className="h-4 w-4" />}
+            label={t('botCare.manage')}
+            onClick={() => { rememberChildLayerOrigin(document.activeElement as HTMLElement); setBotCareOpen(true); }}
+          />}
           <div className="group/task-create relative">
             <SidebarNavButton
               expanded={expanded}
@@ -1358,14 +1369,14 @@ export default memo(function GlobalSidebar({
     <>
       {APP_BUILD_PROFILE === 'moxbot' && <ProjectConversationDialog
         open={newConversationOpen} spaces={projectCatalog.spaces}
-        workspaces={projects} agents={config.agents ?? []} request={projectConversationRequest}
+        workspaces={projects} agents={config.agents ?? []} request={careConversationRequest ?? projectConversationRequest}
         onOpen={onStartProjectConversation ?? (async (target, message) => {
           if (target.kind !== 'workspace') return { status: 'not-started' as const };
           const workspace = projects.find(item => item.agentId === target.botId);
           return workspace && onStartBotConversation ? onStartBotConversation(workspace, message) : { status: 'not-started' as const };
         })}
         onViewAttempt={tabId => onViewBotConversationAttempt?.(tabId)}
-        onClose={() => setNewConversationOpen(false)}
+        onClose={() => { setNewConversationOpen(false); setCareConversationRequest(null); }}
         onCreateBot={() => { setNewConversationOpen(false); handleOpenNewAgentPanel(); }}
         onCreateProject={() => { setNewConversationOpen(false); openNewProject(); }}
       />}
@@ -1753,6 +1764,19 @@ export default memo(function GlobalSidebar({
           }}
         />
       )}
+
+      {botCareOpen && <Suspense fallback={null}>
+        <BotCarePanel
+          onClose={() => { setBotCareOpen(false); restoreChildLayerFocus(); }}
+          onCreateBot={() => { setBotCareOpen(false); handleOpenNewAgentPanel(); }}
+          onStartWork={project => {
+            if (!project.agentId) return;
+            setCareConversationRequest({ id: --careRequestId.current, projectId: '', botId: project.agentId });
+            setBotCareOpen(false);
+            setNewConversationOpen(true);
+          }}
+        />
+      </Suspense>}
 
       {agentWorkspacePath && (
         <Suspense fallback={null}>

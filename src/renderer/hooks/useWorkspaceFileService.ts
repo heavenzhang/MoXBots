@@ -284,7 +284,7 @@ export interface WorkspaceFileService {
    *  parser. ≤50MB. */
   downloadFileBytes(args: { path: string }): Promise<ArrayBuffer>;
   /** [requires workspace] */
-  newFile(args: { parentDir: string; name: string }): Promise<CreatePathResult>;
+  newFile(args: { parentDir: string; name: string; content?: string }): Promise<CreatePathResult>;
   /** [requires workspace] */
   newFolder(args: { parentDir: string; name: string }): Promise<CreatePathResult>;
   /** [requires workspace] */
@@ -558,12 +558,13 @@ export function useWorkspaceFileService(workspacePath: string | null): Workspace
   );
 
   const newFile: WorkspaceFileService['newFile'] = useCallback(
-    async ({ parentDir, name }) => {
+    async ({ parentDir, name, content }) => {
       const ws = requireWorkspace();
       return invokeIfTauri<CreatePathResult>('cmd_workspace_new_file', {
         workspace: ws,
         parentDir,
         name,
+        ...(content !== undefined ? { content } : {}),
       });
     },
     [requireWorkspace, invokeIfTauri],

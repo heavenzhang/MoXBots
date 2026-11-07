@@ -1337,6 +1337,17 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 - desktop/macOS-arm64/updater/sharedCI/main唯一owner继续01a12bc2-907a-7702-b6dd-788225c5dfe4，开发不触发共享CI或正式构建。冻结542.6不修改，原owner接收精确SHA并在下一未冻结批集成、发布和原会话复验；源码/离线与main/正式/真实验收分别记录。
 - 原会话执行失败另有模型命令schema漏参/任务版本冲突与native证据epoch检查；不通过UI折叠隐藏，不放宽门禁或重放原unknown操作。私有诊断只留本地工作区。
 
+
+## MB-BOT-CARE-20261106 — 我的 Bots 集中管理
+
+- [x] CARE-01 源码：ConfigProvider真实名册、定义/记忆文件编辑、技能scope和既有设置，独立只读检查与正式工作dialog分开。
+- [x] CARE-02 本地验证：127 DOM、28 unit、12 Rust CRUD及type/lint；独立审阅修复草稿和安装保护。验收记录dev-docs/bot-care-20261106/acceptance.md。
+- [ ] CARE-03 集成：工作分支codex/bot-care-20261106，最新主干同步、精确远端handoff和实际main包含待核实。依赖CARE-02。
+- [ ] CARE-04 原生发布/验收：desktop/macOS-arm64/updater/sharedCI/main唯一负责人沿用01a12bc2-907a-7702-b6dd-788225c5dfe4；下一未冻结批，版本由owner分配，不替换543.2或已有制品。依赖CARE-03及owner批次。
+- [ ] CARE-05 真实效果：在包含成果的原生客户端验证受控Bot定义/技能/记忆持久化、作用域、草稿和正式工作/检查分离，再给用户真实截图。浏览器原型或空态不代替此项。
+
+本任务记录.agent-sync/tasks/codex-bot-care-20261106-24b5927a.md。无云、网站或移动端部署；当前开发不操作正式工作数据。
+
 ## MB-CONTINUE-RECOVERY-20261106 — continuation misclassification and visibility
 
 - 分支 codex/continue-recovery-20261106；修复 builtin Bash exit 128 被错误计作 unknown、压缩后历史失败无法核对，以及暂停原因被旧摘要遮盖、发送前拒绝没有界面反馈。
@@ -1389,6 +1400,8 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 R2真实验收补充：543.3原群报告已在同execution完成5项验收；真实502暴露turn_error提示笼统。本分支经原native terminal传递有界HTTP状态，原execution持久保存闭集只读failure说明，UI显示原因/下一步，保持原code/status及未知保护不变。10文件403回归和实际组件通过，下一批由同一桌面owner集成安装；不将543.3原报告成功视为追加改动已安装。
 
 
+MB-BOT-CARE-20261106 resumed 2026-11-07: CARE-01/02 source/local complete, original runtime file/editor/config ownership retained. New definition/memory creation now stays in an explicit in-memory draft until native exclusive full-content save; cancel/Escape performs no write. Capability section accurately says read-only checks; formal work only opens the existing conversation dialog. On maina650 baseline final169 DOM/unit/isolatedHTTP, 13RustCRUD/type/lint/profileVite PASS. CARE-03 source remotehandoff refreshed, actualmain acceptance still pending; CARE-04/05 native build/install/real-data UI/screenshots pending original desktop owner01a12bc2 nextunfrozen batch. Current543.5 repair remains separate; producer allocated no version, ran no sharedCI/formal build/install and did no business task.
+
 ## MB-CHAT-STYLE-20261104 CHAT08-COLD — 543.4 native followup
 
 PR259/maina650 includes unknown23d98 and reading1921. Native543.4 originalunknown sample still lacks card after cold initial GET409; ledger unchanged, no replay. Isolatedcodex/chat-review-ready-20261107 adds scoped readonly review revision on existing status stream when actual current Query is ready/parked; existing reviewer refreshes once. 168DOM/20simulatedintegration/type/lint/classification pass; not native acceptance. Sole desktop/sharedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 takes exactsource nextunfrozen batch with separate initial-send fix; original5434immutable. Native N02 originalunknown first, then realapproval/read-protection gates, then publication. Task record codex-chat-review-ready-20261107-abf7e3c6, evidence dev-docs/chat-review-ready-20261107/acceptance.md.
@@ -1434,3 +1447,12 @@ Installed543.8 actual N02 unknown read-only/reopen and foreground502/unfinished-
 Desktop/macOS-arm64/updater/sharedCI/main unit is COMPLETE_LOCAL_AND_101_UPDATER_DELIVERY, sole owner01a12bc2-907a-7702-b6dd-788225c5dfe4 unchanged. NormalTLS one fullGET/exactSHA/production signature, existing5426stable backup+atomicCAS, exactmanifest/two206/hidden404/unsupported204/no-store and self-lock finish passed. Stable https://101.42.11.29/updates/stable/darwin-aarch64.json manifestSHA256f0d87d37bd209f1ca3369e3470ccffc080382f5568e1cab386f2ff3476806dd4; native CheckUpdate actual latest. Delivery/evidence work/native-readiness-repair-20261107/owner/DELIVERY-{RESULT,EVIDENCE}.json and original task record are authoritative. No new build/sign/Apple/install/publish for this metadata correction.
 
 Website static download remains a separate pending handoff: work/release-queue/WEB-DOWNLOAD-0543-5438.json, existing owner01a12b99-7b38-78b1-831f-9c60257d386a, awaiting ACK/page publication. Root does not claim website/cloud/mobile/device acceptance or send a cross-chat notification. Full model/Goal questions and cloud-login deferral remain outside this finite desktop acceptance.
+
+
+## MB-BOT-CARE-20261106 Root 0.5.44/build544.1 source intake
+
+Sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 independently reviews producer56902027d1788c6cc557642b7f5c78d682baa96a on mainf0913c7bd68d94beea95078b97483001642340c7. Scopeonly My Bots definition/memory actualworkspace files, selectedregisteredBot skill/command management, readonly configuration checks and an existing formal-work dialog with noautosend. Other Bot core/group/collaboration/navigation/workbench queues are excluded, not silently accepted. Published5438/source755d/tagv0.5.43/archivea401 remains immutable.
+
+Root169focused tests (134DOM/28unit/7real isolatedGlobalSidecarHTTP), fulltype/scopedlint/profileVitebuild and3versioncontracts PASS. Firstclassification failure is preserved: new credential-free childprocess test missing from registry. Root registers only that exact tempHOME/scrubbed-env/no-prewarm/child-no-egress fixture path under the existing policy; default childprocess rejection/testcategories/workflow gates unchanged, classificationPASS. Producer13RustCRUD remains reported evidence until exact CI supplies Root platform validation.
+
+Allocate next immutable0.5.44/build544.1; eight version manifests/locks coherent, no dependency change. Source/Rootlocal tests, exactCI/main, one formal signed/notarized artifact, fresh maintenance/backuprollback installation and actual A/B native acceptance remain separate gates. Native checks must cover full definition/memory save-reopen/cancel, localB skill edit/install/toggle persistence with A/global unchanged, draft/identity/busy protection, readonly checks without task/model execution, and preselected formal-work dialog cancellation. Real UI screenshots required; no mock/HTTP fixture or ordinary model reply substitutes. Same accepted archive alone may reach101 updater; existing website/cloud/mobile owner01a12b99 retains independent targets. Root task .agent-sync/tasks/codex-release-bot-care-20261107-29289e71.md; private controls work/bot-care-root-intake-20261107/owner.
