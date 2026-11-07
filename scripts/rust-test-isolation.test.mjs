@@ -63,9 +63,9 @@ test('all Rust targets run once outside the stress case, then the exact stress c
   const result = exercise('success');
   assert.equal(result.status, 0, result.stderr);
   assert.deepEqual(result.calls, [
-    ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--lib', stress, '--', '--exact', '--list'],
+    ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', stress, '--', '--exact', '--list'],
     ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--', '--skip', stress],
-    ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', '--lib', stress, '--', '--exact'],
+    ['test', '--manifest-path', 'src-tauri/Cargo.toml', '--locked', stress, '--', '--exact'],
   ]);
 });
 

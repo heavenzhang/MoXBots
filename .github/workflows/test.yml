@@ -464,12 +464,14 @@ jobs:
           # The unchanged stress case owns a 120s budget for 200 rounds of
           # four real processes. Keep it out of competing libtest workloads;
           # it is still mandatory and runs once, with every original bound.
+          # Keep the same default target selection for all three invocations
+          # so Cargo can reuse the same already-built test executables.
           stress='agent_network::credential_slots::tests::real_process_commits_serialize_without_losing_routes'
           list="${RUNNER_TEMP:?}/credential-route-stress-test-list.txt"
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib "$stress" -- --exact --list | tee "$list"
+          cargo test --manifest-path src-tauri/Cargo.toml --locked "$stress" -- --exact --list | tee "$list"
           test "$(grep -Fxc "$stress: test" "$list")" -eq 1
           cargo test --manifest-path src-tauri/Cargo.toml --locked -- --skip "$stress"
-          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib "$stress" -- --exact
+          cargo test --manifest-path src-tauri/Cargo.toml --locked "$stress" -- --exact
           # END REQUIRED CREDENTIAL ROUTE STRESS ISOLATION
       - name: Validate isolated MoX bot Rust profile
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked app_profile_tests
