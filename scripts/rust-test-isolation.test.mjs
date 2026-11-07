@@ -12,7 +12,7 @@ const begin = lines.findIndex((line) => line.includes('# BEGIN REQUIRED CREDENTI
 const end = lines.findIndex((line) => line.includes('# END REQUIRED CREDENTIAL ROUTE STRESS ISOLATION'));
 assert.ok(begin >= 0 && end > begin);
 assert.equal(lines[begin - 1].trim(), 'set -euo pipefail');
-const script = lines.slice(begin - 1, end).map((line) => line.replace(/^          /, '')).join('\n');
+const script = lines.slice(begin - 1, end).map((line) => line.replace(/^ {10}/, '')).join('\n');
 
 function exercise(scenario, withRunnerTemp = true) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'moxbot-rust-ci-isolation-'));
