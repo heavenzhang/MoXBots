@@ -1,7 +1,7 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/release-native-readiness-0543-20261107 -->
 <!-- git-project-sync-task:base=a650939d2c38b8dc04750e282b159ddaac8ea346 -->
-<!-- git-project-sync-task:status=completed -->
+<!-- git-project-sync-task:status=complete -->
 <!-- git-project-sync-task:scaffold=false -->
 
 # Task: Repair first-send restore readiness and cold recovery inspection; preserve unknown evidence
