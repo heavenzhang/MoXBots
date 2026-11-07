@@ -3,16 +3,16 @@
   "channel": "trial",
   "macArm64": {
     "status": "ready",
-    "version": "0.5.42",
-    "build": "542.6",
-    "url": "https://101.42.11.29/updates/releases/0.5.42/5e6724a0dc672f0cead5a86553e7ff9e714f1423298ab57258ec28232f9046d1-MoXBots.app.tar.gz",
-    "bytes": 302337663,
-    "sha256": "5e6724a0dc672f0cead5a86553e7ff9e714f1423298ab57258ec28232f9046d1",
-    "sourceCommit": "34fe85d41660b361232015c54e33ef4bfffa1d57",
+    "version": "0.5.44",
+    "build": "544.1",
+    "url": "https://101.42.11.29/updates/releases/0.5.44/e305db5708c6bd56a213e51139d01c2e02f6072a3a4e342c6ea2870dea2a3eec-MoXBots.app.tar.gz",
+    "bytes": 302348336,
+    "sha256": "e305db5708c6bd56a213e51139d01c2e02f6072a3a4e342c6ea2870dea2a3eec",
+    "sourceCommit": "0caae7bcbdd950935dd5b80074c0b4f56a9d331e",
     "signed": true,
     "notarized": true,
-    "notesUrl": "https://101.42.11.29/moxbots/download/notes/0.5.42.html",
-    "notice": "构建 542.6；改进长聊天滚动、输入框与项目弹窗，并修复内置 Playwright 启动和 Codex 任务识别兼容性。TAR.GZ 内含 MoXBots.app，与正式自动更新通道使用同一份已签名制品。"
+    "notesUrl": "https://101.42.11.29/moxbots/download/notes/0.5.44.html",
+    "notice": "构建 544.1；新增“我的 Bots”管理入口，支持查看实际定义、技能、记忆与能力检查，并保留原工作区归属和创建草稿保护。TAR.GZ 内含 MoXBots.app，与正式自动更新通道使用同一份已签名制品。"
   },
   "windowsX64": {
     "status": "preparing"

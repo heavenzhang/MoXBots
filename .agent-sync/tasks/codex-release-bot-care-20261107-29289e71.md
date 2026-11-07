@@ -39,3 +39,6 @@ Native independent developer review is complete: reopened actual files/skill and
 ## Next step
 
 No more product pipeline for this delivered batch. Complete the documentation-only PR/main synchronization, retain immutablev0.5.44/artifact and rollback; route later independent features to a new reviewed batch.
+
+
+Website source-only successor: original website owner has now published WEB-DOWNLOAD-0544-5441 and supplied sourcea44163d7ce742b5329cc081e66b43cc98c16bdfa. Exact public three-file normalTLS readback and16routes passed; Root verified their accepted Git bytes, immutable archive unchanged. Browser visual is unclaimed. A separate source-only website follow-up will close website source/main; documentation-only c7CI9success/iOSskip was retained and all terminal before successor push, not used as combined-source CI proof. No desktop version/tag/artifact/install or updater republish follows this source-only closeout.
