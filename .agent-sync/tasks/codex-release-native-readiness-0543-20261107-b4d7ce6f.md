@@ -1,45 +1,53 @@
 <!-- git-project-sync-task:version=1 -->
 <!-- git-project-sync-task:branch=codex/release-native-readiness-0543-20261107 -->
 <!-- git-project-sync-task:base=a650939d2c38b8dc04750e282b159ddaac8ea346 -->
-<!-- git-project-sync-task:status=in-progress -->
+<!-- git-project-sync-task:status=completed -->
 <!-- git-project-sync-task:scaffold=false -->
 
 # Task: Repair first-send restore readiness and cold recovery inspection; preserve unknown evidence
 
 ## Objective
 
-Close the installed first-message restore race and initial cold recovery inspection readiness gap, and the observed pre-header socket failure with bounded existing inference recovery. Correct two unsupported diagnostic cause claims. Preserve original business, drafts, unknown-operation records, prior immutable artifacts and rollback. The existing sole desktop/macOS-arm64/updater/sharedCI/main owner remains 01a12bc2-907a-7702-b6dd-788225c5dfe4. Only this deployment unit needs a new immutable candidate, 0.5.43/build543.5; cloud/mobile/site are outside this batch.
+Completed desktop/macOS-arm64/updater delivery for MB-NATIVE-READINESS-REPAIR-20261107: MoXBots 0.5.43/build543.8. The sole desktop/sharedCI/main/release owner remains 01a12bc2-907a-7702-b6dd-788225c5dfe4. Preserve original business, drafts, unknown-operation records, immutable prior packages and rollback. Website static download publication remains with its existing independent owner; it is not a missing desktop release step.
 
 ## Acceptance criteria
 
-- The explicit New Chat launch payload waits for persisted restore and sends once; failed restore does not consume it or bypass the send guard.
-- Original QA unknown-operation notice survives a cold first inspection before SDK readiness, remains visible outside process collapse, locates the exact original tool and survives normal reopen. No business replay, automatic unknown resolution or ledger edits.
-- Exact affected checks and applicable CI/current-Mac ARM evidence, normal remote-main merge, one new signed/notarized archive, safe backup/normal maintenance install and actual native acceptance are separate required claims.
-- Supported real Codex approval and reading behavior, plus bounded native failure explanation/affected-step display, are verified without changing Agent/Project defaults or old report records. Actual product capability gaps remain explicit.
-- Only the same accepted immutable archive may reach the formal updater; preserve old public542.6 and original543.4 local artifacts.
+- [x] First-send restore readiness and original cold unknown inspection accepted within the native version matrix below; no business replay or ledger clearing.
+- [x] Exact source and release-main CI each passed nine applicable jobs; conditional iOS skip is not a PASS. Owned workflow paths were unchanged and not triggered, not reported as success.
+- [x] Same signed/notarized immutable archive installed locally and promoted to the 101 formal updater after necessary native acceptance; normal TLS full-body digest and production signature verified.
+- [x] Original 155 Session IDs, 647 history/ledger files and all 20 Agent configuration objects retained; original business report and unknown-operation evidence unchanged.
+- [x] Existing stable542.6 backed up before atomic existing-stable CAS; old archive/rollback preserved, only this release's publisher lock released.
 
 ## Completed
 
-- Root reviewed all six files of exact first-send producer4894d637360490a1cb7ac08c0db6c7bc88a15593, its remote identity, parent0146039c and RED/GREEN originals. Merged once locally on fresh maina650939d; no push, CI dispatch or formal build yet.
-- Clean task-init ran before source modifications. The author worktree and installed543.4 remain unchanged.
-- Original543.4 N02 failure is preserved privately: first GET409 before SDK ready; no subsequent inspection, notice absent, original Bash reserved attempt/START/transcript/context file hashes unchanged. Root sent no message, continuation or reconcile request.
+- Frozen artifact source: 755d4805553dd2b60a39dda4648e4ead5f725708; tree cfb074dbe38e5e1df301abd59e3919d71d81412d. PR260 merged normally once to release main cc9ce8d492108710b5e8445b438e8843d776b060, with exact tested/source whole-tree equality.
+- Immutable annotated tag v0.5.43 object ee663e945496e44d914578a73433d7201e10ded1 peels to that release main. Later documentation commits do not redefine the frozen source, release tag or archive.
+- Archive: 302330623 bytes, SHA256 a401ff492cda79b6352b0aab44a96f4fb1ad3c45a339f4834640f2e4754d4f4e. Installed /Applications/MoXBots.app 0.5.43/543.8 binary SHA256 79e3eaa158141cbc1b311a5f3f4e4ef7de4b554c03fcf116aa2dd32595449f49. Build/sign/Apple/archive/install/publication each executed once for this candidate.
+- Apple f20b22fe-6642-419a-8ce8-634fde91284e Accepted, exact ZIP/no issues. Original fixed Reader e99409ad3e881b202d3adda27f8b98b580ae177df3563cbc73243ad448d87b04 unchanged; no recompile/resign/manual execution.
+- Formal stable: https://101.42.11.29/updates/stable/darwin-aarch64.json, manifest SHA256 f0d87d37bd209f1ca3369e3470ccffc080382f5568e1cab386f2ff3476806dd4. Immutable archive: https://101.42.11.29/updates/releases/0.5.43/a401ff492cda79b6352b0aab44a96f4fb1ad3c45a339f4834640f2e4754d4f4e-MoXBots.app.tar.gz.
+- One complete normal-TLS external GET matched the original archive and production updater signature; atomic promotion, exact manifest/no-store, two Range206, hidden404, unsupported204 and self-lock release passed. Native Check Update once showed “当前已是最新版本”; original unsent draft view restored without sending it.
 
 ## Verification
 
-- Producer RED/GREEN originals reviewed. Root combined actual190unit/193DOM/125integration, fulltype/scopedlint/classification passed. Both actualSDK/nativeBash synthetic socket modes passed with4failedrequests/1existingbackup/5distinctinferences/1write/0oldunknown executions; coldledger preserved. Native app acceptance remains pending.
-- Git sync observe/start/task-init: PASS against https://github.com/heavenzhang/MoXBots.git, basea650939d2c38b8dc04750e282b159ddaac8ea346. Current branch is not frozen and is not remotely delivered.
-- Private owner receipts: work/native-readiness-repair-20261107/owner; original native proof: work/intent-recovery-integration-20261107/owner/native-n02-5434.
+- Source Test42324916161 and release-main Test42328417779: each actual nine successes/iOS conditional skip, including actual ARM and Windows. Original jobs/run/provenance receipts are retained in the owner evidence directory.
+- R4 source checks: 388 unit, 378 distinct integration, three version contracts, type/scoped lint/classification/diff PASS. These source fixtures are not real Provider or production Goal proof.
+- Actual installed543.8: original N02 cold unknown notice/exact tool/read-only reopen; foreground HTTP502 preserved rather than499 with unfinished steps and stored/reopened state; one pre-header socket recovery with one exclusive QA operation/file; separate transient502 followed by one text answer after automatic wait. These use the installed real SDK with a controlled loopback upstream, not a real Provider/full Goal claim. Temporary provider disabled and both fixtures normally exited; original configuration exact.
+- Retained actual native matrix: 543.5 first-dialog send, N04 upscroll and N05 selection; 543.6 actual Codex approval same-request reopen/allow-once/file terminal and live reading details across terminal. Renderer/shared/Codex adapter/package-lock bytes are identical through543.8; retained component evidence is not reported as rerunning all cases on543.8.
+- Authoritative delivery/evidence: work/native-readiness-repair-20261107/owner/DELIVERY-RESULT.json and DELIVERY-EVIDENCE.json; candidate-5438-755d4805/native-acceptance.json, native-updater-final.json, source-tag-receipt.json, final-native-retention.json and publication controls/raw readback. Private runtime data and credentials are not committed.
 
 ## Blockers and unknowns
 
-- Root reviewed and merged exact unknown-ready69f4 and neutralcopya90c; author workspaces remain untouched. Production composition had no conflicts; only shared-plan append conflict was resolved retaining both sides.
-- Current Codex0.160.0 product permission catalog excludes suggest. No hidden-mode workaround or global default change is permitted; the intended real approval profile and per-session route require an applicability review.
-- Native diagnostic loopback preparation only proves a controlled upstream fixture; no installed failure/real provider acceptance is inferred. Full model/Goal matrix questions remain pending.
-- Bridge432 has now passed full Root static review and is included within this still-unfrozen batch. Unrelated Bot/group/mobile changes remain outside scope.
+- No blocking desktop release finding remains. Automatic restart draft restoration has not passed; exact manual restore/tab navigation passed. Separate HTML report preview was not reverified on543.8, while original report text/links/accepted state were read-only verified.
+- Socket QA Goal ended no_progress; the accepted scope is transport recovery and one actual operation/file, not Goal completion. Full model/Goal matrix questions remain pending and cloud browser login remains human-deferred.
+- Website /moxbots/download/ static publication is AVAILABLE_TO_EXISTING_OWNER_PENDING_ACK_AND_WEBSITE_PUBLICATION in work/release-queue/WEB-DOWNLOAD-0543-5438.json, owner01a12b99-7b38-78b1-831f-9c60257d386a. A durable queue entry does not claim notification, ACK or website acceptance. No Root Nginx/cloud/mobile/device mutation.
 
 ## Next step
 
-- Collect the final neutralcopy/version checks, freeze the four-source exact5435 candidate, save/push once with current project-sync handoff and create one PR/sourceCI. Build/install and actual native gates remain separate; never rebuild or resign5434.
+Desktop release complete. The existing website owner may publish the queued exact archive/static materials and record its own normal-TLS page acceptance. Later metadata-only main commits preserve the release tag/source/artifact mapping; no rebuild, resign, Apple resubmission, installation or repeated native acceptance is needed for this record correction.
+
+## Historical candidate preparation and failures
+
+The following R2–R4 preparation entries are retained as historical evidence. Their pending/hold statements describe those points in time and do not override the completed543.8 delivery above. Original failed candidates, logs, packages and rollback remain immutable.
 
 ## R2 next immutable5436 — 5435 original N02 failure
 
