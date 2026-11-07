@@ -1387,3 +1387,8 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exact intent dd972c3, unknown23d98cdd, reading1921e850 and remediation9f818331 (including e2e025c) atop remote main4ceeb2d21, preserving PR257 cleanup and PR258 revision/human-response fixes. Reserve0.5.43/build543.4 for a new immutable artifact; frozen543.3 and published542.6 remain unchanged. Combined checks, exactCI/currentMac ARM, remote main, signed artifact, safe maintenance install and each actual native acceptance remain separate. Original report owner alone currently runs authorized business; no Root UI/restart while active. No unknown replay/ledger edits/permission expansion/cloud/mobile/website deployment or unrelated Bot feature batching. Root record codex-release-intent-recovery-0543-20261107-82a4ca2f; private controls work/intent-recovery-integration-20261107/owner.
 
 R2真实验收补充：543.3原群报告已在同execution完成5项验收；真实502暴露turn_error提示笼统。本分支经原native terminal传递有界HTTP状态，原execution持久保存闭集只读failure说明，UI显示原因/下一步，保持原code/status及未知保护不变。10文件403回归和实际组件通过，下一批由同一桌面owner集成安装；不将543.3原报告成功视为追加改动已安装。
+
+
+## MB-MODEL-REJECTION-CAUSE-20261107 — durable wait is not cancellation
+
+543.6 原生有限 HTTP502 验收暴露恢复自己 paused 后 canRetry=false 被误当499；原执行仍 incomplete，未人工Stop。基于 main a650939d 的独立 codex/durable-rejection-cause-main-20261107 保留原始HTTP拒绝并补同步Stop接线；256unit/94integration/type/lint/分类通过，真实两协议基线RED。源码与本地验证完成，main/CI/新不可变包/安装/原会话/正式发布待验；543.6冻结失败制品保留，不原位改写。desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，本开发会话仅提交精确SHA交其现有PR260集成，不触发共享CI/构建/安装；不改业务数据、预算、权限、原账本或未知动作保护。完成标准与下一步见任务记录及 dev-docs/durable-rejection-cause-20261107/acceptance.md。

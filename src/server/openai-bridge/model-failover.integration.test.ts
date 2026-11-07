@@ -102,6 +102,37 @@ afterEach(async () => {
 });
 
 describe('model failover over real loopback HTTP', () => {
+  it.each(['anthropic', 'openai'] as const)('preserves a real HTTP 502 after the actual %s recovery owner pauses a long cooldown', async protocol => {
+    const provider = await fixture((_req, res) => {
+      res.writeHead(502, { 'content-type': 'application/json', 'retry-after': '3600' });
+      res.end(JSON.stringify({ error: { type: 'api_error', message: 'original long-cooldown upstream failure' } }));
+    });
+    let journal: ModelRecoveryState | undefined;
+    const recovery = new SessionModelRecovery({ read: () => journal,
+      write: async (next, expected, live) => {
+        if (!live() || journal !== expected) return false;
+        journal = next; return true;
+      },
+      current: () => ({ sdkSessionId: 'native-long-cooldown', routeIdentity: 'same-route', turnId: 'same-root' }),
+      isLive: () => true, prepare: async original => { await original.json(); },
+    });
+    // Match agent-session: a paused recovery revokes retries, not this live Query.
+    const controller = new ModelFailoverController({ scope: () => 'same-root', isActive: () => true,
+      resolveBackup: () => undefined, onSwitch: () => {}, recovery, retryDelaysMs: [0, 0, 0],
+      canRetry: () => recovery.readState()?.status !== 'paused' });
+    const config = target(provider, protocol);
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...config, modelFailover: controller }), logger: null });
+    const response = await handler(request());
+    expect(journal).toMatchObject({ status: 'paused', lastStatus: 502 });
+    expect(response.status).toBe(502);
+    expect(response.headers.get('x-should-retry')).toBe('false');
+    expect(await response.text()).toContain('original long-cooldown upstream failure');
+    const repeated = await handler(request());
+    expect(repeated.status).toBe(502);
+    expect(await repeated.text()).toContain('automatic_replay_blocked');
+    expect(provider.requests).toHaveLength(1);
+  });
+
   it('continues distinct same-root HTTP inference after long work and compaction without replaying delivered history', async () => {
     const provider = await fixture((_req, res) => json(res, anthropicText('Verified current step')));
     const config = target(provider, 'anthropic');

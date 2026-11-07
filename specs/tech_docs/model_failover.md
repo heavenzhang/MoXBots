@@ -76,3 +76,8 @@ exactscope首次失败只存在现有有界QueryRequestGuard admission row，不
 `currentModelRecoveryRoute()` 用 `auto-pool-same-tier-v1` 标识统一策略，不再把旧备用配置放入恢复身份。旧版本保存的等待 checkpoint 身份不匹配时沿原门禁暂停，保留进度；不会在新策略下自动重放旧任务。历史 transcript 中的 failoverMode/不可用原因仍可展示，不能恢复为当前配置。
 
 `verify-operation-scoped-recovery-loopback.ts --http-rejection` 将历史未知动作、连续四次真实 loopback HTTP 502、合法备用接管、后续原生工具执行和冷恢复放在同一真实 SDK 链中核验；可叠加 `--returned-history-gap` 验证原生结果已持久化但尚未投影到历史的间隙。两种模式不调用真实模型、不改变用户原会话。
+
+
+### 持久等待拒绝与取消的区分（2026-11-07）
+
+SessionModelRecovery.wait 拒绝本次等待可将自身置 paused 并返回 undefined；由此撤回 canRetry 只终止恢复，不代表仍存活的原 Query 已取消。此分支先检查原请求、route、root 与 owner 生命周期，活请求封闭并返回原始 HTTP 拒绝；真实 Stop（含 Request.signal abort 前的同步 interrupt）或归属撤销仍返回取消。相同 SDK 指纹保持封闭，不重新发送。此修复不新增预算、等待或业务权限。实际两协议 loopback 与取消反例见 dev-docs/durable-rejection-cause-20261107/acceptance.md；安装和正式发布另由原 owner 验收。
