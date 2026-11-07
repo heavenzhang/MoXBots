@@ -10,6 +10,7 @@ import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
 import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader';
 import { observeRecoveryDiagnostic, type RecoveryDiagnosticObserver } from './recovery-causal-diagnostics';
 import { isConnectionEstablishmentFailure } from './connection-retry';
+import { sealReceivedRejection } from './sealed-rejection-owner';
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
@@ -134,7 +135,12 @@ export class ModelFailoverController implements BridgeModelFailover {
         && prior.rejectionOwnerIdentity === requestIdentity
         && this.options.canSwitch?.() !== false) {
         const rejection = this.guard.rejectedResponse(prior.scope, requestKey);
-        if (rejection) return rejection;
+        if (rejection) return sealReceivedRejection(rejection, { isCurrent: () => {
+          const current = this.options.responseOwner?.();
+          return !request.signal.aborted && this.state === prior && !prior.retired
+            && current?.scope === prior.scope && current.identity === requestIdentity
+            && this.options.requestIdentity?.() === requestIdentity && this.options.canSwitch?.() !== false;
+        } });
       }
       return cancelled();
     }
@@ -499,7 +505,8 @@ export class ModelFailoverController implements BridgeModelFailover {
           if (state) state.rejectionOwnerIdentity = requestIdentity;
           lease.block();
           finish();
-          return this.guard.rejectedResponse(scope, fingerprint) ?? rejection;
+          const recorded = this.guard.rejectedResponse(scope, fingerprint);
+          return recorded ? sealReceivedRejection(recorded, { isCurrent: rejectionOwnerLive }) : rejection;
         }
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
         hasDurableRecovery = true;

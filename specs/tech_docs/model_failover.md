@@ -92,3 +92,10 @@ SessionModelRecovery.wait 拒绝本次等待可将自身置 paused 并返回 und
 
 
 Root安装接线补充：native的strict isCurrent/isLive以及wrapper.scope在恢复paused后均撤回，不能用测试里恒true的isActive代替。现有wrapper只对已建立root提供只读responseOwner(scope/identity)投影；它不建立root或选择候选。MF只在wait明确拒绝后封闭本次已收到的HTTP拒绝，并在有界body记账前后复核原token/Session/route/root/Stop。暂停后的相同已封闭指纹可读取原拒绝，但不同指纹、新推理、重试、stream和ContextRecovery继续使用原strict门禁；换root/route或真实Stop后连旧拒绝投影也不沿用。此只读证据不授予请求执行或未知工具重放权限。
+
+
+### Recovery pause and complete rejection ownership
+
+A recovery-only pause withdraws inference/retry admission, but must not erase a complete HTTP rejection already owned by that exact request. ModelFailover may attach an internal, nonserialized sealed-rejection capability only after the existing Query guard has bounded and stored the original error. The outer ContextRecovery wrapper may pass it through only while its original scope, route, state and request remaincurrent, the inner owner remainscurrent, and no abort, blocked ledger, background ambiguity or recovery conflict exists. Recheck these predicates after asynchronous errorbody sealing.
+
+Only the exact alreadysealed fingerprint may read that same terminal while paused. It never obtains a new upstream lease or business action. Scope/route/Query retirement, realStop/abort, a distinct fingerprint and arbitrary HTTPheaders cannot inherit or forge the capability. Native tool/unknown/Store/retry/stream admission remains unchanged. These source contracts still require installed-client acceptance on the full wrapper chain.
