@@ -2031,8 +2031,9 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
     const productSessionId = sessionId;
     const routeIdentity = () => JSON.stringify([configState.currentProviderEnv?.providerId,
       configState.currentProviderEnv?.baseUrl, configState.currentModel]);
-    const isCurrent = () => activeSessionBridgeToken === token && sessionId === productSessionId
-      && !lifecycleState.abortRequested && activeSessionModelRecovery?.readState()?.status !== 'paused';
+    const isCurrentOwner = () => activeSessionBridgeToken === token && sessionId === productSessionId
+      && !lifecycleState.abortRequested;
+    const isCurrent = () => isCurrentOwner() && activeSessionModelRecovery?.readState()?.status !== 'paused';
     if (contextRecoveryEnabled || failoverEnabled) {
       const nativeHistoryId = getCurrentProductSessionMetadata()?.sdkSessionId ?? productSessionId;
       let initialLedger: unknown;
@@ -2137,6 +2138,11 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
             readQueryBackgroundTasks(lifecycleState.query),
           ),
         recovery: activeSessionModelRecovery,
+        // Delivering a received rejection does not admit another inference.
+        // A recovery-only pause retains this owner; real Stop still revokes it.
+        isResponseOwnerActive: () => isCurrentOwner() && !builtinInterrupt.isInterrupting()
+          && sessionExecutionInferenceAllowed(productSessionId, getBuiltinCurrentTurnQueueId(),
+            readQueryBackgroundTasks(lifecycleState.query)),
         isLive: () =>
           isCurrent() && !builtinInterrupt.isInterrupting() &&
           sessionExecutionInferenceAllowed(

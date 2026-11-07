@@ -89,3 +89,6 @@ exactscope首次失败只存在现有有界QueryRequestGuard admission row，不
 ### 持久等待拒绝与取消的区分（2026-11-07）
 
 SessionModelRecovery.wait 拒绝本次等待可将自身置 paused 并返回 undefined；由此撤回 canRetry 只终止恢复，不代表仍存活的原 Query 已取消。此分支先检查原请求、route、root 与 owner 生命周期，活请求封闭并返回原始 HTTP 拒绝；真实 Stop（含 Request.signal abort 前的同步 interrupt）或归属撤销仍返回取消。相同 SDK 指纹保持封闭，不重新发送。此修复不新增预算、等待或业务权限。实际两协议 loopback 与取消反例见 dev-docs/durable-rejection-cause-20261107/acceptance.md；安装和正式发布另由原 owner 验收。
+
+
+Root安装接线补充：native的strict isCurrent/isLive以及wrapper.scope在恢复paused后均撤回，不能用测试里恒true的isActive代替。现有wrapper只对已建立root提供只读responseOwner(scope/identity)投影；它不建立root或选择候选。MF只在wait明确拒绝后封闭本次已收到的HTTP拒绝，并在有界body记账前后复核原token/Session/route/root/Stop。暂停后的相同已封闭指纹可读取原拒绝，但不同指纹、新推理、重试、stream和ContextRecovery继续使用原strict门禁；换root/route或真实Stop后连旧拒绝投影也不沿用。此只读证据不授予请求执行或未知工具重放权限。

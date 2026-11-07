@@ -50,3 +50,14 @@ Root merged5f4e once locally into existing release branch; only shared-plan appe
 Next: finish current finite native reading cases on5435 while preparing scoped combined reader checks, then freeze/push exact5436 source to existing PR260. Published5426/oldarchives remain immutable.
 
 R2 combined check result: 123unit/24actual-adapter-and-Store integration (147total/7files), complete TypeScript/scopedlint/classification/diff all PASS; 3version-contract tests PASS. Preserved producer113unit/33integration original log hashes. Existing coldN02native and live detail/transport gates remain pending, no main/public admission.
+
+
+## R3 / build543.7: exact native rejection response owner
+
+5436 build/sign/Apple/archive/install each once, exactCI9success/iOSskip, N01–N06 necessary native UI coverage accepted with versionlimits. Original7b fourfiles/START unchanged, Codex approvalonce/file/terminal, live readingdetails retained throughterminal, original completedreport reopened readonly, 20Agent/global/pool retained. Temporaryloopback providers disabled; unsent businessdraft manually restoredexact, automaticrestartrestore notPASS. Native finiteHTTP502 with RetryAfter3600 insteadbecame499, so5436main/public remainHOLD.
+
+Root reviewed remote66b663155d72d177868fe2ee9298ae2b169fa6ab (256unit/94integration originalhashlogs) and merged componentlocally. Independent Root exactpaused-isCurrent regression still RED against that source, preserved privately; producerinitialtests didnotreplicate isActive/scope withdrawal. Root closesactual wiring with a narrow same-root/route responseproof that can only return a bounded alreadyreceived rejection or sealed exactfingerprint. Strict isLive/newrequest/retry/context protections unchanged; realabort/synchronousinterrupt/retiredtoken/root/route stillcancel, differentfingerprintpaused cannotdispatch. No businessreplay, unknownclear, newproviderpermission or retrybudget. Version543.7 reserved, sourcefreeze/CI/formal/install/main/public stillpending independently.
+
+Verification: Root firstactualwire RED499vs502 preserved, corrected realSessionModelRecovery + two realHTTP protocols/builtinwrapper and negative controls; final exactcombined checks recorded aftercompletion. Scopeonlynecessary bridge/wiring/tests/docs/buildnumber. Next: finish exactsourcechecks, freeze/push once existingPR260; newimmutablelocalcandidate and actualfinitecause/recovery acceptance beforemain/public.
+
+R3 final source checks: actual278unit/4files +104integration/4files, corrected-const3exactwirecases, complete type/scopedlint/classification/3versioncontracts/diff PASS. OriginalRootWIP exactwireRED and initialtwo prefer-const lintfail preserved privately, corrected withoutweakening assertions. Renderer/shared/Codex adapter/package-lock exactunchangedfrom5436; nativeversioncoverage remains explicitlyscoped. Sourceaccepted fornew543.7localcandidate, notmain/publicadmission.

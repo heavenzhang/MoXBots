@@ -108,16 +108,18 @@ describe('model failover over real loopback HTTP', () => {
       res.end(JSON.stringify({ error: { type: 'api_error', message: 'original long-cooldown upstream failure' } }));
     });
     let journal: ModelRecoveryState | undefined;
-    const recovery = new SessionModelRecovery({ read: () => journal,
+    // Actual native wiring withdraws isActive as well as canRetry on pause.
+    const isCurrent = () => recovery?.readState()?.status !== 'paused';
+    const recovery: SessionModelRecovery = new SessionModelRecovery({ read: () => journal,
       write: async (next, expected, live) => {
         if (!live() || journal !== expected) return false;
         journal = next; return true;
       },
       current: () => ({ sdkSessionId: 'native-long-cooldown', routeIdentity: 'same-route', turnId: 'same-root' }),
-      isLive: () => true, prepare: async original => { await original.json(); },
+      isLive: isCurrent, prepare: async original => { await original.json(); },
     });
-    // Match agent-session: a paused recovery revokes retries, not this live Query.
-    const controller = new ModelFailoverController({ scope: () => 'same-root', isActive: () => true,
+    const controller = new ModelFailoverController({ scope: () => 'same-root', isActive: isCurrent,
+      requestIdentity: () => 'same-route', responseOwner: () => ({ scope: 'same-root', identity: 'same-route' }),
       resolveBackup: () => undefined, onSwitch: () => {}, recovery, retryDelaysMs: [0, 0, 0],
       canRetry: () => recovery.readState()?.status !== 'paused' });
     const config = target(provider, protocol);
@@ -130,6 +132,8 @@ describe('model failover over real loopback HTTP', () => {
     const repeated = await handler(request());
     expect(repeated.status).toBe(502);
     expect(await repeated.text()).toContain('automatic_replay_blocked');
+    const distinct = await handler(request([{ role: 'user', content: 'Different input is not admitted while paused.' }]));
+    expect(distinct.status).toBe(499);
     expect(provider.requests).toHaveLength(1);
   });
 

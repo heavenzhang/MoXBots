@@ -22,6 +22,61 @@ const sse = (events: string[]) => new Response(events.map(type => `event: ${type
 afterEach(() => vi.useRealTimers());
 
 describe('durable inference waiting on the original Query lease', () => {
+  it.each([429, 502, 503])('only exposes sealed HTTP %s under the exact response owner while native isActive is paused', async status => {
+    let paused = false; let stopped = false; let route = 'original'; let scope = 'root';
+    const recovery = hooks(async () => { paused = true; return undefined; });
+    const execute = vi.fn(async () => Response.json({ error: { message: 'original received rejection' } },
+      { status, headers: { 'retry-after': '3600' } }));
+    const controller = makeController(recovery, { isActive: () => !paused && !stopped,
+      responseOwner: () => stopped ? undefined : { scope, identity: route }, requestIdentity: () => route,
+      scope: () => scope, canRetry: () => !paused });
+    expect((await controller.run(request(), primary, execute, 'known')).status).toBe(status);
+    expect((await controller.run(request(), primary, execute, 'known')).status).toBe(status);
+    expect((await controller.run(request(), primary, execute, 'distinct')).status).toBe(499);
+    route = 'replacement';
+    expect((await controller.run(request(), primary, execute, 'known')).status).toBe(499);
+    route = 'original'; scope = 'replacement';
+    expect((await controller.run(request(), primary, execute, 'known')).status).toBe(499);
+    scope = 'root'; stopped = true;
+    expect((await controller.run(request(), primary, execute, 'known')).status).toBe(499);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it.each(['abort', 'synchronous Stop', 'route', 'scope', 'retired owner'] as const)('does not expose a rejection after %s during the recovery decision', async revoked => {
+    let paused = false; let stopped = false; let route = 'original'; let scope = 'root';
+    const abort = new AbortController();
+    const recovery = hooks(async () => {
+      paused = true;
+      if (revoked === 'abort') abort.abort();
+      else if (revoked === 'synchronous Stop' || revoked === 'retired owner') stopped = true;
+      else if (revoked === 'route') route = 'replacement';
+      else scope = 'replacement';
+      return undefined;
+    });
+    const execute = vi.fn(async () => transient({ 'retry-after': '3600' }));
+    const controller = makeController(recovery, { isActive: () => !paused && !stopped,
+      responseOwner: () => stopped ? undefined : { scope, identity: route }, requestIdentity: () => route,
+      scope: () => scope, canRetry: () => !paused });
+    expect((await controller.run(request(abort.signal), primary, execute, 'revoked')).status).toBe(499);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
+  it('rechecks the response owner after asynchronously sealing the error body', async () => {
+    let paused = false; let stopped = false;
+    const recovery = hooks(async () => { paused = true; return undefined; });
+    const execute = vi.fn(async () => transient({ 'retry-after': '3600' }));
+    const controller = makeController(recovery, { isActive: () => !paused && !stopped,
+      canRetry: () => !paused, requestIdentity: () => 'original',
+      responseOwner: () => {
+        if (stopped) return undefined;
+        // Model a synchronous Stop arriving at the following async boundary.
+        queueMicrotask(() => { stopped = true; });
+        return { scope: 'root', identity: 'original' };
+      } });
+    expect((await controller.run(request(), primary, execute, 'stop-while-sealing')).status).toBe(499);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+
   it.each([429, 502, 503])('retains HTTP %s when declining recovery withdraws only retry authority', async status => {
     let canRetry = true;
     const recovery = hooks(async () => { canRetry = false; return undefined; });
