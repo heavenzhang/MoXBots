@@ -60,10 +60,10 @@ test('immutable manifest/script names and projection mirror match exact bytes', 
     assert.ok(name.includes(sha(bytes).slice(0, 12)));
   }
   assert.deepEqual(JSON.parse(fs.readFileSync(path.join(root, 'trial-release.json'))), manifest);
-  assert.equal(manifest.macArm64.version, '0.5.42');
-  assert.equal(manifest.macArm64.build, '542.6');
-  assert.equal(manifest.macArm64.bytes, 302337663);
-  assert.equal(manifest.macArm64.sourceCommit, '34fe85d41660b361232015c54e33ef4bfffa1d57');
+  assert.equal(manifest.macArm64.version, '0.5.44');
+  assert.equal(manifest.macArm64.build, '544.1');
+  assert.equal(manifest.macArm64.bytes, 302348336);
+  assert.equal(manifest.macArm64.sourceCommit, '0caae7bcbdd950935dd5b80074c0b4f56a9d331e');
   assert.deepEqual(manifest.windowsX64, { status: 'preparing' });
 });
 
@@ -71,14 +71,14 @@ test('Mac displays accepted archive identity, size, signing, notes and source', 
   const s = await render();
   assert.equal(s.document.body.dataset.releaseReady, 'true');
   assert.equal(s.get('download-link').href, manifest.macArm64.url);
-  assert.equal(s.get('release-version').textContent, '0.5.42');
+  assert.equal(s.get('release-version').textContent, '0.5.44');
   assert.equal(s.get('release-size').textContent, '302.3 MB');
   assert.equal(s.get('release-sha').textContent, manifest.macArm64.sha256);
   assert.equal(s.get('release-signing').textContent, 'Developer ID · 已公证');
   assert.equal(s.get('release-source').href, `https://github.com/heavenzhang/MoXBots/tree/${manifest.macArm64.sourceCommit}`);
   assert.equal(s.get('release-notes').href, manifest.macArm64.notesUrl);
   assert.equal(s.get('release-details').hidden, false);
-  assert.match(s.get('release-note').textContent, /542\.6/);
+  assert.match(s.get('release-note').textContent, /544\.1/);
   assert.equal(s.document.body.dataset.windowsReleaseReady, 'false');
   assert.equal(s.get('windows-download-link').href, undefined);
 });
@@ -86,7 +86,7 @@ test('Mac displays accepted archive identity, size, signing, notes and source', 
 const archive = manifest.macArm64.url;
 for (const url of [
   archive.replace('https:', 'http:'), archive.replace('101.42.11.29', 'evil.example'),
-  archive + '?token=bad', archive + '#bad', archive.replace('/0.5.42/', '/0.5.35/'),
+  archive + '?token=bad', archive + '#bad', archive.replace('/0.5.44/', '/0.5.35/'),
   archive.replace(manifest.macArm64.sha256, '0'.repeat(64)),
   'https://101.42.11.29/updates/.private/manifest.json',
   'https://101.42.11.29/updates/releases/0.5.27/../../private/a.tar.gz',
@@ -154,11 +154,12 @@ test('clipboard copies the accepted hash and shows a readable fallback on failur
 
 test('current format/history and release notes no longer advertise old current packages', () => {
   assert.match(html, /TAR\.GZ · 内含 MoXBots\.app/);
+  assert.match(html, /id="v0-5-44"/);
   assert.match(html, /id="v0-5-42"/);
   assert.match(html, /id="v0-5-36"/);
   assert.doesNotMatch(html, /当前官网 macOS 手动安装包为此版本/);
-  const notes = fs.readFileSync(path.join(root, 'download/notes/0.5.42.html'), 'utf8');
+  const notes = fs.readFileSync(path.join(root, 'download/notes/0.5.44.html'), 'utf8');
   assert.ok(notes.includes(manifest.macArm64.sha256));
   assert.ok(notes.includes(manifest.macArm64.sourceCommit));
-  assert.match(notes, /手机真实业务和 TestFlight 分别跟踪/);
+  assert.match(notes, /手机真实业务另行验收/);
 });
