@@ -457,7 +457,20 @@ jobs:
           printf 'ci placeholder\n' > src-tauri/resources/playwright-control/@playwright/mcp/.ci-placeholder
           printf 'ci placeholder\n' > src-tauri/resources/playwright-control/playwright/.ci-placeholder
           printf 'ci placeholder\n' > src-tauri/resources/playwright-control/playwright-core/.ci-placeholder
-      - run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Run Rust suite and mandatory isolated process stress
+        run: |
+          set -euo pipefail
+          # BEGIN REQUIRED CREDENTIAL ROUTE STRESS ISOLATION
+          # The unchanged stress case owns a 120s budget for 200 rounds of
+          # four real processes. Keep it out of competing libtest workloads;
+          # it is still mandatory and runs once, with every original bound.
+          stress='agent_network::credential_slots::tests::real_process_commits_serialize_without_losing_routes'
+          list="${RUNNER_TEMP:?}/credential-route-stress-test-list.txt"
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib "$stress" -- --exact --list | tee "$list"
+          test "$(grep -Fxc "$stress: test" "$list")" -eq 1
+          cargo test --manifest-path src-tauri/Cargo.toml --locked -- --skip "$stress"
+          cargo test --manifest-path src-tauri/Cargo.toml --locked --lib "$stress" -- --exact
+          # END REQUIRED CREDENTIAL ROUTE STRESS ISOLATION
       - name: Validate isolated MoX bot Rust profile
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked app_profile_tests
         env:
