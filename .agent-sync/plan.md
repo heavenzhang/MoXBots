@@ -1342,9 +1342,9 @@ MB-CHAT-JITTER-20261106 Root release0.5.42/build542.6: exactproducerC3/062 with 
 
 - [x] CARE-01 源码：ConfigProvider真实名册、定义/记忆文件编辑、技能scope和既有设置，独立只读检查与正式工作dialog分开。
 - [x] CARE-02 本地验证：127 DOM、28 unit、12 Rust CRUD及type/lint；独立审阅修复草稿和安装保护。验收记录dev-docs/bot-care-20261106/acceptance.md。
-- [ ] CARE-03 集成：工作分支codex/bot-care-20261106，最新主干同步、精确远端handoff和实际main包含待核实。依赖CARE-02。
-- [ ] CARE-04 原生发布/验收：desktop/macOS-arm64/updater/sharedCI/main唯一负责人沿用01a12bc2-907a-7702-b6dd-788225c5dfe4；下一未冻结批，版本由owner分配，不替换543.2或已有制品。依赖CARE-03及owner批次。
-- [ ] CARE-05 真实效果：在包含成果的原生客户端验证受控Bot定义/技能/记忆持久化、作用域、草稿和正式工作/检查分离，再给用户真实截图。浏览器原型或空态不代替此项。
+- [x] CARE-03 集成：producer56902027经Root精确source0caae7bc/PR262已正常合入release-mainf6762550，整树与实际受测023d118相同；source/main自动CI各9success/iOS条件skip。依赖CARE-02已满足。
+- [x] CARE-04 原生发布/验收：唯一owner01a12bc2完成0.5.44/build544.1新不可变包、本地安装及同制品101正式通道发布；v0.5.44/原件/旧5438备份回滚保留。依赖CARE-03已满足。
+- [x] CARE-05 真实效果：实际签名544.1受控Bot A/B定义/记忆/技能完整保存、取消零写、重开重启、技能启停持久化、scope/草稿身份保护、只读检查/正式dialog分离与真实截图PASS；原开发已独立原生复核。自动草稿重启恢复未PASS，完整Goal/model不冒验收。
 
 本任务记录.agent-sync/tasks/codex-bot-care-20261106-24b5927a.md。无云、网站或移动端部署；当前开发不操作正式工作数据。
 
@@ -1456,3 +1456,19 @@ Sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2-907a-7702-b6dd-7882
 Root169focused tests (134DOM/28unit/7real isolatedGlobalSidecarHTTP), fulltype/scopedlint/profileVitebuild and3versioncontracts PASS. Firstclassification failure is preserved: new credential-free childprocess test missing from registry. Root registers only that exact tempHOME/scrubbed-env/no-prewarm/child-no-egress fixture path under the existing policy; default childprocess rejection/testcategories/workflow gates unchanged, classificationPASS. Producer13RustCRUD remains reported evidence until exact CI supplies Root platform validation.
 
 Allocate next immutable0.5.44/build544.1; eight version manifests/locks coherent, no dependency change. Source/Rootlocal tests, exactCI/main, one formal signed/notarized artifact, fresh maintenance/backuprollback installation and actual A/B native acceptance remain separate gates. Native checks must cover full definition/memory save-reopen/cancel, localB skill edit/install/toggle persistence with A/global unchanged, draft/identity/busy protection, readonly checks without task/model execution, and preselected formal-work dialog cancellation. Real UI screenshots required; no mock/HTTP fixture or ordinary model reply substitutes. Same accepted archive alone may reach101 updater; existing website/cloud/mobile owner01a12b99 retains independent targets. Root task .agent-sync/tasks/codex-release-bot-care-20261107-29289e71.md; private controls work/bot-care-root-intake-20261107/owner.
+
+
+## MB-BOT-CARE-20261106 Root native acceptance 544.1
+
+Signed installed0.5.44/build544.1 passed actual controlled A/B native acceptance: definition cancel/Escape zero-write and full save/reopen/restart, memory cancel without directory creation then full save/reopen/restart, selected-Bot local skill import/edit/save/reopen, disabled and enabled persistence across two normal restarts. Existing business data and20originalAgentobjects retained;156sessions/657history-ledger hashes exact. Identity/draft switching guards, readonly configuration checks without task/model and existing formal-work dialog with B selected/empty input/cancel passed. Real native AX/screenshots are private receipts, not prototype evidence.
+
+Scope precision: startup Cuse projection changed one global binary to the current signed bundle as existing code prescribes; all1569otherbaselineentries exact. Skill saved through existing canonical YAML/body serialization, full content retained. Automatic draft restoration across restart is not passed; original unsent draft was restored manually and tab navigation retained. No business/model/Goal or phone/cloud acceptance claimed. Root UI window explicitly returned to the original developer for independent final review; Root alone retains the updater publisher.
+
+Current101publication is complete through the existing single externalGET/CAS pipeline; all postchecks passed and only the owned lock was released. No competing publisher is allowed. Immutable release source0caae7bcbdd950935dd5b80074c0b4f56a9d331e, tree3a315887f7aa46686e2f976feffa966c81abe6c2; annotatedv0.5.44 object6b375a2228c7156e87819a20d2f52aa79d4a253e peels to release-mainf676255050e8210c9f913afae86ecf70dd986a72. Archive302348336B SHA256e305db5708c6bd56a213e51139d01c2e02f6072a3a4e342c6ea2870dea2a3eec. Later documentation commits do not redefine this frozen mapping.
+
+
+### Bot Care 544.1 delivery closeout
+
+101正式更新通道已实际完成：唯一stage、一次normalTLS完整外部GET302348336B（TLSverify0、无proxy/redirect，精确SHA与生产签名PASS）、原始body/header/metadata/stdoutstderr审阅、existingstable5438备份+expectedSHA原子CAS、manifest200/no-store、两Range206精确字节、隐藏404/unsupported204、仅自有锁释放全部PASS。manifestSHA256094950f8ef0c954eacafab9b80293deffeeb32991bb92ba22d50af129271b960；旧stable备份/srv/moxbots/updates/.history/0544-5441-previous-stable.json SHA256f0d87d37bd209f1ca3369e3470ccffc080382f5568e1cab386f2ff3476806dd4，旧5438archive不变。正式路径https://101.42.11.29/updates/stable/darwin-aarch64.json，archive位于/updates/releases/0.5.44/e305db5708c6bd56a213e51139d01c2e02f6072a3a4e342c6ea2870dea2a3eec-MoXBots.app.tar.gz。
+
+Original developer independently reviewed actual native data/skill and formal-dialog cancellation after explicit UI return; no product content write or business send,156SessionIDs exact. CARE-03/04/05 are complete within the finite task scope. Precise source/main/tag/archive/native/public evidence and reviewed limitations: dev-docs/bot-care-20261106/release-0544.md. Website queue WEB-DOWNLOAD-0544-5441 remains pending its original01a12b99 owner; no website claim follows desktop publication. This closeout changes documentation only; later metadata main commits do not redefine release-mainf676 or the installed/signed archive.
