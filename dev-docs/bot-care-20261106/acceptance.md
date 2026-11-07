@@ -48,3 +48,7 @@ The creation draft uses an explicit Save/Cancel dialog, not FilePreviewModal's a
 Development layout fixture: run Vite with repository root (`vite .`) and open `dev-docs/bot-care-20261106/layout-check.html`; it uses a synthetic roster and leaves native file operations unavailable. It is a layout check only. Do not use it as the requested real-client result.
 
 Desktop owner is preparing the separate 543.5 repair batch. No Bot management source has been admitted to that frozen batch, no Bot management version is allocated by this producer, and the real-client persistence checks/screenshots remain pending the next admitted desktop candidate.
+
+## Post-543.8 intake refresh
+
+On 2026-11-07, the sole desktop owner completed release 543.8. Remote main f0913c7bd68d94beea95078b97483001642340c7 still does not contain Bot management. The producer merged that baseline, preserving both shared-plan append records; no source-code conflict occurred. The same 169-test cohort, full TypeScript and MoXBots-profile renderer build passed again. No Bot management version or native artifact has yet been allocated. The next required action is independent source intake by the existing desktop owner, then the native controlled A/B acceptance above.
