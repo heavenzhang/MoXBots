@@ -1301,6 +1301,7 @@ export default function TabProvider({
       );
     });
   }, [apiGetJson, tabId]);
+  const [recoveryReviewRevision, setRecoveryReviewRevision] = useState<string>();
   const [systemInitInfo, setSystemInitInfo] = useState<SystemInitInfo | null>(
     null,
   );
@@ -1403,6 +1404,7 @@ export default function TabProvider({
       setAgentPlanTodos(null);
       setSdkSlashCommands([]);
       setSystemInitInfo(null);
+      setRecoveryReviewRevision(undefined);
       setMcpEffectiveSnapshot(null);
     }
   }, [sessionId, setPendingDesktopMessages]);
@@ -3043,8 +3045,15 @@ export default function TabProvider({
         }
 
         case 'chat:status': {
-          const payload = data as { sessionId?: string; sessionState: SessionState; hasBackgroundWork?: boolean; hasNativeWork?: boolean } | null;
+          const payload = data as { sessionId?: string; sessionState: SessionState; hasBackgroundWork?: boolean; hasNativeWork?: boolean; recoveryReviewRevision?: string } | null;
           if (payload?.sessionId && !shouldAcceptInteractiveEvent(payload.sessionId)) break;
+          // Accept only an explicitly scoped current-Session readiness hint.
+          // Same revision is idempotent; unrelated status updates do not retry.
+          if (payload?.sessionId === currentSessionIdRef.current
+            && typeof payload.recoveryReviewRevision === 'string'
+            && payload.recoveryReviewRevision.length > 0 && payload.recoveryReviewRevision.length <= 256) {
+            setRecoveryReviewRevision(payload.recoveryReviewRevision);
+          }
           if (payload && (Object.hasOwn(payload, 'hasBackgroundWork') || Object.hasOwn(payload, 'hasNativeWork'))) {
             const targetId = payload.sessionId ?? currentSessionIdRef.current;
             setRuntimeActivity(previous => ({ sessionId: targetId,
@@ -7381,6 +7390,7 @@ export default function TabProvider({
       sessionRuntimeSessionId,
       sessionMeta,
       systemInitInfo,
+      recoveryReviewRevision,
       mcpEffectiveSnapshot,
       sdkSlashCommands,
       runtimeDiagnostics,
@@ -7445,6 +7455,7 @@ export default function TabProvider({
       sessionRuntimeSessionId,
       sessionMeta,
       systemInitInfo,
+      recoveryReviewRevision,
       mcpEffectiveSnapshot,
       sdkSlashCommands,
       runtimeDiagnostics,

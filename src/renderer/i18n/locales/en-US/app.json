@@ -2094,8 +2094,8 @@
         "modelAccess": "The model service denied access. Check the current model login, credentials or permissions before continuing.",
         "modelRequest": "The model service rejected this request. Check the model configuration and input, then continue in this chat.",
         "compaction": "Context compaction failed. Progress was preserved. Reduce the input or tool output before continuing.",
-        "context": "The model context is full. Compact the history or reduce the input before continuing.",
-        "replay": "A previous operation outcome remains unverified, so repeat execution was prevented. Check its actual result and affected steps in this chat."
+        "context": "The context recovery check did not pass. This turn stopped and progress was preserved. Check the specific error and any pending operations before continuing the unfinished steps.",
+        "replay": "This model request cannot be repeated automatically. Check its result before continuing the unfinished steps."
       },
       "reasons": {
         "stopped": "This execution turn was stopped",

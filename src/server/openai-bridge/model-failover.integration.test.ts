@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Stream as AnthropicStream } from '@anthropic-ai/sdk/core/streaming';
 import { Response as UpstreamResponse } from 'undici';
 import { createBridgeHandler } from './handler';
-import { ContextRecoveryController } from './context-recovery';
+import { ContextRecoveryController, recoveryActionHash } from './context-recovery';
 import { ModelFailoverController, type InferenceRecoveryHooks } from './model-failover';
 import type { UpstreamConfig } from './types/bridge';
 import type { AnthropicRequest } from './types/anthropic';
@@ -102,6 +102,41 @@ afterEach(async () => {
 });
 
 describe('model failover over real loopback HTTP', () => {
+  it.each(['anthropic', 'openai'] as const)('preserves a real HTTP 502 after the actual %s recovery owner pauses a long cooldown', async protocol => {
+    const provider = await fixture((_req, res) => {
+      res.writeHead(502, { 'content-type': 'application/json', 'retry-after': '3600' });
+      res.end(JSON.stringify({ error: { type: 'api_error', message: 'original long-cooldown upstream failure' } }));
+    });
+    let journal: ModelRecoveryState | undefined;
+    // Actual native wiring withdraws isActive as well as canRetry on pause.
+    const isCurrent = () => recovery?.readState()?.status !== 'paused';
+    const recovery: SessionModelRecovery = new SessionModelRecovery({ read: () => journal,
+      write: async (next, expected, live) => {
+        if (!live() || journal !== expected) return false;
+        journal = next; return true;
+      },
+      current: () => ({ sdkSessionId: 'native-long-cooldown', routeIdentity: 'same-route', turnId: 'same-root' }),
+      isLive: isCurrent, prepare: async original => { await original.json(); },
+    });
+    const controller = new ModelFailoverController({ scope: () => 'same-root', isActive: isCurrent,
+      requestIdentity: () => 'same-route', responseOwner: () => ({ scope: 'same-root', identity: 'same-route' }),
+      resolveBackup: () => undefined, onSwitch: () => {}, recovery, retryDelaysMs: [0, 0, 0],
+      canRetry: () => recovery.readState()?.status !== 'paused' });
+    const config = target(provider, protocol);
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...config, modelFailover: controller }), logger: null });
+    const response = await handler(request());
+    expect(journal).toMatchObject({ status: 'paused', lastStatus: 502 });
+    expect(response.status).toBe(502);
+    expect(response.headers.get('x-should-retry')).toBe('false');
+    expect(await response.text()).toContain('original long-cooldown upstream failure');
+    const repeated = await handler(request());
+    expect(repeated.status).toBe(502);
+    expect(await repeated.text()).toContain('automatic_replay_blocked');
+    const distinct = await handler(request([{ role: 'user', content: 'Different input is not admitted while paused.' }]));
+    expect(distinct.status).toBe(499);
+    expect(provider.requests).toHaveLength(1);
+  });
+
   it('continues distinct same-root HTTP inference after long work and compaction without replaying delivered history', async () => {
     const provider = await fixture((_req, res) => json(res, anthropicText('Verified current step')));
     const config = target(provider, 'anthropic');
@@ -188,6 +223,86 @@ describe('model failover over real loopback HTTP', () => {
     expect(backupFixture.requests).toHaveLength(1);
     expect(notices).toEqual(['backup-fixture']);
   });
+
+  it.each([false, true])('recovers a new client-tool inference after a real pre-header socket close (stream=%s)', async stream => {
+    let calls = 0;
+    const primary = await fixture((_req, res) => {
+      if (++calls === 1) res.destroy();
+      else if (stream) {
+        res.writeHead(200, { 'content-type': 'text/event-stream' });
+        res.end('data: '+JSON.stringify({ id: 'completed', choices: [{ index: 0, delta: { content: 'fresh inference completed' }, finish_reason: 'stop' }] })+'\n\ndata: [DONE]\n\n');
+      } else json(res, openaiText('chat_completions', 'fresh inference completed'));
+    });
+    const context = new ContextRecoveryController({ scope: () => 'pre-header-root',
+      isActive: () => true, canRecover: () => true, backup: async () => 'archive://fixture',
+      initialLedger: { version: 1, completed: [], uncertain: [recoveryActionHash('increment_counter', {})],
+        denied: [], blocked: false, projectionActive: false, streamArmedOnly: false } });
+    const failover = new ModelFailoverController({ scope: () => 'pre-header-root',
+      canRetry: () => context.canRetryInference(), canRetryConnection: () => true,
+      canRetryPreResponse: () => context.canRetryRejectedInference(),
+      resolveBackup: () => undefined, onSwitch: () => { throw new Error('manual route must remain'); },
+      retryDelaysMs: [0, 0, 0] });
+    const handler = createBridgeHandler({ getUpstreamConfig: () => ({ ...target(primary, 'openai'),
+      contextRecovery: context, modelFailover: failover }), logger: null });
+    const history: AnthropicRequest['messages'] = [
+      { role: 'user', content: userText },
+      { role: 'assistant', content: [{ type: 'tool_use', id: 'old-write', name: 'increment_counter', input: {} }] },
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'old-write', content: 'outcome unknown', is_error: true }] },
+    ];
+    const response = await handler(request(history, undefined, stream));
+    expect(response.status).toBe(200);
+    const output = await response.text();
+    expect(output).toContain('fresh inference completed');
+    if (stream) expect(output).toContain('message_stop');
+    expect(primary.requests).toHaveLength(2);
+    expect(context.canRetryInference()).toBe(false);
+    expect(context.inspectActionLedger().uncertainCount).toBe(1);
+    const ledger = context.inspectActionLedger();
+    expect((await handler(request(history, undefined, stream))).status).toBe(409);
+    expect(primary.requests).toHaveLength(2);
+    expect(context.inspectActionLedger()).toEqual(ledger);
+  });
+
+  it.each(['exhausted', 'owner-denied', 'unsafe-history', 'after-headers', 'partial-stream', 'responses', 'redirect'] as const)(
+    'bounds real pre-response recovery for %s without weakening old operation protection', async kind => {
+      const primary = await fixture((req, res) => {
+        if (kind === 'partial-stream') {
+          res.writeHead(200, { 'content-type': 'text/event-stream' });
+          res.write('data: '+JSON.stringify({ id: 'partial', choices: [{ index: 0, delta: { content: 'partial output' }, finish_reason: null }] })+'\n\n');
+          setImmediate(() => res.destroy());
+        } else if (kind === 'after-headers') {
+          res.writeHead(200, { 'content-type': 'application/json' });
+          res.write('{"id":"partial"');
+          setImmediate(() => res.destroy());
+        } else if (kind === 'redirect' && req.path === '/chat/completions') {
+          res.writeHead(307, { location: '/redirected' }); res.end();
+        } else res.destroy();
+      });
+      const hash = recoveryActionHash('increment_counter', {});
+      const context = new ContextRecoveryController({ scope: () => 'bounded-pre-header', isActive: () => true,
+        backup: async () => 'archive://fixture', initialLedger: { version: 1, completed: [], uncertain: [hash],
+          denied: [], blocked: false, projectionActive: false, streamArmedOnly: false } });
+      const failover = new ModelFailoverController({ scope: () => 'bounded-pre-header', canRetryConnection: () => true,
+        canRetry: () => context.canRetryInference(), canRetryPreResponse: () => kind !== 'owner-denied' && context.canRetryRejectedInference(),
+        resolveBackup: () => undefined, onSwitch: vi.fn(), retryDelaysMs: [0, 0, 0] });
+      const handler = createBridgeHandler({ getUpstreamConfig: () => ({
+        ...target(primary, 'openai', kind === 'responses' ? 'responses' : 'chat_completions'),
+        contextRecovery: context, modelFailover: failover }), logger: null });
+      const history: AnthropicRequest['messages'] = [{ role: 'user', content: 'Continue the independent task.' }];
+      if (kind === 'unsafe-history') history.push(
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'new-untracked-write', name: 'different_write', input: {} }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'new-untracked-write', content: 'unknown', is_error: true }] });
+      const response = await handler(request(history, undefined, kind === 'partial-stream'));
+      const output = await response.text();
+      if (kind === 'partial-stream') { expect(output).toContain('partial output'); expect(output).toContain('automatic_replay_blocked'); }
+      else expect(response.status).not.toBe(200);
+      const expected = kind === 'exhausted' ? 4 : kind === 'redirect' ? 2 : 1;
+      expect(primary.requests).toHaveLength(expected);
+      expect(context.inspectActionLedger().uncertainActions.some(action => action.actionId === hash)).toBe(true);
+      expect(await context.authorizeTool('increment_counter', {})).toContain('blocked');
+      await (await handler(request(history, undefined, kind === 'partial-stream'))).text();
+      expect(primary.requests).toHaveLength(expected);
+    });
 
   it('keeps the generic header bound when uncertain tool history fences fast recovery', async () => {
     const primary = await fixture((_req, res) => {

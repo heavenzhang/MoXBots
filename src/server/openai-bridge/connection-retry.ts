@@ -50,6 +50,7 @@ class InitialConnectionRetryAgent extends RetryAgent {
     if (++this.dispatches > 1) return this.pool.dispatch(options, handler);
     return super.dispatch(options, handler);
   }
+  isInitialDispatch(): boolean { return this.dispatches === 1; }
   hasInitialConnectionFailure(error: unknown): boolean {
     return this.dispatches === 1 && isConnectionEstablishmentFailure(error);
   }
@@ -59,6 +60,20 @@ class InitialConnectionRetryAgent extends RetryAgent {
  * failure cannot authorize resending that first request to a model candidate. */
 export function hasInitialConnectionFailure(dispatcher: Dispatcher | undefined, error: unknown): boolean {
   return dispatcher instanceof InitialConnectionRetryAgent && dispatcher.hasInitialConnectionFailure(error);
+}
+
+/** Caller must be the fetch catch before response headers. This permits only
+ * bounded client-side inference retries, not a claim that POST was not sent.
+ * Redirects and connector failures keep their existing separate policies. */
+export function hasInitialPreResponseSocketFailure(dispatcher: Dispatcher | undefined, error: unknown): boolean {
+  if (!(dispatcher instanceof InitialConnectionRetryAgent) || !dispatcher.isInitialDispatch()
+      || isConnectionEstablishmentFailure(error)) return false;
+  for (let depth = 0; depth < 4 && error instanceof Error; depth++) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code === 'UND_ERR_SOCKET' || code === 'ECONNRESET' || code === 'EPIPE') return true;
+    error = error.cause;
+  }
+  return false;
 }
 
 /**

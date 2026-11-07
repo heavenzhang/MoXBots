@@ -36,9 +36,17 @@
 
 候选链截断前优先不同 origin 的故障域；同一 origin 的不同路径共享故障记录，路径差异不能证明独立供应商。只有真实请求结果更新进程内有界健康记录（最多 256 个 origin，失败冷却三十秒），不发探测流量、不写入配置、不声称永久健康。新轮路由避让正在冷却的 origin；冷却到期恢复候选资格，完整响应消费成功才记录成功。独立故障域优先不越过用户池成员、同档、history 和能力限制。
 
-旧操作结果未知仍禁止断流重放、上下文压缩和持久长等待。对于已被原 Query 接纳的新推理，除下文原生连接建立证明外，只有 transport 在该次 attempt 实际收到上游非成功 HTTP、并完整有界读取错误正文后，才可沿原有限尝试预算（包括完整冷却等待）重试和选择既有合法候选；本地合成 502、错误正文不完整、部分模型输出、未配对/无法验证的历史均不能获得此权限。当前 owner、Stop、route、后台归属、ledger 完整性、Retry-After 和 deadline 每次等待后继续复核；每个 attempt 清除上一响应证明，SDK 重发不增加预算。未知动作仍精确阻断，新的独立授权操作可以执行。单次推理及其重试、切换链有绝对三十分钟恢复窗口，同一次调用的候选切换和等待不续期；该窗口不绑定整个持续推进的 root。已成功推进或原生压缩后的不同请求获得自己的窗口，旧指纹仍由 Query guard 拒绝，不能借此重放。显式配置的父级 deadline 在同 root 内只允许收紧；普通意图执行不再提供任务总时限，旧 execution.deadlineAt 只是兼容字段。持久化断流恢复链仍受原恢复 owner 的已有 deadline 约束。不能容纳下一次恢复等待时保留现场并终止自动恢复。主路由及已选备用路由的 headers 超时均在实际转发前读取同一 controller 的当前快恢复权限：允许重试时使用三十秒短等待，否则回到桥接默认五分钟首响应上限。完整 HTTP 拒绝授予的一次候选选择，不代表该候选后续连接失败可重放，不能因此把备用固定在三十秒。每个新请求重新评估，用户取消仍立即终止；既有首响应上限、重试次数与旧未知操作保护不变。错误正文读取上限一秒/16 KiB，截断、损坏或超限保留上游 HTTP 状态并停止自动恢复。
+旧操作结果未知仍禁止断流重放、上下文压缩和持久长等待。对于已被原 Query 接纳的新推理，除下文原生连接建立证明和首个 Chat Completions 响应前 socket 失败证明外，只有 transport 在该次 attempt 实际收到上游非成功 HTTP、并完整有界读取错误正文后，才可沿原有限尝试预算（包括完整冷却等待）重试和选择既有合法候选；没有本次 transport 证明的本地合成 502、错误正文不完整、部分模型输出、未配对/无法验证的历史均不能获得此权限。当前 owner、Stop、route、后台归属、ledger 完整性、Retry-After 和 deadline 每次等待后继续复核；每个 attempt 清除上一响应证明，SDK 重发不增加预算。未知动作仍精确阻断，新的独立授权操作可以执行。单次推理及其重试、切换链有绝对三十分钟恢复窗口，同一次调用的候选切换和等待不续期；该窗口不绑定整个持续推进的 root。已成功推进或原生压缩后的不同请求获得自己的窗口，旧指纹仍由 Query guard 拒绝，不能借此重放。显式配置的父级 deadline 在同 root 内只允许收紧；普通意图执行不再提供任务总时限，旧 execution.deadlineAt 只是兼容字段。持久化断流恢复链仍受原恢复 owner 的已有 deadline 约束。不能容纳下一次恢复等待时保留现场并终止自动恢复。主路由及已选备用路由的 headers 超时均在实际转发前读取同一 controller 的当前快恢复权限：允许重试时使用三十秒短等待，否则回到桥接默认五分钟首响应上限。完整 HTTP 拒绝授予的一次候选选择，不代表该候选后续连接失败可重放，不能因此把备用固定在三十秒。每个新请求重新评估，用户取消仍立即终止；既有首响应上限、重试次数与旧未知操作保护不变。错误正文读取上限一秒/16 KiB，截断、损坏或超限保留上游 HTTP 状态并停止自动恢复。
 
 认证、权限、余额/付费额度、参数/上下文/模型错误和策略拒绝不切换。429 的结构化 billing code 与明确欠费消息复用既有错误分类。工具错误不是模型服务错误。可见 HTTP 200 文本不被猜测成故障；不按回答质量自动换模型。
+
+### 首个 Chat Completions 响应前连接中断
+
+MB-BRIDGE-PRECONTENT-RECOVERY-20261107 对已准入的新推理增加窄恢复证明：仅实际 Chat Completions fetch 在响应头返回前抛出原生 UND_ERR_SOCKET / ECONNRESET / EPIPE，且请求的专用 dispatcher 只发生首次 dispatch、未取消、非原 connector 建连失败、实际发送的工具全为客户端 function tools 时，handler 才触发当前 attempt 的内部回调。它不接受 HTTP header、模型文本或诊断日志作为证明。原 Query 必须仍允许普通推理，Context 不得有 unsafe-history 或损坏/blocked 账本；旧已知未知操作不会因此被结清。
+
+这只能证明模型内容没有交给客户端，不能证明 POST 未送达供应商。恢复可能重复模型计算或计费，故只消费原来的 initial + 3 次尝试以及原自动模式已选候选；手动模式不会获得新候选。每个 attempt 重置证明并检查精确 owner/route/Stop/background/deadline，SDK 重发不刷新预算。仅对本次匹配的本地 502 生效；重定向后的失败、已收到响应头或部分流、未知错误、证书错误、本地超时、Responses/Anthropic 协议均不新增这项权限。原连接重试、完整 HTTP 拒绝策略继续独立生效。
+
+此能力不允许持久长等待、断流重放、上下文压缩或重发任何工具，不缩短现有首响应超时。原生受控验收 `verify-operation-scoped-recovery-loopback.ts --pre-response-socket` 使用真正 SDK/native Bash 与本地合成上游：四次首响应前 socket 关闭后切到既有备用，独立操作只执行一次，旧未知操作零执行，冷加载账本仍阻断旧操作。此证据不是安装客户端或真实供应商验收。
 
 ## 重复执行与不确定性
 
@@ -76,3 +84,18 @@ exactscope首次失败只存在现有有界QueryRequestGuard admission row，不
 `currentModelRecoveryRoute()` 用 `auto-pool-same-tier-v1` 标识统一策略，不再把旧备用配置放入恢复身份。旧版本保存的等待 checkpoint 身份不匹配时沿原门禁暂停，保留进度；不会在新策略下自动重放旧任务。历史 transcript 中的 failoverMode/不可用原因仍可展示，不能恢复为当前配置。
 
 `verify-operation-scoped-recovery-loopback.ts --http-rejection` 将历史未知动作、连续四次真实 loopback HTTP 502、合法备用接管、后续原生工具执行和冷恢复放在同一真实 SDK 链中核验；可叠加 `--returned-history-gap` 验证原生结果已持久化但尚未投影到历史的间隙。两种模式不调用真实模型、不改变用户原会话。
+
+
+### 持久等待拒绝与取消的区分（2026-11-07）
+
+SessionModelRecovery.wait 拒绝本次等待可将自身置 paused 并返回 undefined；由此撤回 canRetry 只终止恢复，不代表仍存活的原 Query 已取消。此分支先检查原请求、route、root 与 owner 生命周期，活请求封闭并返回原始 HTTP 拒绝；真实 Stop（含 Request.signal abort 前的同步 interrupt）或归属撤销仍返回取消。相同 SDK 指纹保持封闭，不重新发送。此修复不新增预算、等待或业务权限。实际两协议 loopback 与取消反例见 dev-docs/durable-rejection-cause-20261107/acceptance.md；安装和正式发布另由原 owner 验收。
+
+
+Root安装接线补充：native的strict isCurrent/isLive以及wrapper.scope在恢复paused后均撤回，不能用测试里恒true的isActive代替。现有wrapper只对已建立root提供只读responseOwner(scope/identity)投影；它不建立root或选择候选。MF只在wait明确拒绝后封闭本次已收到的HTTP拒绝，并在有界body记账前后复核原token/Session/route/root/Stop。暂停后的相同已封闭指纹可读取原拒绝，但不同指纹、新推理、重试、stream和ContextRecovery继续使用原strict门禁；换root/route或真实Stop后连旧拒绝投影也不沿用。此只读证据不授予请求执行或未知工具重放权限。
+
+
+### Recovery pause and complete rejection ownership
+
+A recovery-only pause withdraws inference/retry admission, but must not erase a complete HTTP rejection already owned by that exact request. ModelFailover may attach an internal, nonserialized sealed-rejection capability only after the existing Query guard has bounded and stored the original error. The outer ContextRecovery wrapper may pass it through only while its original scope, route, state and request remaincurrent, the inner owner remainscurrent, and no abort, blocked ledger, background ambiguity or recovery conflict exists. Recheck these predicates after asynchronous errorbody sealing.
+
+Only the exact alreadysealed fingerprint may read that same terminal while paused. It never obtains a new upstream lease or business action. Scope/route/Query retirement, realStop/abort, a distinct fingerprint and arbitrary HTTPheaders cannot inherit or forge the capability. Native tool/unknown/Store/retry/stream admission remains unchanged. These source contracts still require installed-client acceptance on the full wrapper chain.

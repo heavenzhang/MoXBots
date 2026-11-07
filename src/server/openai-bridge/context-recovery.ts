@@ -13,6 +13,7 @@ import type { StreamInterruptionCause, StreamInterruptionObserver } from './type
 import { StreamDeliveryWitness } from './stream-delivery-witness';
 import { nativeActionDiagnostic, observeRecoveryDiagnostic, type NativeActionPhase, type RecoveryDiagnosticObserver } from './recovery-causal-diagnostics';
 import { isDirectSessionTaskListCommand } from '../../shared/sessionTaskReviewCommand';
+import { isSealedRejectionOwnerCurrent, sealReceivedRejection, sealedRejectionOwner, type SealedRejectionOwner } from './sealed-rejection-owner';
 
 /** Internal, Query-local evidence capability. Never accepted from HTTP/model metadata. */
 export interface SettledInterruptionReceipt {
@@ -63,6 +64,7 @@ type NativeErrorEvidence = {
   reason: 'pre-tool-denied' | 'bash-exited'; resultDigest?: string; exitCode?: number;
 };
 type State = {
+  receivedRejection?: { fingerprint: string; owner: SealedRejectionOwner };
   scopedActions?: boolean;
   scope: string;
   attempted: boolean;
@@ -1270,7 +1272,23 @@ export class ContextRecoveryController implements BridgeContextRecovery {
     const requestIdentity = this.options.requestIdentity?.();
     const queryLive = () => !request.signal.aborted && this.options.isActive()
       && this.options.requestIdentity?.() === requestIdentity;
-    if (!queryLive()) return cancelled();
+    if (!queryLive()) {
+      const prior = this.state;
+      const retained = prior?.receivedRejection;
+      // A paused owner may read this exact complete terminal, never dispatch.
+      // The capability is held in memory, not inferred from an HTTP header/body.
+      if (!request.signal.aborted && !this.ledgerBlocked && prior && retained
+        && prior.scope !== this.retiredScope && isSealedRejectionOwnerCurrent(retained.owner)) {
+        let fingerprint: string;
+        try { fingerprint = digest({ model: body.model, system: body.system, messages: body.messages, tools: body.tools }, true); }
+        catch { return cancelled(); }
+        if (fingerprint === retained.fingerprint) {
+          const rejection = this.requestGuard.rejectedResponse(prior.scope, fingerprint);
+          if (rejection) return sealReceivedRejection(rejection, retained.owner);
+        }
+      }
+      return cancelled();
+    }
     if (this.ledgerBlocked) return required('Recovery ledger integrity or capacity requires explicit resolution.');
     const currentState = this.current();
     // Background requests use their original body and the Query-owned safety ledger.
@@ -1386,7 +1404,27 @@ export class ContextRecoveryController implements BridgeContextRecovery {
       if (input instanceof Response) return input;
       if (!live()) return cancelled();
       let response = await execute(input, observeFailure);
-      if (!live()) { void response.body?.cancel().catch(() => undefined); return cancelled(); }
+      if (!live()) {
+        const received = sealedRejectionOwner(response);
+        const owner: SealedRejectionOwner = { isCurrent: () => !request.signal.aborted
+          && this.state === state && !ambiguous && state.scope !== this.retiredScope
+          && !this.ledgerBlocked && !state.blocked && !state.recovering
+          && this.options.scope() === state.scope && this.options.requestIdentity?.() === requestIdentity
+          && this.options.canRecover?.() !== false && isSealedRejectionOwnerCurrent(received) };
+        if (!response.ok && isSealedRejectionOwnerCurrent(owner)) {
+          const rejection = await lease.reject(response);
+          if (isSealedRejectionOwnerCurrent(owner)) {
+            finish(); // Close the original lease before reading its sealed terminal.
+            const recorded = this.requestGuard.rejectedResponse(state.scope, fingerprint);
+            if (recorded) {
+              state.receivedRejection = { fingerprint, owner };
+              return sealReceivedRejection(recorded, owner);
+            }
+          }
+          void rejection.body?.cancel().catch(() => undefined);
+        } else void response.body?.cancel().catch(() => undefined);
+        return cancelled();
+      }
       if (!response.ok && [400, 413, 422].includes(response.status)) {
         const text = await readBoundedErrorBody(response.body);
         if (!live()) return cancelled();

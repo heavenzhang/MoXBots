@@ -7,8 +7,12 @@ const id = (v: unknown): v is string => typeof v === 'string' && v.length > 0 &&
 /** SDK owns path resolution. The destination is a bounded memory collector, never a new writer. */
 export async function readNativeRecoveryRecords(sdkSessionId: string, dir?: string): Promise<readonly unknown[]> {
   const info = await getSessionInfo(sdkSessionId, { dir });
-  if (!info || info.sessionId !== sdkSessionId || !Number.isSafeInteger(info.fileSize)
-    || info.fileSize! < 0 || info.fileSize! > 64 * 1024 * 1024) throw new Error('recovery_review_native_source_unavailable');
+  // getSessionInfo is a listing summary: valid SDK history without a usable
+  // summary can return undefined. It cannot decide whether raw evidence exists.
+  // Keep its early size check when present; the SDK importer owns exact path
+  // resolution and the collector below enforces bounds even without a summary.
+  if (info !== undefined && (!info || info.sessionId !== sdkSessionId || !Number.isSafeInteger(info.fileSize)
+    || info.fileSize! < 0 || info.fileSize! > 64 * 1024 * 1024)) throw new Error('recovery_review_native_source_unavailable');
   const records: unknown[] = []; let bytes = 0;
   await importSessionToStore(sdkSessionId, {
     load: async () => { throw new Error('Recovery review cannot restore a Session'); },
@@ -18,7 +22,8 @@ export async function readNativeRecoveryRecords(sdkSessionId: string, dir?: stri
       if (records.length + entries.length > 50_000 || bytes > 64 * 1024 * 1024) throw new Error('recovery_review_native_source_oversized');
       records.push(...entries);
     },
-  }, { dir, includeSubagents: false, batchSize: 100 });
+  }, { dir, includeSubagents: false, batchSize: 1 });
+  if (records.length === 0) throw new Error('recovery_review_native_source_unavailable');
   return records;
 }
 

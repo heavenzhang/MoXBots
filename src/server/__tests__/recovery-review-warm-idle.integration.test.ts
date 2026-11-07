@@ -169,3 +169,23 @@ it('still refuses a rewind boundary on the same Product Session', async () => {
   await store.updateSessionMetadata(id, { sdkResumeSessionAt: 'fixture-boundary' });
   await expect(agent.inspectBuiltinRecoveryActions()).rejects.toThrow('recovery_review_busy_or_owner_changed');
 });
+
+
+it.each(['control-first', 'waiter-first'])('publishes a read revision only for the ready current owner (%s)', async order => {
+  lifecycle.lifecycleState.preWarming = true;
+  lifecycle.setSessionTerminationPromise(new Promise<void>(() => {}));
+  expect(agent.getBuiltinRecoveryReviewRevision()).toBeUndefined();
+  if (order === 'control-first') lifecycle.setSdkControlReady(true);
+  else void lifecycle.waitForMessage(() => undefined);
+  expect(agent.getBuiltinRecoveryReviewRevision()).toBeUndefined();
+  if (order === 'control-first') void lifecycle.waitForMessage(() => undefined);
+  else lifecycle.setSdkControlReady(true);
+  const revision = agent.getBuiltinRecoveryReviewRevision();
+  expect(revision).toEqual(expect.any(String));
+  expect(agent.getBuiltinRecoveryReviewRevision()).toBe(revision);
+  await expect(agent.inspectBuiltinRecoveryActions()).resolves.toMatchObject({ sessionId: id, actions: [] });
+  lifecycle.setQuerySession({ close: vi.fn() } as never);
+  expect(agent.getBuiltinRecoveryReviewRevision()).toBeUndefined();
+  expect(store.loadBuiltinContextLedger(id, id)).toBeUndefined();
+  expect(query?.close).not.toHaveBeenCalled();
+});

@@ -46,6 +46,8 @@ export interface UpstreamConfig {
   onConnectionFailure?: (error: unknown) => void;
   /** Actual upstream HTTP rejection only; internal attempt proof, never a wire header. */
   onRejectedResponse?: (status: number) => void;
+  /** Exact initial Chat Completions fetch failed before headers; client function tools only. */
+  onPreResponseFailure?: () => void;
   /** Internal admitted-request evidence; never serialized or accepted from provider/model text. */
   onStreamInterruption?: StreamInterruptionObserver;
   /** Internal per-attempt signal for accepted model content; never serialized to a provider. */

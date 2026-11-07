@@ -1,9 +1,10 @@
+import { shouldAutoSendInitialMessage } from '@/utils/initialMessageAutoSend';
 import { TASK_ALIGNMENT_SKILL_REQUIREMENT } from "../../shared/systemSkills";
 import { deriveSessionTodos } from '../../shared/sessionWorkProgress';
 import { projectErrorRecovery } from '../pages/errorMessageResend';
 import { SESSION_CONTINUATION_PROMPT } from '../../shared/sessionContinuation';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { StrictMode, useEffect, useState } from 'react';
+import { StrictMode, useEffect, useRef, useState } from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { track } from '@/analytics';
@@ -15,6 +16,8 @@ import {
 } from '@/utils/sessionDeletionCoordinator';
 import { useTabState } from './TabContext';
 import { useSubagentViews } from '@/components/agent-status/useSubagentViews';
+import { RecoveryActionReview } from '@/components/RecoveryActionReview';
+import type { RecoveryActionSnapshot } from '../../shared/recoveryReconciliation';
 import { AskUserQuestionPrompt } from '@/components/AskUserQuestionPrompt';
 import type { Message } from '@/types/chat';
 import { ToastProvider } from '@/components/Toast';
@@ -621,6 +624,60 @@ describe('TabProvider session activity ownership', () => {
     tauriHarness.proxyFetch.mockRejectedValue(new Error('Unexpected proxyFetch call'));
     tauriHarness.isTauri = false;
     tauriHarness.listeners.clear();
+  });
+
+  it.each([false, true])('waits for persisted restore before consuming a connected launcher send (failure: %s)', async failRestore => {
+    const sessionId = 'session-initial-send';
+    let resolveRestore!: (response: Response) => void;
+    const restore = new Promise<Response>(resolve => { resolveRestore = resolve; });
+    const admitted = vi.fn();
+    const attempted = vi.fn();
+    tauriHarness.proxyFetch.mockImplementation(async (url: string, init?: RequestInit) => {
+      if (url.includes(`/sessions/${sessionId}?`) && !init?.method) return restore;
+      if (url.endsWith('/chat/send') && init?.method === 'POST') {
+        admitted(JSON.parse(String(init.body)).text);
+        return new Response(JSON.stringify({ success: true }));
+      }
+      throw new Error(`Unexpected request ${url}`);
+    });
+    function LauncherProbe() {
+      const { sessionId: targetId, isConnected, isSessionLoading, sendMessage } = useTabState();
+      const consumed = useRef(false);
+      const [receipt, setReceipt] = useState<boolean | null>(null);
+      useEffect(() => {
+        if (!shouldAutoSendInitialMessage({
+          hasInitialMessage: true, alreadyConsumed: consumed.current,
+          hasSessionId: !!targetId, isConnected,
+          isSessionLoading, isActive: false,
+        })) return;
+        consumed.current = true;
+        attempted();
+        void sendMessage('initial draft').then(setReceipt);
+      }, [targetId, isConnected, isSessionLoading, sendMessage]);
+      return <output data-testid="initial-send-state">{JSON.stringify({
+        connected: isConnected, loading: isSessionLoading, receipt,
+      })}</output>;
+    }
+    render(<TabProvider tabId="initial-send" agentDir="/tmp/workspace" sessionId={sessionId}
+      claimSessionOpeningTransition={allowSessionOpening}><LauncherProbe /></TabProvider>);
+    await waitFor(() => expect(screen.getByTestId('initial-send-state')).toHaveTextContent('"connected":true'));
+    expect(screen.getByTestId('initial-send-state')).toHaveTextContent('"loading":true');
+    expect(attempted).not.toHaveBeenCalled();
+    expect(admitted).not.toHaveBeenCalled();
+    await act(async () => resolveRestore(new Response(JSON.stringify(failRestore
+      ? { success: false, error: 'restore failed' }
+      : { success: true, session: {
+          id: sessionId, agentDir: '/tmp/workspace', title: 'New Chat', runtime: 'builtin',
+          messages: [], snapshotRevision: 0, liveSessionState: 'idle', hasMoreBefore: false,
+        } }))));
+    if (failRestore) {
+      expect(attempted).not.toHaveBeenCalled();
+      expect(screen.getByTestId('initial-send-state')).toHaveTextContent('"receipt":null');
+    } else {
+      await waitFor(() => expect(screen.getByTestId('initial-send-state')).toHaveTextContent('"receipt":true'));
+      expect(attempted).toHaveBeenCalledTimes(1);
+      expect(admitted).toHaveBeenCalledTimes(1);
+    }
   });
 
   it.each(['chat:message-complete', 'chat:message-stopped', 'chat:message-error'])(
@@ -3941,4 +3998,39 @@ describe('rendered orchestration proposal target in the original chat send', () 
     expect(payload().orchestrationPlanTarget).toBeUndefined();
   });
 
+});
+
+
+it.each(['before-response', 'after-response'])('refreshes a failed cold recovery read only on the current Session readiness revision (%s)', async order => {
+  sseHarness.state.connected = false;
+  sseHarness.state.eventHandler = null;
+  const sessionId = 'pending-cold-review';
+  let rejectCold!: (error: Error) => void;
+  const inspect = vi.fn().mockImplementationOnce(() => new Promise((_, reject) => { rejectCold = reject; }))
+    .mockResolvedValue({ sessionId, sdkSessionId: sessionId, epoch: 1, reviewAuthority: 'fixture', ledgerDigest: 'fixture', resolvedCount: 0,
+      unresolvedTurn: { turnId: 'stopped', actionHashes: ['unknown'] },
+      actions: [{ actionHash: 'unknown', tool: 'Bash', eligible: false, reason: 'external_receipt_required',
+        presentation: { kind: 'write_file', target: 'cold-review-fixture.txt' } }] } satisfies RecoveryActionSnapshot);
+  const reconcile = vi.fn();
+  function ColdReview() {
+    const tab = useTabState();
+    return <RecoveryActionReview sessionId={tab.sessionId!} disabled={false}
+      inspectRevision={`history:0:${tab.recoveryReviewRevision ?? ''}`} inspect={inspect} reconcile={reconcile} />;
+  }
+  const view = render(<TabProvider tabId="cold-review" agentDir="/tmp/workspace" sessionId={sessionId}
+    claimSessionOpeningTransition={allowSessionOpening}><ColdReview /></TabProvider>);
+  await waitFor(() => expect(inspect).toHaveBeenCalledTimes(1));
+  if (order === 'after-response') await act(async () => rejectCold(new Error('recovery_review_changed_or_unavailable')));
+  emit('chat:status', { sessionId: 'unrelated-real-session', sessionState: 'idle', recoveryReviewRevision: 'other:1' });
+  expect(inspect).toHaveBeenCalledTimes(1);
+  emit('chat:status', { sessionId, sessionState: 'idle', recoveryReviewRevision: 'owner:1' });
+  if (order === 'before-response') await act(async () => rejectCold(new Error('recovery_review_changed_or_unavailable')));
+  await waitFor(() => expect(inspect).toHaveBeenCalledTimes(2));
+  expect(await screen.findByText(/cold-review-fixture.txt/)).toBeVisible();
+  emit('chat:status', { sessionId, sessionState: 'idle', recoveryReviewRevision: 'owner:1' });
+  emit('chat:status', { sessionId, sessionState: 'idle' });
+  await act(async () => {});
+  expect(inspect).toHaveBeenCalledTimes(2);
+  expect(reconcile).not.toHaveBeenCalled();
+  view.unmount();
 });

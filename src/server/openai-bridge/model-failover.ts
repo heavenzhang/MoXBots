@@ -10,6 +10,7 @@ import { QueryRequestGuard, waitForRequestRetry } from './request-lifetime';
 import { ModelBodyReader, ModelBodyIdleTimeoutError } from './model-body-reader';
 import { observeRecoveryDiagnostic, type RecoveryDiagnosticObserver } from './recovery-causal-diagnostics';
 import { isConnectionEstablishmentFailure } from './connection-retry';
+import { sealReceivedRejection } from './sealed-rejection-owner';
 
 export interface BridgeModelFailover {
   run(request: Request, primary: UpstreamConfig,
@@ -31,6 +32,7 @@ export interface InferenceRecoveryHooks {
 
 type Root = { scope: string; backup?: boolean; retired?: boolean
   electedIdentity?: string;
+  rejectionOwnerIdentity?: string;
   parentDeadline: number;
 };
 
@@ -63,12 +65,17 @@ export class ModelFailoverController implements BridgeModelFailover {
     canSwitch?: () => boolean;
     /** Exact Query/token/route authorization, independent of foreground idle. */
     isActive?: () => boolean;
+    /** Exact owner may expose its sealed HTTP rejection after a recovery-only pause.
+     * This callback never admits inference, retries, switching, or stream delivery. */
+    responseOwner?: () => { scope: string; identity: string } | undefined;
     /** Captured per request so supported in-place model changes can admit the next request. */
     requestIdentity?: () => string;
     /** A known uncertain tool outcome or recovery fence prohibits inference replay. */
     canRetry?: () => boolean;
     /** Only after an actual, complete HTTP rejection on this exact attempt. */
     canRetryRejectedResponse?: () => boolean;
+    /** New client-tool inference only, after this attempt's trusted pre-response socket failure. */
+    canRetryPreResponse?: () => boolean;
     /** Ordinary distinct inference on the exact already-elected route, never retry or a new election. */
     canUsePinnedRoute?: () => boolean;
     /** Separate owner gate for native connection establishment before HTTP dispatch. */
@@ -117,7 +124,26 @@ export class ModelFailoverController implements BridgeModelFailover {
     let requestIdentity = this.options.requestIdentity?.();
     const queryLive = () => !request.signal.aborted && this.options.isActive?.() !== false
       && this.options.requestIdentity?.() === requestIdentity;
-    if (!queryLive()) return cancelled();
+    if (!queryLive()) {
+      const prior = this.state;
+      const owner = this.options.responseOwner?.();
+      // Only a previously sealed exact fingerprint may be read while paused.
+      // Distinct input, retired roots, changed routes and real Stop still cancel.
+      if (!request.signal.aborted && owner
+        && requestKey && requestIdentity !== undefined && prior && !prior.retired
+        && prior.scope === owner.scope && owner.identity === requestIdentity
+        && prior.rejectionOwnerIdentity === requestIdentity
+        && this.options.canSwitch?.() !== false) {
+        const rejection = this.guard.rejectedResponse(prior.scope, requestKey);
+        if (rejection) return sealReceivedRejection(rejection, { isCurrent: () => {
+          const current = this.options.responseOwner?.();
+          return !request.signal.aborted && this.state === prior && !prior.retired
+            && current?.scope === prior.scope && current.identity === requestIdentity
+            && this.options.requestIdentity?.() === requestIdentity && this.options.canSwitch?.() !== false;
+        } });
+      }
+      return cancelled();
+    }
     const candidateScope = this.options.scope();
     const scope = candidateScope && candidateScope !== this.retiredScope ? candidateScope : undefined;
     if (scope && scope !== this.state?.scope) this.state = { scope, parentDeadline: Infinity };
@@ -153,6 +179,14 @@ export class ModelFailoverController implements BridgeModelFailover {
       && this.options.scope() === scope && this.options.canSwitch?.() !== false;
     let usingBackup = state?.backup === true && !ambiguous;
     const live = () => queryLive() && !lease.isBlocked();
+    const rejectionOwnerLive = () => {
+      const owner = this.options.responseOwner?.();
+      return !request.signal.aborted && !ambiguous && !!state && !state.retired && this.state === state
+        && this.options.requestIdentity?.() === requestIdentity && this.options.canSwitch?.() !== false
+        && (this.options.responseOwner
+          ? !!owner && owner.scope === scope && owner.identity === requestIdentity
+          : queryLive() && this.options.scope() === scope);
+    };
     const delays = this.options.retryDelaysMs ?? [250, 750, 1500];
     let streamOwnsFinish = false;
     let activeAttempt = 0;
@@ -163,6 +197,7 @@ export class ModelFailoverController implements BridgeModelFailover {
     let rejectedStatus: number | undefined;
     let completeRejectedResponse = false;
     let connectionFailed = false;
+    let preResponseFailed = false;
     const finish = () => { activeAttempt++; lease.finish(); };
     const executeAttempt = (target: UpstreamConfig): Promise<Response> => {
       observedTarget = target;
@@ -170,6 +205,7 @@ export class ModelFailoverController implements BridgeModelFailover {
       rejectedStatus = undefined;
       completeRejectedResponse = false;
       connectionFailed = false;
+      preResponseFailed = false;
       attemptInterruption = undefined;
       attemptDiagnostic = undefined;
       const onModelProgress = (): boolean => {
@@ -182,9 +218,14 @@ export class ModelFailoverController implements BridgeModelFailover {
         if (attemptInterruption !== 'unproven') attemptInterruption = cause;
         attemptDiagnostic ??= safeStreamFailure(diagnostic);
       };
-      const admittedTarget: UpstreamConfig = this.options.canRetryRejectedResponse ? { ...target, onRejectedResponse: status => {
+      const rejectedTarget: UpstreamConfig = this.options.canRetryRejectedResponse ? { ...target, onRejectedResponse: status => {
         if (attempt === activeAttempt && live()) rejectedStatus = status;
       } } : target;
+      const admittedTarget: UpstreamConfig = this.options.canRetryPreResponse ? { ...rejectedTarget,
+        onPreResponseFailure: () => {
+          if (attempt === activeAttempt && live()) preResponseFailed = true;
+        },
+      } : rejectedTarget;
       return execute(this.options.canRetryConnection ? { ...admittedTarget,
         onConnectionFailure: error => {
           if (attempt === activeAttempt && live() && isConnectionEstablishmentFailure(error)) connectionFailed = true;
@@ -200,14 +241,14 @@ export class ModelFailoverController implements BridgeModelFailover {
     // HTTP rejection permits only the existing attempt budget and configured backup.
     const rejectionRetryLive = () => completeRejectedResponse && this.options.canRetryRejectedResponse?.() === true;
     const connectionRetryLive = () => connectionFailed && this.options.canRetryConnection?.() === true;
-    const failoverLive = () => live() && rootLive() && (this.options.canRetry?.() !== false || rejectionRetryLive() || connectionRetryLive());
+    const preResponseRetryLive = () => preResponseFailed && this.options.canRetryPreResponse?.() === true;
+    const failoverLive = () => live() && rootLive() && (this.options.canRetry?.() !== false || rejectionRetryLive() || connectionRetryLive() || preResponseRetryLive());
     const pinnedRouteLive = () => live() && rootLive()
       && (this.options.canUsePinnedRoute?.() ?? (this.options.canRetry?.() !== false));
     let inferenceAttempts = 0;
     let cooldownNextAttempt = 0;
     let restoredWaiting = false;
     let hasDurableRecovery = false;
-    let durableStopped = false;
     let recoverySettled = false;
     let interruptionAttempted = false;
     const blockRecovery = async (reason: string) => {
@@ -296,7 +337,7 @@ export class ModelFailoverController implements BridgeModelFailover {
     const runTarget = async (backup: boolean, onAdmitted?: (target: UpstreamConfig) => void, initialPinnedIdentity?: string,
     ): Promise<Response> => {
       cooldownNextAttempt = 0;
-      const retryLive = () => live() && (this.options.canRetry?.() !== false || rootLive() && rejectionRetryLive()) &&
+      const retryLive = () => live() && (this.options.canRetry?.() !== false || rootLive() && (rejectionRetryLive() || preResponseRetryLive())) &&
         withinDeadline() &&
         (!backup || rootLive());
       // Four attempts per inference/provider: initial call plus three safe retries.
@@ -319,6 +360,7 @@ export class ModelFailoverController implements BridgeModelFailover {
         if (!live()) { cancelResponse(response); return cancelled(); }
         const inspected = await inspectFailure(response);
         completeRejectedResponse = inspected.recoverable && rejectedStatus === inspected.response.status;
+        preResponseFailed = preResponseFailed && inspected.recoverable && inspected.response.status === 502;
         if (!live()) { cancelResponse(inspected.response); return cancelled(); }
         if (inspected.recoverable)
           this.options.onObservation?.(target, "failure");
@@ -452,8 +494,21 @@ export class ModelFailoverController implements BridgeModelFailover {
         this.options.onObservation?.(observedTarget, "failure");
         const delay = await recovery.wait(request, { status: response.status, attempt: inferenceAttempts,
           retryAfterMs: parseRetryAfter(response.headers.get('retry-after')), usingBackup });
+        // Declining a wait may pause its own retry authority. The live Query
+        // still owns this upstream rejection; a pause is not consumer cancellation.
+        // Real Stop, route, root and owner revocation retain the cancellation path.
+        if (delay === undefined) {
+          if (lease.isBlocked() || !rejectionOwnerLive()) { cancelResponse(response); return cancelled(); }
+          if (hasDurableRecovery) await blockRecovery('Model inference stopped before successful delivery');
+          const rejection = await lease.reject(response);
+          if (!rejectionOwnerLive()) { cancelResponse(rejection); return cancelled(); }
+          if (state) state.rejectionOwnerIdentity = requestIdentity;
+          lease.block();
+          finish();
+          const recorded = this.guard.rejectedResponse(scope, fingerprint);
+          return recorded ? sealReceivedRejection(recorded, { isCurrent: rejectionOwnerLive }) : rejection;
+        }
         if (!recoveryLive()) { cancelResponse(response); return cancelled(); }
-        if (delay === undefined) { durableStopped = true; break; }
         hasDurableRecovery = true;
         // Invalid durable-hook results must never create a hot/unbounded loop.
         if (!Number.isFinite(delay) || delay < 0) throw new Error('Invalid recovery wait');
@@ -475,17 +530,6 @@ export class ModelFailoverController implements BridgeModelFailover {
       if (!live()) { cancelResponse(response); return cancelled(); }
       if (!response.ok) {
         if (hasDurableRecovery) await blockRecovery('Model inference stopped before successful delivery');
-        if (durableStopped) {
-          // A declined/exhausted durable owner must pause safely, but its known
-          // upstream cause must survive both this terminal and SDK repetition.
-          await lease.reject(response);
-          if (!queryLive()) return cancelled();
-          lease.block();
-          finish();
-          return (
-            this.guard.rejectedResponse(scope, fingerprint) ?? replayBlocked()
-          );
-        }
         return await lease.reject(response);
       }
       if (!response.body) {
