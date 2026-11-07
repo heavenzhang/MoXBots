@@ -2,6 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { createServer } from 'node:http';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { NO_CHANNEL_DELIVERY } from '../session-core/channel-delivery';
 import type { TurnTerminalOutcome } from '../session-core/turn-queue';
@@ -1156,6 +1157,93 @@ describe('builtin V2 execution independent of product storage', () => {
     await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
     expect(state.sdkInputs).toHaveLength(0);
     expect(state.events).toContainEqual(['chat:agent-error', expect.objectContaining({ message: expect.stringContaining('本次消息未执行') })]);
+  });
+
+  it.each(['anthropic', 'openai'] as const)('retains HTTP502 through the actual agent-session bridge bindings (%s, synthetic SDK)', async protocol => {
+    vi.stubEnv('HOME', state.home);
+    let calls = 0;
+    const upstream = createServer(async (req, res) => {
+      for await (const _chunk of req) { /* drain only the synthetic request */ }
+      calls++;
+      res.writeHead(502, { 'content-type': 'application/json', 'retry-after': '3600' });
+      res.end('{"error":{"type":"api_error","message":"actual binding original502"}}');
+    });
+    await new Promise<void>(resolve => upstream.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = upstream.address();
+      if (!address || typeof address === 'string') throw new Error('fixture did not bind');
+      const workspace = join(state.home, 'sealed-rejection-workspace');
+      await mkdir(workspace);
+      const providers = join(state.home, '.myagents', 'providers');
+      await mkdir(providers, { recursive: true });
+      await writeFile(join(providers, 'sealed-rejection-fixture.json'), JSON.stringify({
+        id: 'sealed-rejection-fixture', name: 'fixture', type: 'api', models: [{ model: 'fixture-model' }],
+      }));
+      const metadata = await store.createSession(workspace, { runtime: 'builtin' });
+      await agent.initializeAgent(workspace, null, metadata.id, { preWarmDisabled: true });
+      agent.setSidecarPort(15432);
+      await agent.setSessionProviderEnv({ providerId: 'sealed-rejection-fixture',
+        baseUrl: `http://127.0.0.1:${address.port}`, apiKey: 'nonsecret-fixture', apiProtocol: protocol });
+      await agent.setSessionModel('fixture-model');
+      let release!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      releaseWrite = release;
+      let checksComplete!: () => void;
+      const checked = new Promise<void>(resolve => { checksComplete = resolve; });
+      let observed = false;
+      let failure: unknown;
+      state.beforeFrame.mockImplementation(async frame => {
+        if (observed || frame.type !== 'stream_event' || frame.event?.type !== 'message_start') return;
+        observed = true;
+        try {
+          const env = (state.query.mock.calls.at(-1)![0].options as Options).env;
+          const endpoint = env?.ANTHROPIC_BASE_URL;
+          if (!endpoint) throw new Error('registered bridge endpoint absent');
+          const token = new URL(endpoint).pathname.split('/')[2];
+          const { lookupBridge } = await import('../openai-bridge/bridge-registry');
+          const { createBridgeHandler } = await import('../openai-bridge/handler');
+          const handler = createBridgeHandler({ getUpstreamConfig: async req => {
+            const config = await lookupBridge(token, req);
+            if (!config?.contextRecovery || !config.modelFailover) throw new Error('actual wrapper binding absent');
+            return config;
+          }, logger: () => {} });
+          const body = { model: 'fixture-model', max_tokens: 32, stream: true,
+            messages: [{ role: 'user', content: 'Finite original foreground rejection' }] };
+          const request = (input = body) => new Request(endpoint.replace(/\/$/, '') + '/v1/messages', {
+            method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(input),
+          });
+          const first = await handler(request());
+          expect(first.status).toBe(502);
+          expect(await first.text()).toContain('actual binding original502');
+          expect((await store.getSessionMetadata(metadata.id))?.modelRecovery)
+            .toMatchObject({ status: 'paused', lastStatus: 502, reason: 'Model recovery window expired' });
+          expect((await handler(request())).status).toBe(502);
+          expect((await handler(request({ ...body, messages: [{ role: 'user', content: 'different paused input' }] }))).status).toBe(499);
+          expect(calls).toBe(1);
+        } catch (error) { failure = error; }
+        checksComplete();
+        await held;
+      });
+      const terminal = vi.fn();
+      await agent.enqueueUserMessage('Finite no-tool foreground rejection diagnostic', undefined, undefined, undefined,
+        undefined, undefined, undefined, undefined, undefined, undefined, undefined,
+        { fromDesktopChatSend: true, channelDelivery: NO_CHANNEL_DELIVERY, onTerminal: terminal });
+      await vi.waitFor(() => expect(observed).toBe(true));
+      // The root remains held until all actual registered-wrapper checks settle.
+      await checked;
+      if (failure) throw failure;
+      expect(calls).toBe(1);
+      release();
+      // The synthetic Query emits a canned success frame, not a real HTTP502
+      // SDK terminal. Assert its FIFO settlement, not isSessionActive(): a
+      // parked warm Query legitimately keeps that separate API true.
+      await vi.waitFor(() => expect(terminal).toHaveBeenCalledOnce());
+      expect(agent.isTurnInFlight()).toBe(false);
+    } finally {
+      releaseWrite?.(); agent.setSidecarPort(0); vi.unstubAllEnvs();
+      upstream.closeAllConnections();
+      await new Promise<void>(resolve => upstream.close(() => resolve()));
+    }
   });
 
   it.each([true, false])('owns recovery transport and requires durable update Stop acknowledgement (%s)', async durable => {

@@ -25,11 +25,14 @@ export function sessionApiFailoverEligible(env?: ProviderEnv): boolean {
 export function createSessionModelFailover(options: {
   current: () => { env?: ProviderEnv; model: string; turnId?: string; contextTokens?: number };
   isLive: () => boolean;
+  /** Read-only delivery of an already received rejection; never dispatch/retry authority. */
+  isResponseOwnerActive?: () => boolean;
   canSwitch?: () => boolean;
   onSwitch: (target: UpstreamConfig, status: number) => void;
   onUnavailable?: (reason: string) => void;
   canRetry?: () => boolean;
   canRetryRejectedResponse?: () => boolean;
+  canRetryPreResponse?: () => boolean;
   canUsePinnedRoute?: () => boolean;
   canRetryConnection?: () => boolean;
   retryDelaysMs?: readonly [number, number, number];
@@ -227,11 +230,18 @@ export function createSessionModelFailover(options: {
     canSwitch: options.canSwitch,
     canRetry: options.canRetry,
     canRetryRejectedResponse: options.canRetryRejectedResponse,
+    canRetryPreResponse: options.canRetryPreResponse,
     canUsePinnedRoute: options.canUsePinnedRoute,
     retryDelaysMs: options.retryDelaysMs,
     recovery: options.recovery,
     deadlineAt: options.deadlineAt,
     isActive: options.isLive,
+    responseOwner: options.isResponseOwnerActive ? () => {
+      // Read the established root only. A pause cannot create or elect one.
+      if (!options.isResponseOwnerActive?.() || !root || root.effectiveIdentity !== identity()
+        || root.primary.turnId !== options.current().turnId) return undefined;
+      return { scope: root.scope, identity: root.effectiveIdentity };
+    } : undefined,
     requestIdentity: identity,
     onSwitch: (target, status) => {
       options.onSwitch(target, status);

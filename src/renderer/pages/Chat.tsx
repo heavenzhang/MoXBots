@@ -760,6 +760,7 @@ function ChatContent({
     sessionMeta,
     setSessionMeta,
     systemInitInfo,
+    recoveryReviewRevision,
     mcpEffectiveSnapshot,
     sdkSlashCommands,
     runtimeDiagnostics,
@@ -2373,6 +2374,7 @@ function ChatContent({
         alreadyConsumed: initialMessageConsumedRef.current,
         hasSessionId: !!sessionId,
         isConnected,
+        isSessionLoading,
         isActive,
         runtimeReady: initialMessageRuntimeReady,
       })
@@ -2692,6 +2694,7 @@ function ChatContent({
     isActive,
     sessionId,
     isConnected,
+    isSessionLoading,
     initialMessageRuntimeReady,
     ensureChatOwner,
   ]);
@@ -6709,7 +6712,7 @@ function ChatContent({
               review={currentRuntime === 'builtin' && sessionId ? {
                 sessionId,
                 disabled: !continuationReady || isLoading || hasBackgroundWork || hasNativeWork || forkPending,
-                inspectRevision: `${messages.length}:${streamingMessage?.id ?? ''}`,
+                inspectRevision: `${messages.length}:${streamingMessage?.id ?? ''}:${recoveryReviewRevision ?? ''}`,
                 inspect: () => apiGet<RecoveryActionSnapshot>(RECOVERY_REVIEW_ACTIONS_PATH),
                 reconcile: request => apiPost<RecoveryActionSnapshot>(RECOVERY_RECONCILE_PATH, request),
                 onViewOperation: handleJumpToTool,

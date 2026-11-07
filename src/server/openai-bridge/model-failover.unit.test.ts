@@ -754,3 +754,73 @@ describe("parent execution recovery budget", () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 });
+
+
+describe('bounded pre-response client inference recovery', () => {
+  it('shares the existing attempt budget and never creates durable waits or an SDK replay budget', async () => {
+    const wait = vi.fn(async () => 0);
+    const execute = vi.fn(async (target: UpstreamConfig) => {
+      target.onPreResponseFailure?.();
+      return Response.json({ error: { message: 'socket closed' } }, { status: 502 });
+    });
+    const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+      canRetryPreResponse: () => true, resolveBackup: () => undefined, onSwitch: vi.fn(), retryDelaysMs,
+      recovery: { wait, complete: vi.fn(async () => {}) } });
+    expect((await controller.run(request(), primary, execute, 'exact')).status).toBe(502);
+    expect(execute).toHaveBeenCalledTimes(4);
+    expect(wait).not.toHaveBeenCalled();
+    expect((await controller.run(request(), primary, execute, 'exact')).status).toBe(502);
+    expect(execute).toHaveBeenCalledTimes(4);
+    expect(controller.fastRecoveryAuthorized()).toBe(false);
+  });
+
+  it('does not carry old proof or a late callback into a different attempt', async () => {
+    let old: (() => void) | undefined;
+    const execute = vi.fn(async (target: UpstreamConfig) => {
+      if (!old) { old = target.onPreResponseFailure; old?.(); }
+      else old();
+      return Response.json({ error: { message: 'socket closed' } }, { status: 502 });
+    });
+    const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+      canRetryPreResponse: () => true, resolveBackup: () => backup, onSwitch: vi.fn(), retryDelaysMs });
+    expect((await controller.run(request(), primary, execute, 'exact')).status).toBe(502);
+    expect(execute).toHaveBeenCalledTimes(2);
+  });
+
+  it.each(['synthetic', 'different-status', 'incomplete-body', 'successful-stream'] as const)(
+    'does not recover %s on a pre-response claim', async kind => {
+      const execute = vi.fn(async (target: UpstreamConfig) => {
+        if (kind !== 'synthetic') target.onPreResponseFailure?.();
+        if (kind === 'incomplete-body') return new Response(new ReadableStream({ start(c) { c.error(new Error('lost')); } }), { status: 502 });
+        if (kind === 'successful-stream') return new Response('data: {"type":"message_start"}\n\n', { headers: { 'content-type': 'text/event-stream' } });
+        return Response.json({ error: { message: 'failed' } }, { status: kind === 'different-status' ? 503 : 502 });
+      });
+      const controller = new ModelFailoverController({ scope: () => 'root', canRetry: () => false,
+        canRetryPreResponse: () => true, resolveBackup: () => backup, onSwitch: vi.fn(), retryDelaysMs });
+      await (await controller.run(request(), primary, execute, 'exact')).text();
+      expect(execute).toHaveBeenCalledOnce();
+    });
+
+  it.each(['abort', 'owner', 'route', 'background', 'policy', 'end-turn', 'deadline'] as const)(
+    'rechecks %s before a retry after a real-attempt signal', async reason => {
+      const abort = new AbortController(); let active = true, identity = 'first', background = false, permitted = true;
+      let deadline = Date.now() + 10_000;
+      const controller = new ModelFailoverController({ scope: () => 'root', isActive: () => active,
+        requestIdentity: () => identity, canSwitch: () => !background, canRetry: () => false,
+        canRetryPreResponse: () => permitted, deadlineAt: () => deadline,
+        resolveBackup: () => backup, onSwitch: vi.fn(), retryDelaysMs });
+      const execute = vi.fn(async (target: UpstreamConfig) => {
+        target.onPreResponseFailure?.();
+        if (reason === 'abort') abort.abort();
+        if (reason === 'owner') active = false;
+        if (reason === 'route') identity = 'changed';
+        if (reason === 'background') background = true;
+        if (reason === 'policy') permitted = false;
+        if (reason === 'end-turn') controller.endTurn();
+        if (reason === 'deadline') deadline = 0;
+        return Response.json({ error: { message: 'socket closed' } }, { status: 502 });
+      });
+      await (await controller.run(request(abort.signal), primary, execute, 'exact')).text();
+      expect(execute).toHaveBeenCalledOnce();
+    });
+});

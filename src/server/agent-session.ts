@@ -2031,8 +2031,9 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
     const productSessionId = sessionId;
     const routeIdentity = () => JSON.stringify([configState.currentProviderEnv?.providerId,
       configState.currentProviderEnv?.baseUrl, configState.currentModel]);
-    const isCurrent = () => activeSessionBridgeToken === token && sessionId === productSessionId
-      && !lifecycleState.abortRequested && activeSessionModelRecovery?.readState()?.status !== 'paused';
+    const isCurrentOwner = () => activeSessionBridgeToken === token && sessionId === productSessionId
+      && !lifecycleState.abortRequested;
+    const isCurrent = () => isCurrentOwner() && activeSessionModelRecovery?.readState()?.status !== 'paused';
     if (contextRecoveryEnabled || failoverEnabled) {
       const nativeHistoryId = getCurrentProductSessionMetadata()?.sdkSessionId ?? productSessionId;
       let initialLedger: unknown;
@@ -2137,8 +2138,13 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
             readQueryBackgroundTasks(lifecycleState.query),
           ),
         recovery: activeSessionModelRecovery,
+        // Delivering a received rejection does not admit another inference.
+        // A recovery-only pause retains this owner; real Stop still revokes it.
+        isResponseOwnerActive: () => isCurrentOwner() && !builtinInterrupt.isInterrupting()
+          && sessionExecutionInferenceAllowed(productSessionId, getBuiltinCurrentTurnQueueId(),
+            readQueryBackgroundTasks(lifecycleState.query)),
         isLive: () =>
-          isCurrent() &&
+          isCurrent() && !builtinInterrupt.isInterrupting() &&
           sessionExecutionInferenceAllowed(
             productSessionId,
             getBuiltinCurrentTurnQueueId(),
@@ -2149,6 +2155,8 @@ function ensureActiveSessionBridgeRegistered(opts?: { freshToken?: boolean }): v
         canRetry: () => inferenceOwnerAllowsRetry()
           && activeSessionContextRecovery?.canRetryInference() !== false,
         canRetryRejectedResponse: () => inferenceOwnerAllowsRetry()
+          && activeSessionContextRecovery?.canRetryRejectedInference() === true,
+        canRetryPreResponse: () => inferenceOwnerAllowsRetry()
           && activeSessionContextRecovery?.canRetryRejectedInference() === true,
         canSwitch: () => !hasBuiltinBackgroundWork(),
         current: () => {
@@ -7230,12 +7238,23 @@ function parseSystemStatus(message: unknown): {
   };
 }
 
+/** Read refresh identity only; every inspect/write retains the existing owner checks. */
+export function getBuiltinRecoveryReviewRevision(): string | undefined {
+  try {
+    const owner = recoveryReviewOwner();
+    return `${owner.reviewAuthority}:${owner.epoch}:${owner.queryGeneration}`;
+  } catch {
+    return undefined;
+  }
+}
+
 function broadcastSessionActivity(): void {
   broadcast('chat:status', {
     sessionId,
     sessionState,
     hasBackgroundWork: hasBuiltinNonAmbientBackgroundWork(),
     hasNativeWork: hasQueryNativeWork(),
+    recoveryReviewRevision: getBuiltinRecoveryReviewRevision(),
   });
 }
 
@@ -13353,6 +13372,9 @@ async function startStreamingSession(preWarm = false): Promise<void> {
           return;
         }
         setSdkControlReady(true);
+        // A restored idle pre-warm emits no system-init or state transition.
+        // Notify the existing Tab status stream so a premature read can refresh.
+        broadcastSessionActivity();
         const normalizedSlashCommands = normalizeSdkSlashCommands(initResult?.commands);
         const slashCommands = normalizedSlashCommands
           ? filterSlashCommandsForCapabilities(normalizedSlashCommands, launchCapabilitySnapshot)
@@ -15442,7 +15464,11 @@ async function* messageGenerator(
       }
       traceBuiltinInputProgress('terminal-ready', inputTrace);
       // 等待队列中的消息（事件驱动，无轮询）
-      item = await waitForMessage();
+      const waitingForMessage = waitForMessage();
+      // The waiter can be installed after the control plane becomes ready.
+      // Reading readiness never wakes this waiter or admits a user operation.
+      if (hasCurrentQueryMessageResolver() && lifecycleState.sdkControlReady) broadcastSessionActivity();
+      item = await waitingForMessage;
     }
     if (!item) {
       console.log('[messageGenerator] Received null — exiting (abort or session end)');

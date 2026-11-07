@@ -1387,3 +1387,44 @@ Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates
 Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 integrates exact intent dd972c3, unknown23d98cdd, reading1921e850 and remediation9f818331 (including e2e025c) atop remote main4ceeb2d21, preserving PR257 cleanup and PR258 revision/human-response fixes. Reserve0.5.43/build543.4 for a new immutable artifact; frozen543.3 and published542.6 remain unchanged. Combined checks, exactCI/currentMac ARM, remote main, signed artifact, safe maintenance install and each actual native acceptance remain separate. Original report owner alone currently runs authorized business; no Root UI/restart while active. No unknown replay/ledger edits/permission expansion/cloud/mobile/website deployment or unrelated Bot feature batching. Root record codex-release-intent-recovery-0543-20261107-82a4ca2f; private controls work/intent-recovery-integration-20261107/owner.
 
 R2真实验收补充：543.3原群报告已在同execution完成5项验收；真实502暴露turn_error提示笼统。本分支经原native terminal传递有界HTTP状态，原execution持久保存闭集只读failure说明，UI显示原因/下一步，保持原code/status及未知保护不变。10文件403回归和实际组件通过，下一批由同一桌面owner集成安装；不将543.3原报告成功视为追加改动已安装。
+
+
+## MB-CHAT-STYLE-20261104 CHAT08-COLD — 543.4 native followup
+
+PR259/maina650 includes unknown23d98 and reading1921. Native543.4 originalunknown sample still lacks card after cold initial GET409; ledger unchanged, no replay. Isolatedcodex/chat-review-ready-20261107 adds scoped readonly review revision on existing status stream when actual current Query is ready/parked; existing reviewer refreshes once. 168DOM/20simulatedintegration/type/lint/classification pass; not native acceptance. Sole desktop/sharedCI/main owner01a12bc2-907a-7702-b6dd-788225c5dfe4 takes exactsource nextunfrozen batch with separate initial-send fix; original5434immutable. Native N02 originalunknown first, then realapproval/read-protection gates, then publication. Task record codex-chat-review-ready-20261107-abf7e3c6, evidence dev-docs/chat-review-ready-20261107/acceptance.md.
+
+
+## MB-BRIDGE-PRECONTENT-RECOVERY-20261107 — 已知旧未知操作下的新推理连接恢复
+
+用户要求继续完成稳定性验收及正式更新。真实原会话出现首响应前 UND_ERR_SOCKET 映射本地 502；旧未知记录使新推理的严格恢复不可用。独立分支从 main 4ceeb2d2 修首个 Chat Completions 响应前 socket 失败的有限恢复，保留旧操作 fence/原请求预算/流重放禁止，不清账本、不更改全局只读或业务授权。源码与证据见 `.agent-sync/tasks/codex-bridge-precontent-recovery-20261107-3b76992e.md`、`dev-docs/bridge-precontent-recovery-20261107/acceptance.md`。
+
+桌面、共享 CI、版本、签名、安装、正式 updater 仍由 01a12bc2-907a-7702-b6dd-788225c5dfe4 唯一负责；543.4 已冻结且不包含本次源码，不覆盖其制品或中止其验收。开发方交精确源后由该 owner 选择下一批。代码/本地实际 SDK/主干/安装/真实供应商验收分别记录；没有全链验收不宣称所有 502 已解决。
+
+
+## MB-NATIVE-READINESS-REPAIR-20261107 Root next immutable5435
+
+Existing sole desktop/macOS-arm64/updater/sharedCI/main owner01a12bc2 combines reviewed firstsend4894, coldreview69f4, pre-response transport432 and neutraldiagnostic a90c on actual maina650. Allocate0.5.43/build543.5 for a different immutable candidate; installed5434 failures/archives/rollbacks and published5426 remain unchanged. Firstsend waits originalrestore; coldreview uses existing exactowner ready status revision without polling or weakened ownerguard. Pre-response retry is limited to trusted initial ChatCompletions native socket failure before headers/clientfunctions, consumes existingattempt/candidate budget, preserves oldunknown/tool-replay fence and may repeat inferencecost (not HTTPexactlyonce). Two reason strings avoid unsupported capacity/business-unknown claims. Combined Root190unit193DOM125integration/type/lint/classification plus two actualSDK/nativeBash synthetic socket/historygap cases pass; these are not installedclient/realprovider/Goal acceptance. Publicupdater stays5426 until exactmain/applicableCI and actual native firstsend/originalunknown/approval/reading/diagnostic gates. No unrelated Bot/group/mobile/Login changes, globalpermission expansion or oldledger edit. Task codex-release-native-readiness-0543-20261107-b4d7ce6f; private controls work/native-readiness-repair-20261107/owner.
+
+## MB-CHAT-STYLE-20261104 CHAT08-RECORDS — summary-independent SDK evidence read
+
+Native543.5 N02 remainsfailed after SDK-ready refresh. SameSDK can read originalhistory while getSessionInfo returnsundefined for absentlisting summary; oldrawreader wronglyrefuses. Isolatedcodex/chat-native-records-20261107 onlyusesSDK rawimport as recordauthority, keepsavailable summaryid/size preflight, exactsession/subpath and50k/64MiB caps withbatch1; empty/missing/oversized failclosed. 113unit/33simulatedintegration/type/lint/classification PASS; originalread-only ledger+product unchanged and latestturn unknownidentified. Not installedUI acceptance. Sole desktop/main/sharedCI owner01a12bc2 takes exactsource with69f4 into nextimmutablecandidate; 5435preserved, no replay/clear/defaultchange. Originalunknown→realapproval→longreading/selection/details/order/artifact gates allbeforemain/publication. Task codex-chat-native-records-20261107-05e5ca5b; evidence dev-docs/chat-native-records-20261107/acceptance.md.
+
+## MB-NATIVE-READINESS-REPAIR-20261107 Root next immutable5436
+
+5435 installed local QA retains original7b unknown/history but N02 readonlyGET still409 afterready. Root independently accepted5f4e3b501 summary-independent SDK native evidence reader, preserving selected proof/ledger/reconcile authority and honest collector limits. Local combined integration only; allocate build543.6, no main/public until actual originalN02 and applicable native gates. Existing PR260/sole owner01a12bc2 stays; no competing pipeline, old5435 cannot be rebuilt or overwritten. Targeted combined checks/sourceCI/new package/install remain separately pending.
+
+## MB-MODEL-REJECTION-CAUSE-20261107 — durable wait is not cancellation
+
+543.6 原生有限 HTTP502 验收暴露恢复自己 paused 后 canRetry=false 被误当499；原执行仍 incomplete，未人工Stop。基于 main a650939d 的独立 codex/durable-rejection-cause-main-20261107 保留原始HTTP拒绝并补同步Stop接线；256unit/94integration/type/lint/分类通过，真实两协议基线RED。源码与本地验证完成，main/CI/新不可变包/安装/原会话/正式发布待验；543.6冻结失败制品保留，不原位改写。desktop/macOS-arm64/updater/sharedCI/main唯一owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4，本开发会话仅提交精确SHA交其现有PR260集成，不触发共享CI/构建/安装；不改业务数据、预算、权限、原账本或未知动作保护。完成标准与下一步见任务记录及 dev-docs/durable-rejection-cause-20261107/acceptance.md。
+
+
+## MB-NATIVE-READINESS-REPAIR-20261107 Root immutable5437 / actual response ownership
+
+5436 installed N01–N06 scoped native evidence and original protected history remain valid as recorded; finite originalHTTP502+RetryAfter3600 was misreported499. Root merged exact66b663 component, then independently reproduced its remaining actualwiring gap: native isCurrent/isActive and wrapper scope both withdraw when recovery pauses, whereas initial producer tests fixed isActive true. Root separates only read-only delivery of an already-received bounded rejection using exactexistingroot/route proof; newinference admission, retry/switch/ContextRecovery/ledger/Stop/retiredroot remain strict. Exactfingerprint memo may expose originalerror without dispatch; differentfingerprint whilepaused, oldroute/root and realStop staycancelled. Newtests include actualSessionModelRecovery, realHTTPAnthropic/OpenAI, builtinwrapper and five revocation cases. Allocate0.5.43/build543.7 for a new immutable artifact only; never rewrite5436. Sourcechecks, exactupdatedPR260CI, newlocalcandidate/safeinstall/finiteHTTPcause+preheadersrecovery/originalsession gates and main/updater remain separate. SoleRoot01a12bc2 desktop/macOS-arm64/updater/sharedCI/main; no unrelatedBot/mobile/site/cloud changes.
+
+
+### MB-NATIVE-READINESS-REPAIR-20261107 R4 / 543.8 — outer sealed rejection
+
+Root01a12bc2 singlewriter/desktop-ARM-updater-main owner. Installed5437 retains prior data/config but foregroundHTTP502 still499; main/publicHOLD, oldimmutablepackage kept. Exact composed sourceRED identifies outer ContextRecovery post-execute guard. R4 carries nonserialized sealed failed-response ownership across bothwrappers; exactcached terminalonly, no newinference/tool/retry rights. Complete handler/protocol/actualagentbinding positives and Stop/owner/fingerprint/forgedheader negatives required before nextsourcefreeze; signednative foreground acceptance remainsrequired. No cloud/mobile/site or futureBot/IM source mixed.
+
+R4 sourcecheck closure: 388unit +378distinctintegration +3versioncontracts/type/scopedlint/classification/diff actualPASS; next exact5438source freeze/PR260 and once formal/localnative pipeline. No installed5438/native/main/public PASS yet.

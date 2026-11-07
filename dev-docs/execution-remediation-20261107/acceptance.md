@@ -22,8 +22,9 @@ TypeScript、受影响ESLint、test classification和git diff --check通过。�
 ## 发布与真实验收
 
 - [x] 现有机制审查、补充源码、受影响回归与实际组件检查。
-- [ ] 精确SHA已推送并通过handoff；原发布负责人审阅。
-- [ ] 远端main包含；下一未冻结候选安装并核对本次投影。
+- [x] R1/R2精确SHA已推送并通过handoff；原发布负责人审阅。
+- [x] R1/R2远端main包含，543.4实际安装与原报告保留核对通过。
+- [ ] R3交付下一未冻结候选；新增诊断/受影响步骤原生展示仍待验收。
 - [x] 543.3安装后由单一恢复负责人接续原群报告，实际图文产物及5项完成验证。
 
 唯一desktop/macOS-arm64/updater/sharedCI/main owner仍01a12bc2-907a-7702-b6dd-788225c5dfe4。543.3已冻结，本次追加修改进入下一未冻结批，不重建/覆盖原制品。当前会话只负责源码及原群报告恢复验收，不触发共享CI或正式构建。云/Host/mobile不涉及。
@@ -39,3 +40,11 @@ TypeScript、受影响ESLint、test classification和git diff --check通过。�
 ## 543.3原会话真实完成
 
 543.3精确安装binarySHA256 9833b95b0fa8e16584f177152e179fbff62e4c847ed43768e2ac72be9e8864e5，源6789cf4444a68bd0afa4c97e2838c605edf3a195，远端main4ceeb2d21acc164487ef199b4a5788d7d27c65f1已独立包含核验。原会话02:02接续，真实502终态后02:10从原进度继续，02:17原5步骤全部accept、phasecompleted；UI已确认。总计2次合法人工接续，第二次在已结算且无pending写入后，没有重复未知业务操作。HTML/Markdown/三张SVG通过210项报告检查；主Agent独立哈希读回与实际IAB图表检查通过。原报告和原数据保留。真实报告完成不等于R2新增字段已安装，R2仍须下一统一候选。
+
+## R3：诊断文案准确性与543.4真实边界
+
+R1/R2已通过PR259进入远端main a650939d2c38b8dc04750e282b159ddaac8ea346，主Agent独立fetch/祖先检查通过。543.4已安装，binarySHA256 1d90e729c483058f4683ba76b4b7b6dfb17b6cd77f17beea127dcb49e9ead982；原群报告5/5、原5份图文产物哈希和旧正文报告均未变化。普通问答和一次文件写入读回已由原生验收验证，但首条发送等待和冷恢复409后状态刷新另有缺口，由原模块负责人补修；新增failure诊断显示仍待原生受控失败验证，正式更新通道未晋级。
+
+本次仅修正中英文context/replay两条固定提示：context_recovery_required也可能来自协议或恢复检查拒绝，不能断言容量已满；automatic_replay_blocked也可能是已投递模型请求、Query或预算约束，不能断言先前业务操作结果未知。改用“恢复检查未通过”和“本次模型请求不能自动重复”，保留原code、闭集诊断与全部执行约束。
+
+R3验证：两份JSON解析通过，递归比较仅各2个预期failure文案值变化；现有SessionExecutionStatus DOM回归通过，git diff --check通过。文案纠正没有新增执行逻辑，不重复整套构建/403项回归；原生候选由唯一发布负责人统一核验。

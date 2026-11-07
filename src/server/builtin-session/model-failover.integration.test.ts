@@ -4,6 +4,8 @@ import { createBridgeHandler } from '../openai-bridge/handler';
 import { applyAutoRouteAdmission } from '../auto-route/admission';
 import { getAutoRouteCandidates, setAutoRouteSessionState } from '../auto-route/session-state';
 import type { SessionMetadata } from '../types/session';
+import { SessionModelRecovery } from './model-recovery';
+import type { ModelRecoveryState } from '../../shared/modelRecovery';
 
 const fixture = vi.hoisted(() => ({ config: {} as Record<string, unknown>,
   providers: {} as Record<string, unknown>, envs: {} as Record<string, unknown>, fetch: vi.fn() }));
@@ -35,6 +37,34 @@ describe('Session API failover authority', () => {
   });
   const request = () => new Request('http://127.0.0.1/bridge/test/v1/messages', { method: 'POST', body: JSON.stringify({ messages: [{ role: 'user', content: 'synthetic text' }], max_tokens: 10 }) });
   afterEach(() => { vi.useRealTimers(); fixture.fetch.mockReset(); });
+  it('forwards the exact native response owner without reopening paused inference admission', async () => {
+    candidate = undefined;
+    let journal: ModelRecoveryState | undefined;
+    let stopped = false; let turnId = 'original-root';
+    const isCurrent = () => !stopped && recovery?.readState()?.status !== 'paused';
+    const recovery: SessionModelRecovery = new SessionModelRecovery({ read: () => journal, isLive: isCurrent,
+      current: () => ({ sdkSessionId: 'original-native', routeIdentity: 'original-route', turnId }),
+      prepare: async original => { await original.json(); },
+      write: async (next, expected, live) => {
+        if (!live() || journal !== expected) return false;
+        journal = next; return true;
+      } });
+    const controller = createSessionModelFailover({ current: () => ({ env: primary, model: 'a', turnId }),
+      isLive: isCurrent, isResponseOwnerActive: () => !stopped, canRetry: isCurrent,
+      onSwitch: vi.fn(), recovery, retryDelaysMs: [0, 0, 0] });
+    const execute = vi.fn(async () => Response.json({ error: { message: 'received HTTP502' } },
+      { status: 502, headers: { 'retry-after': '3600' } }));
+    const target = { providerId: 'primary', baseUrl: primary.baseUrl!, model: 'a' };
+    expect((await controller.run(request(), target, execute, 'known')).status).toBe(502);
+    expect(journal).toMatchObject({ status: 'paused', lastStatus: 502 });
+    expect((await controller.run(request(), target, execute, 'known')).status).toBe(502);
+    expect((await controller.run(request(), target, execute, 'different')).status).toBe(499);
+    turnId = 'replacement-root';
+    expect((await controller.run(request(), target, execute, 'known')).status).toBe(499);
+    turnId = 'original-root'; stopped = true;
+    expect((await controller.run(request(), target, execute, 'known')).status).toBe(499);
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
   it.each([true, false])('retains the hidden execution continuation plan but rechecks enabled candidates=%s', async enabled => {
     const sessionId = 'hidden-continuation-fixture';
     const primaryRef = { providerId: 'primary', model: 'a' };
